@@ -8,8 +8,8 @@ This project simulates a security scenario in Federated Learning (FL) using a Me
 
 The interaction between the defender and attacker is modeled as a Stackelberg game:
 
--   **Leader (Defender):** The central server in the FL system. The defender's goal is to learn a meta-policy that selects the optimal hyperparameters for the aggregation rule to maintain model accuracy and robustness.
--   **Follower (Attacker):** A subset of malicious clients in the FL system. The attacker's goal is to degrade the global model's performance or create backdoors by sending malicious updates.
+-   **Leader (Defender):** The central server in the FL system. The defender's goal is to learn a meta-policy that selects the optimal hyperparameters for the aggregation rule and the post-training defense to maintain model accuracy and robustness.
+-   **Follower (Attacker):** A set of 
 
 ### State Space
 
@@ -114,9 +114,18 @@ This allows the defender to generalize and effectively counter a wide range of a
 - **Commenting:** The extracted code has been commented to improve readability and maintainability.
 - **Testing:** Basic unit tests have been created in the `tests` directory to ensure the correctness of the data loaders and core FL utilities.
 
-### Next Steps
+## Related Works
 
-- Integrate the user-provided Reptile, environment, and agent definitions.
-- Implement the `fl_env.py` to create the Gym-like environment for the RL agent.
-- Implement the defender and attacker agents in `src/agents/`.
-- Begin the implementation and training of the meta-RL agent.
+### Meta Stackelberg Game: Robust Federated Learning against Adaptive and Mixed Poisoning Attacks
+
+This research paper introduces a meta-Stackelberg game (meta-SG) framework to enhance the security of Federated Learning (FL). The framework is designed to defend against a variety of security threats, including adaptive and mixed poisoning attacks.
+
+Key contributions of the paper include:
+
+-   **Problem Formulation:** The paper models the interaction between the defender (FL server) and attacker as a Bayesian Stackelberg Markov game. This model captures the uncertainties and information asymmetry inherent in real-world FL security scenarios.
+-   **Meta-RL-based Defense:** A meta-reinforcement learning (meta-RL) approach is proposed to train the defender. The defender learns a meta-policy to dynamically select the optimal hyperparameters for aggregation rules, allowing it to adapt to and counter various attack strategies.
+-   **Meta-Stackelberg Equilibrium:** The paper introduces a new solution concept called meta-Stackelberg equilibrium (meta-SE). This equilibrium enables the defender to perform online adaptation and respond effectively to previously unseen attacks.
+-   **Meta-Stackelberg Learning Algorithm:** A computationally efficient meta-learning algorithm, named meta-Stackelberg learning (meta-SL), is developed to solve the proposed game and find the meta-SE.
+-   **Experimental Validation:** The effectiveness of the proposed framework is demonstrated through experiments on MNIST and CIFAR-10 datasets. The results show that the meta-SG defense outperforms existing methods in defending against strong model poisoning and backdoor attacks.
+
+The paper provides a comprehensive theoretical and empirical analysis of the proposed framework, making a significant contribution to the field of adversarial FL and offering a promising direction for developing more robust and adaptive defense mechanisms.
