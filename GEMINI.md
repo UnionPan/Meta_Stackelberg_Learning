@@ -92,3 +92,31 @@ This allows the defender to generalize and effectively counter a wide range of a
 -   A robust meta-RL agent that can effectively defend a Federated Learning system against a range of data poisoning and backdoor attacks.
 -   Insights into the dynamics of the Stackelberg game between attackers and defenders in FL.
 -   A flexible and extensible simulation framework for future research in FL security.
+
+## Development Progress (as of 2025-09-09)
+
+### 1. Project Scaffolding
+
+- The initial directory structure has been created to organize the project's code, data, and results.
+
+### 2. Code Extraction and Refactoring
+
+- The core logic from the experimental notebook (`notebooks/Mixed_RLdefendFL4.ipynb`) has been extracted and modularized into the `src` directory.
+- **Models (`src/models/cnn.py`):** ResNet and VGG model architectures have been saved.
+- **Data Utilities (`src/utils/data_loader.py`):** Functions for data loading, backdoor pattern generation, and dataset poisoning have been organized.
+- **FL Utilities (`src/utils/fl_utils.py`):** A comprehensive set of functions for the FL simulation has been created, including:
+    - Basic utilities for model weight manipulation.
+    - Various aggregation rules (e.g., FedAvg, Krum, Median) that will serve as the defender's action space.
+    - Functions for crafting adversarial attacks.
+
+### 3. Code Quality and Verification
+
+- **Commenting:** The extracted code has been commented to improve readability and maintainability.
+- **Testing:** Basic unit tests have been created in the `tests` directory to ensure the correctness of the data loaders and core FL utilities.
+
+### Next Steps
+
+- Integrate the user-provided Reptile, environment, and agent definitions.
+- Implement the `fl_env.py` to create the Gym-like environment for the RL agent.
+- Implement the defender and attacker agents in `src/agents/`.
+- Begin the implementation and training of the meta-RL agent.
