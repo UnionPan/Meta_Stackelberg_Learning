@@ -212,3 +212,5 @@ __marimo__/
 runs/
 notebooks/demo_*
 data/
+
+*.pth
