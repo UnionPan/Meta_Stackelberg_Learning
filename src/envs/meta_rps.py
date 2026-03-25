@@ -71,7 +71,16 @@ class MetaRPS(MetaEnv):
     def reset(self, seed=None, options=None):
         self.agents = self.possible_agents[:]
         self._last_actions = {agent: 3 for agent in self.possible_agents}
-        self.player_2_type = np.random.choice(self.opponent_types)
+
+        # Allow setting attack_type via options for meta-learning
+        if options and "attack_type" in options:
+            requested = options["attack_type"]
+            if requested in self.opponent_types:
+                self.player_2_type = requested
+            else:
+                self.player_2_type = np.random.choice(self.opponent_types)
+        else:
+            self.player_2_type = np.random.choice(self.opponent_types)
         
         observations = {agent: self._last_actions[self.possible_agents[1 - i]] for i, agent in enumerate(self.possible_agents)}
         

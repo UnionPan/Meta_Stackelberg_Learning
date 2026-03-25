@@ -214,3 +214,11 @@ notebooks/demo_*
 data/
 notebooks/cifar_diffusion.pth
 *.pth
+
+paper/
+other_repos/
+.claude/
+.gemini/
+.codex/
+checkpoints/
+docs/

@@ -1,9 +1,66 @@
-# This file contains the definitions for the ResNet and VGG models.
-# These are standard implementations used for image classification tasks.
+# This file contains the definitions for the ResNet, VGG, and MNIST models.
 
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
+import numpy as np
+
+
+# --- MNIST Models ---
+
+class MNISTClassifier(nn.Module):
+    """
+    CNN classifier for MNIST from the meta-SG paper.
+    Architecture: 8x8, 6x6, 5x5 conv layers with ReLU, then FC + softmax.
+    Total params: ~21K. Last FC layer: 128*10 + 10 = 1290 params.
+    """
+    def __init__(self, nb_filters=64, activation='relu'):
+        super().__init__()
+        self.activation = activation
+        self.conv1 = nn.Conv2d(1, nb_filters, kernel_size=8, stride=2, padding=3)
+        nn.init.xavier_uniform_(self.conv1.weight)
+        self.conv2 = nn.Conv2d(nb_filters, nb_filters * 2, kernel_size=6, stride=2)
+        nn.init.xavier_uniform_(self.conv2.weight)
+        self.conv3 = nn.Conv2d(nb_filters * 2, nb_filters * 2, kernel_size=5, stride=1)
+        nn.init.xavier_uniform_(self.conv3.weight)
+        self.fc1 = nn.Linear(nb_filters * 2, 10)
+        nn.init.xavier_uniform_(self.fc1.weight)
+
+    def forward(self, x):
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
+        x = F.relu(self.conv3(x))
+        x = x.view(x.size(0), -1)
+        x = self.fc1(x)
+        return x
+
+
+# --- State Compression ---
+
+def get_compressed_state(model, num_tail_layers=2):
+    """
+    Extract the last `num_tail_layers` parameter tensors from the model,
+    flatten and concatenate them into a 1D numpy array, then normalize to [-1, 1].
+
+    For MNISTClassifier with num_tail_layers=2: fc1.weight (128*10) + fc1.bias (10) = 1290
+    For ResNet18 with num_tail_layers=2: linear.weight (512*10) + linear.bias (10) = 5130
+
+    Returns:
+        (state_vector, state_stats) where state_stats = (min, max) for denormalization
+    """
+    params = list(model.parameters())
+    tail_params = params[-num_tail_layers:]
+    flat = np.concatenate([p.detach().cpu().numpy().flatten() for p in tail_params])
+
+    # Normalize to [-1, 1]
+    vmin, vmax = flat.min(), flat.max()
+    if vmax - vmin < 1e-8:
+        normalized = np.zeros_like(flat)
+    else:
+        normalized = 2.0 * (flat - vmin) / (vmax - vmin) - 1.0
+
+    return normalized.astype(np.float32), (vmin, vmax)
 
 class BasicBlock(nn.Module):
     expansion = 1
