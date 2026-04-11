@@ -2,14 +2,29 @@
 # including model parameter handling, training and testing, various aggregation rules,
 # and functions for crafting attacks.
 
-import torch
-import numpy as np
+import copy
+import math
 from collections import OrderedDict
 from functools import reduce
-import math
-import copy
+
+import numpy as np
+import torch
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+
+def resolve_device(device=None):
+    """Resolve a runtime device from a string, torch.device, or None."""
+    if device is None:
+        return DEVICE
+    if isinstance(device, torch.device):
+        return device
+    if isinstance(device, str):
+        normalized = device.strip().lower()
+        if normalized == "auto":
+            return DEVICE
+        return torch.device(device)
+    raise TypeError(f"Unsupported device spec: {device!r}")
 
 def get_parameters(net):
     """Get model parameters as a list of NumPy arrays."""
@@ -24,7 +39,7 @@ def get_parameters(net):
 def set_parameters(net, parameters):
     """Set model parameters from a list of NumPy arrays."""
     params_dict = zip(net.state_dict().keys(), parameters)
-    state_dict = OrderedDict({k: torch.Tensor(v) for k, v in params_dict})
+    state_dict = OrderedDict({k: torch.as_tensor(v) for k, v in params_dict})
     net.load_state_dict(state_dict, strict=True)
 
 def weights_to_vector(weights):
@@ -36,10 +51,12 @@ def vector_to_weights(vector, weights_template):
     indies = np.cumsum([0] + [w.size for w in weights_template])
     return [vector[indies[i]:indies[i+1]].reshape(weights_template[i].shape) for i in range(len(weights_template))]
 
-def train(net, train_iter, epochs, lr):
+def train(net, train_iter, epochs, lr, device=None):
     """Train a model on a given dataset."""
+    runtime_device = resolve_device(device)
     criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(net.parameters(), lr=lr)
+    net.to(runtime_device)
     net.train()
     for _ in range(epochs):
         try:
@@ -49,20 +66,23 @@ def train(net, train_iter, epochs, lr):
             # Depending on the desired behavior, you might want to reset it
             # For now, we just break the loop
             break
-        images, labels = images.to(DEVICE), labels.to(DEVICE)
+        images, labels = images.to(runtime_device), labels.to(runtime_device)
         optimizer.zero_grad()
         loss = criterion(net(images), labels)
         loss.backward()
         optimizer.step()
 
-def test(net, valloader):
+
+def test(net, valloader, device=None):
     """Test a model on a given dataset."""
+    runtime_device = resolve_device(device)
     criterion = torch.nn.CrossEntropyLoss()
     correct, total, loss = 0, 0, 0.0
+    net.to(runtime_device)
     net.eval()
     with torch.no_grad():
         for images, labels in valloader:
-            images, labels = images.to(DEVICE), labels.to(DEVICE)
+            images, labels = images.to(runtime_device), labels.to(runtime_device)
             outputs = net(images)
             loss += criterion(outputs, labels).item()
             _, predicted = torch.max(outputs.data, 1)
