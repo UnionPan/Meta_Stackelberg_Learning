@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import os
 import random
 import time
@@ -14,7 +15,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from src.models.cnn import MNISTClassifier, ResNet18
-from src.utils.data_loader import DatasetSplit, get_datasets
+from src.utils.data_loader import DatasetSplit, get_datasets, poison_dataset
 from src.utils.fl_utils import resolve_device, set_parameters, test
 
 from .attacks import SandboxAttack
@@ -42,6 +43,15 @@ class SandboxConfig:
     num_workers: Optional[int] = None
     prefetch_factor: int = 4
     parallel_clients: int = 1
+    base_class: int = 1
+    target_class: int = 7
+    pattern_type: str = "square"
+    ipm_scaling: float = 2.0
+    lmp_scale: float = 2.0
+    bfl_poison_frac: float = 1.0
+    dba_poison_frac: float = 0.5
+    dba_num_sub_triggers: int = 4
+    attacker_action: tuple[float, float, float] = (0.0, 0.0, 0.0)
 
 
 @dataclass
@@ -53,6 +63,7 @@ class RoundSummary:
     selected_attackers: List[int]
     clean_loss: float
     clean_acc: float
+    backdoor_acc: float
     round_seconds: float
     client_metrics: List["ClientRoundMetrics"] = field(default_factory=list)
     benign_update_norms: List[float] = field(default_factory=list)
@@ -116,6 +127,8 @@ class MinimalFLRunner:
         self.criterion = torch.nn.CrossEntropyLoss()
         self.client_optimizer = torch.optim.SGD(self.client_model.parameters(), lr=self.config.lr)
         self.current_weights = self._capture_weights(self.model)
+        self.poisoned_train_loaders = self._prepare_poisoned_train_loaders()
+        self.poisoned_eval_loader = self._prepare_poisoned_eval_loader()
 
     def reset_model(self) -> None:
         """Reinitialize model weights for a fresh sandbox run."""
@@ -127,12 +140,15 @@ class MinimalFLRunner:
             self.client_model = self.client_model.to(memory_format=torch.channels_last)
         self.client_optimizer = torch.optim.SGD(self.client_model.parameters(), lr=self.config.lr)
         self.current_weights = self._capture_weights(self.model)
+        self.poisoned_train_loaders = self._prepare_poisoned_train_loaders()
+        self.poisoned_eval_loader = self._prepare_poisoned_eval_loader()
 
     def run_round(
         self,
         round_idx: int,
         attack: Optional[SandboxAttack] = None,
         evaluate: bool = True,
+        attacker_action: Optional[np.ndarray] = None,
     ) -> RoundSummary:
         """Execute one federated round with an optional attacker."""
         round_start = time.time()
@@ -170,17 +186,25 @@ class MinimalFLRunner:
         malicious_weights: List[List[np.ndarray]] = []
         attack_name = attack.name if attack is not None else "clean"
         if attack is not None and selected_attackers:
+            attacker_loader = self._build_attacker_loader(selected_attackers)
             ctx = RoundContext(
                 old_weights=old_weights,
                 benign_weights=benign_weights,
                 selected_attacker_ids=selected_attackers,
-                model=None,
+                model=self.model,
                 device=self.device,
                 lr=self.config.lr,
-                attacker_train_iter=None,
-                poisoned_train_iters=None,
+                local_epochs=self.config.local_epochs,
+                attacker_train_iter=attacker_loader,
+                global_poisoned_train_loader=self.poisoned_train_loaders.get("global"),
+                sub_trigger_train_loaders=self.poisoned_train_loaders.get("sub_triggers"),
+                poisoned_train_iters=self.poisoned_train_loaders,
+                attacker_action=np.asarray(
+                    attacker_action if attacker_action is not None else self.config.attacker_action,
+                    dtype=float,
+                ),
             )
-            malicious_weights = attack.execute(ctx)
+            malicious_weights = attack.execute(ctx, attacker_action=ctx.attacker_action)
             all_weights.extend(malicious_weights)
 
         if all_weights:
@@ -189,8 +213,12 @@ class MinimalFLRunner:
 
         if evaluate:
             clean_loss, clean_acc = test(self.model, self.test_loader, device=self.device)
+            if self.poisoned_eval_loader is not None:
+                _, backdoor_acc = test(self.model, self.poisoned_eval_loader, device=self.device)
+            else:
+                backdoor_acc = float("nan")
         else:
-            clean_loss, clean_acc = float("nan"), float("nan")
+            clean_loss, clean_acc, backdoor_acc = float("nan"), float("nan"), float("nan")
         benign_norms = summarize_norms(old_weights, benign_weights)
         malicious_norms = summarize_norms(old_weights, malicious_weights)
         malicious_cosines = [
@@ -207,6 +235,7 @@ class MinimalFLRunner:
             selected_attackers=selected_attackers,
             clean_loss=clean_loss,
             clean_acc=clean_acc,
+            backdoor_acc=backdoor_acc,
             round_seconds=round_seconds,
             client_metrics=list(client_metrics.values()),
             benign_update_norms=benign_norms,
@@ -221,6 +250,7 @@ class MinimalFLRunner:
         show_progress: bool = False,
         progress_desc: Optional[str] = None,
         eval_every: int = 1,
+        attacker_action: Optional[np.ndarray] = None,
     ) -> List[RoundSummary]:
         """Run multiple rounds and collect summaries."""
         summaries = []
@@ -229,7 +259,12 @@ class MinimalFLRunner:
             iterator = tqdm(iterator, total=rounds, desc=progress_desc or "FL rounds", unit="round")
         for round_idx in iterator:
             should_evaluate = eval_every <= 1 or round_idx % eval_every == 0 or round_idx == rounds
-            summary = self.run_round(round_idx, attack=attack, evaluate=should_evaluate)
+            summary = self.run_round(
+                round_idx,
+                attack=attack,
+                evaluate=should_evaluate,
+                attacker_action=attacker_action,
+            )
             summaries.append(summary)
             if show_progress and tqdm is not None:
                 postfix = {"sec": f"{summary.round_seconds:.2f}"}
@@ -319,6 +354,82 @@ class MinimalFLRunner:
             for layer in range(len(weights_list[0]))
         ]
 
+    def _prepare_poisoned_train_loaders(self) -> Dict[str, object]:
+        if self.config.num_attackers <= 0:
+            return {}
+
+        loaders: Dict[str, object] = {}
+        global_poisoned_dataset = copy.deepcopy(self.train_dataset)
+        poison_dataset(
+            global_poisoned_dataset,
+            self.config.dataset,
+            self.config.base_class,
+            self.config.target_class,
+            poison_frac=self.config.bfl_poison_frac,
+            pattern_type=self.config.pattern_type,
+            poison_all=self.config.bfl_poison_frac >= 1.0,
+        )
+        loaders["global"] = DataLoader(
+            global_poisoned_dataset,
+            batch_size=self.config.batch_size,
+            **self.loader_kwargs,
+        )
+
+        sub_trigger_loaders = []
+        for sub_idx in range(max(1, self.config.dba_num_sub_triggers)):
+            sub_poisoned_dataset = copy.deepcopy(self.train_dataset)
+            poison_dataset(
+                sub_poisoned_dataset,
+                self.config.dataset,
+                self.config.base_class,
+                self.config.target_class,
+                poison_frac=self.config.dba_poison_frac,
+                pattern_type=self.config.pattern_type,
+                agent_idx=sub_idx,
+            )
+            sub_trigger_loaders.append(
+                DataLoader(
+                    sub_poisoned_dataset,
+                    batch_size=self.config.batch_size,
+                    **self.loader_kwargs,
+                )
+            )
+        loaders["sub_triggers"] = sub_trigger_loaders
+        return loaders
+
+    def _prepare_poisoned_eval_loader(self) -> Optional[DataLoader]:
+        poisoned_eval_dataset = copy.deepcopy(self.test_dataset)
+        poison_dataset(
+            poisoned_eval_dataset,
+            self.config.dataset,
+            self.config.base_class,
+            self.config.target_class,
+            poison_frac=1.0,
+            pattern_type=self.config.pattern_type,
+            poison_all=True,
+        )
+        return DataLoader(
+            poisoned_eval_dataset,
+            batch_size=self.config.eval_batch_size,
+            **self.eval_loader_kwargs,
+        )
+
+    def _build_attacker_loader(self, selected_attackers: List[int]) -> Optional[DataLoader]:
+        if not selected_attackers:
+            return None
+        attacker_indices = sorted(
+            idx
+            for client_id in selected_attackers
+            for idx in self.client_data_idxs[client_id]
+        )
+        if not attacker_indices:
+            return None
+        return DataLoader(
+            DatasetSplit(self.train_dataset, attacker_indices),
+            batch_size=self.config.batch_size,
+            **self.loader_kwargs,
+        )
+
     def _build_model(self) -> torch.nn.Module:
         if self.config.dataset == "cifar10":
             return ResNet18()
@@ -385,6 +496,7 @@ def summaries_to_dict(summaries: List[RoundSummary]) -> Dict[str, List[float]]:
     return {
         "clean_loss": [summary.clean_loss for summary in summaries],
         "clean_acc": [summary.clean_acc for summary in summaries],
+        "backdoor_acc": [summary.backdoor_acc for summary in summaries],
         "round_seconds": [summary.round_seconds for summary in summaries],
         "mean_benign_norm": [
             float(np.mean(summary.benign_update_norms)) if summary.benign_update_norms else 0.0

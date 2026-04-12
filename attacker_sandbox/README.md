@@ -17,21 +17,25 @@ without coupling them to the full Meta-SG experiment stack.
 4. distributed backdoor attacker: `DBA`
 5. adaptive attackers: `RL`, `BRL`
 
-## Initial Folder Layout
+## Folder Layout
 
-- `attacks.py`
-  Standalone attacker implementations rebuilt for isolated validation.
-- `context.py`
-  Round-level data structures for attacker-only validation.
-- `fl_runner.py`
-  Minimal MNIST federated-learning runner for attack-side validation.
-- `metrics.py`
-  Attack-side metrics such as update norm, cosine similarity, clean accuracy,
-  and backdoor accuracy.
-- `visualize.py`
-  Common plotting utilities for attacker validation.
-- `run_sandbox.py`
-  Entry point for future standalone demos and smoke tests.
+- `attacks.py` / `context.py` / `fl_runner.py` / `metrics.py` / `rl_env.py` / `visualize.py`
+  Core sandbox logic and reusable modules.
+- `apps/run/`
+  Python run entry points. `main.py` is the unified experiment entry;
+  `run_sandbox.py` and `benchmark_clean.py` are compatibility wrappers.
+- `apps/postprocess/`
+  Python postprocess entry points (`postprocess_clean.py`, `postprocess_sandbox.py`).
+- `scripts/`
+  Shell helpers (`setup_env.sh`, `run_tensorboard.sh`, `postprocess_mnist_30r_all.sh`).
+- `docs/`
+  Usage guides and operational docs.
+- `assets/`
+  Static image assets used in docs/inspection.
+- `config/`
+  Environment/dependency files (`requirements.txt`, `environment.yml`).
+- `outputs/` / `runs/`
+  Experiment outputs and TensorBoard logs.
 
 ## Scope
 
@@ -49,11 +53,13 @@ verifying the attacker side in a simpler and more testable way first.
 The first runnable slice in this folder is:
 
 - MNIST clean FL
-- standalone `IPM` attacker
-- round-wise attack metrics
-- basic visualizations for clean accuracy and update norms
+- standalone `IPM` / `LMP` untargeted attackers
+- standalone `BFL` / `DBA` backdoor attackers
+- minimal single-agent `gymnasium` attacker RL environment
+- round-wise attack metrics including backdoor accuracy
+- TensorBoard / PNG postprocess helpers for clean-vs-attack comparison
 
-If you want a step-by-step run guide for MNIST, see [MNIST_RUN_GUIDE.md](./MNIST_RUN_GUIDE.md).
+If you want a step-by-step run guide for MNIST, see [MNIST_RUN_GUIDE.md](./docs/MNIST_RUN_GUIDE.md).
 
 ## GPU Support
 
@@ -70,8 +76,8 @@ The sandbox now accepts an explicit runtime device:
 Example:
 
 ```bash
-python attacker_sandbox/run_sandbox.py --device auto
-python attacker_sandbox/benchmark_clean.py --device cuda:0
+python attacker_sandbox/apps/run/main.py --attack_type clean --device auto
+python attacker_sandbox/apps/run/main.py --attack_type ipm --device cuda:0
 ```
 
 Both entry points print the resolved runtime device at startup completion so it
@@ -85,8 +91,8 @@ install the required packages:
 
 ```bash
 cd /home/antik/rl/Meta_Stackelberg_Learning
-bash attacker_sandbox/setup_env.sh cpu
-bash attacker_sandbox/setup_env.sh cu121
+bash attacker_sandbox/scripts/setup_env.sh cpu
+bash attacker_sandbox/scripts/setup_env.sh cu121
 ```
 
 After activation, install mode and device can be checked with:

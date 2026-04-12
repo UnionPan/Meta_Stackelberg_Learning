@@ -1,0 +1,70 @@
+{
+  "config": {
+    "dataset": "mnist",
+    "data_dir": "data",
+    "device": "cpu",
+    "seed": 42,
+    "num_clients": 4,
+    "num_attackers": 1,
+    "subsample_rate": 1.0,
+    "local_epochs": 1,
+    "lr": 0.05,
+    "batch_size": 256,
+    "eval_batch_size": 512,
+    "num_workers": 0,
+    "parallel_clients": 1,
+    "base_class": 1,
+    "target_class": 7,
+    "pattern_type": "square",
+    "attack_type": "bfl",
+    "ipm_scaling": 2.0,
+    "lmp_scale": 2.0,
+    "bfl_poison_frac": 1.0,
+    "dba_poison_frac": 0.5,
+    "dba_num_sub_triggers": 4,
+    "rounds": 1
+  },
+  "attack_type": "bfl",
+  "series": {
+    "clean_loss": [
+      7.114813357591629
+    ],
+    "clean_acc": [
+      0.9084
+    ],
+    "backdoor_acc": [
+      0.8227
+    ],
+    "round_seconds": [
+      33.34379863739014
+    ],
+    "mean_benign_norm": [
+      1.8417738278706868
+    ],
+    "mean_malicious_norm": [
+      2.5840158462524414
+    ],
+    "mean_malicious_cosine": [
+      0.7493771910667419
+    ]
+  },
+  "rounds": [
+    {
+      "round_idx": 1,
+      "clean_loss": 7.114813357591629,
+      "clean_acc": 0.9084,
+      "backdoor_acc": 0.8227,
+      "round_seconds": 33.34379863739014,
+      "mean_benign_norm": 1.8417738278706868,
+      "mean_malicious_norm": 2.5840158462524414,
+      "mean_malicious_cosine": 0.7493771910667419,
+      "evaluated": true
+    }
+  ],
+  "final": {
+    "bfl_acc": 0.9084,
+    "bfl_backdoor_acc": 0.8227,
+    "bfl_mean_malicious_norm": 2.5840158462524414,
+    "bfl_mean_malicious_cosine": 0.7493771910667419
+  }
+}

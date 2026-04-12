@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 import numpy as np
+from torch.utils.data import DataLoader
 
 
 Weights = List[np.ndarray]
@@ -19,8 +20,12 @@ class RoundContext:
     model: Optional[Any] = None
     device: Optional[Any] = None
     lr: float = 0.0
-    attacker_train_iter: Optional[Any] = None
+    local_epochs: int = 1
+    attacker_train_iter: Optional[DataLoader] = None
+    global_poisoned_train_loader: Optional[DataLoader] = None
+    sub_trigger_train_loaders: Optional[List[DataLoader]] = None
     poisoned_train_iters: Optional[Dict[str, Any]] = None
+    attacker_action: Optional[np.ndarray] = None
 
 
 @dataclass

@@ -102,9 +102,19 @@ def add_pattern_bd(x, dataset='cifar10', pattern_type='square', agent_idx=-1):
 
     elif dataset == 'mnist':
         if pattern_type == 'square':
-            for i in range(5, 7):
-                for j in range(6, 11):
-                    x[i, j] = 255
+            coords = [(i, j) for i in range(5, 7) for j in range(6, 11)]
+            if agent_idx == -1:
+                selected_coords = coords
+            else:
+                splits = [
+                    coords[0:3],
+                    coords[3:5],
+                    coords[5:7],
+                    coords[7:10],
+                ]
+                selected_coords = splits[agent_idx % len(splits)]
+            for i, j in selected_coords:
+                x[i, j] = 255
 
     elif dataset == 'fmnist':
         if pattern_type == 'square':
