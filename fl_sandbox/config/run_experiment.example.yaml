@@ -1,0 +1,61 @@
+data:
+  dataset: mnist
+  split_mode: paper_q
+  noniid_q: 0.1
+
+fl:
+  num_clients: 20
+  num_attackers: 5
+  subsample_rate: 0.25
+  local_epochs: 1
+
+protocol:
+  name: rlfl
+  warmup_rounds: 10
+
+init:
+  init_mode: seed
+  init_checkpoint_path: ""
+
+runtime:
+  rounds: 30
+  device: auto
+  lr: 0.05
+  batch_size: 256
+  eval_batch_size: 1024
+  num_workers: 0
+  parallel_clients: 1
+  eval_every: 1
+  seed: 42
+
+attacker:
+  type: rl
+  ipm_scaling: 2.0
+  lmp_scale: 2.0
+  base_class: 1
+  target_class: 7
+  pattern_type: square
+  bfl_poison_frac: 1.0
+  dba_poison_frac: 0.5
+  dba_num_sub_triggers: 4
+  attacker_action: [0.0, 0.0, 0.0]
+  rl_distribution_steps: 10
+  rl_attack_start_round: 11
+  rl_policy_train_end_round: 10
+  rl_inversion_steps: 50
+  rl_reconstruction_batch_size: 8
+  rl_policy_train_episodes_per_round: 1
+  rl_simulator_horizon: 8
+
+defender:
+  type: clipped_median
+  krum_attackers: 1
+  multi_krum_selected: null
+  clipped_median_norm: 2.0
+  trimmed_mean_ratio: 0.2
+  geometric_median_iters: 10
+  fltrust_root_size: 100
+
+output:
+  output_root: attacker_sandbox/outputs/demo
+  tb_root: attacker_sandbox/runs/demo

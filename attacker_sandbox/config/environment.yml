@@ -1,8 +1,0 @@
-name: meta-stackelberg-attacker-sandbox
-channels:
-  - defaults
-dependencies:
-  - python=3.10
-  - pip
-  - pip:
-      - -r attacker_sandbox/requirements.txt
