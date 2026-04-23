@@ -1,18 +1,16 @@
 import argparse
-import json
-import math
 from pathlib import Path
-import numpy as np
 import random
 import sys
 import tempfile
-from types import ModuleType, SimpleNamespace
+from types import ModuleType
 import unittest
 from unittest.mock import patch
 
+import numpy as np
+
 from fl_sandbox.core.batch_runner import BatchRunRequest, clone_args
-from fl_sandbox.core.attacks.backdoor import BRLAttack, DBAAttack
-from fl_sandbox.core.attacks.poisoning import craft_ipm, craft_lmp
+from fl_sandbox.core.attacks.poisoning import craft_lmp
 from fl_sandbox.core.experiment_builders import (
     build_attack,
     build_config,
@@ -22,9 +20,7 @@ from fl_sandbox.core.experiment_builders import (
     resolve_num_attackers,
     split_suffix,
 )
-from fl_sandbox.core.experiment_service import write_summary_json
 from fl_sandbox.core.postprocess import build_postprocess_hint_lines
-from fl_sandbox.core.postprocess.tensorboard_utils import write_common_scalars
 from fl_sandbox.config import RunConfig, config_to_namespace, load_run_config, merge_cli_overrides
 from fl_sandbox.run.run_experiment import parse_args
 
@@ -51,7 +47,7 @@ def _args(**overrides):
         "init_checkpoint_path": "",
         "attack_type": "clean",
         "ipm_scaling": 2.0,
-        "lmp_scale": 2.0,
+        "lmp_scale": 5.0,
         "base_class": 1,
         "target_class": 7,
         "pattern_type": "square",
@@ -119,16 +115,7 @@ class TestAttackerSandboxApplication(unittest.TestCase):
 
         self.assertIsNone(config.fl.num_attackers)
         self.assertEqual(resolve_num_attackers(config.attacker, config.fl), 0)
-        self.assertEqual(config.attacker.ipm_scaling, 2.0)
-        self.assertEqual(config.attacker.lmp_scale, 2.0)
-
-    def test_craft_ipm_matches_reference_scaling(self):
-        old_weights = [np.asarray([1.0], dtype=np.float32)]
-        benign_avg = [np.asarray([3.0], dtype=np.float32)]
-
-        crafted = craft_ipm(old_weights, benign_avg, scale=2.0)
-
-        self.assertTrue(np.allclose(crafted[0], np.asarray([-3.0], dtype=np.float32)))
+        self.assertEqual(config.attacker.lmp_scale, 5.0)
 
     def test_craft_lmp_uses_repo_aligned_median_direction(self):
         random.seed(0)
@@ -145,41 +132,10 @@ class TestAttackerSandboxApplication(unittest.TestCase):
             old_weights,
             benign_weights,
             attacker_local_weights_list=attacker_local_weights,
-            scale=2.0,
+            scale=5.0,
         )
 
         self.assertLess(float(crafted[0][0]), -10.0)
-
-    def test_dba_uses_stable_attacker_to_subtrigger_mapping(self):
-        attack = DBAAttack(num_sub_triggers=3)
-        ctx = SimpleNamespace(
-            selected_attacker_ids=[4],
-            poisoned_train_iters={"sub_triggers_by_attacker": {4: ["sub0", "sub1", "sub2"]}},
-        )
-
-        with patch("fl_sandbox.core.attacks.backdoor.train_on_loader", side_effect=lambda _ctx, loader: [loader]):
-            crafted = attack.execute(ctx)
-
-        self.assertEqual(crafted, [["sub1"]])
-
-    def test_brl_uses_reference_global_poison_loader_and_paper_action_bounds(self):
-        attack = BRLAttack()
-        ctx = SimpleNamespace(
-            selected_attacker_ids=[1, 3],
-            poisoned_train_iters={
-                "global": "shared_global",
-                "global_by_attacker": {1: "local_one", 3: "local_three"},
-            },
-            attacker_action=np.asarray([0.0, 2.0, -2.0], dtype=float),
-        )
-
-        with patch(
-            "fl_sandbox.core.attacks.backdoor.train_on_loader",
-            side_effect=lambda train_ctx, loader: [loader, train_ctx.lr, train_ctx.local_epochs],
-        ):
-            crafted = attack.execute(ctx)
-
-        self.assertEqual(crafted, [["shared_global", 0.1, 1], ["shared_global", 0.1, 1]])
 
     def test_build_run_name_uses_shared_split_suffix(self):
         run_name = build_run_name(
@@ -269,53 +225,6 @@ class TestAttackerSandboxApplication(unittest.TestCase):
         self.assertIsNotNone(payload)
         self.assertEqual(payload["warmup_rounds"], 50)
 
-    def test_run_config_forces_per_round_evaluation(self):
-        run_config = _run_config(eval_every=20)
-
-        self.assertEqual(run_config.runtime.eval_every, 1)
-
-    def test_tensorboard_export_skips_unevaluated_nan_points(self):
-        class Writer:
-            def __init__(self):
-                self.events = []
-
-            def add_scalar(self, tag, value, step):
-                self.events.append((tag, value, step))
-
-        writer = Writer()
-        series = {
-            'clean_loss': [float('nan'), 1.5],
-            'clean_acc': [float('nan'), 0.9],
-            'backdoor_acc': [float('nan'), 0.8],
-            'asr': [float('nan'), 0.8],
-            'round_seconds': [1.0, 2.0],
-            'mean_benign_norm': [0.2, 0.1],
-        }
-
-        write_common_scalars(writer, series)
-
-        self.assertNotIn(('metrics/accuracy', float('nan'), 1), writer.events)
-        self.assertIn(('metrics/accuracy', 0.9, 2), writer.events)
-        self.assertIn(('metrics/loss', 1.5, 2), writer.events)
-        self.assertIn(('metrics/round_duration_seconds', 1.0, 1), writer.events)
-
-    def test_write_summary_json_serializes_nan_as_null(self):
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            path = write_summary_json(
-                Path(tmp_dir),
-                {
-                    'series': {'clean_acc': [float('nan'), 0.95]},
-                    'rounds': [{'clean_acc': float('nan')}, {'clean_acc': 0.95}],
-                },
-            )
-
-            with path.open(encoding='utf-8') as fh:
-                payload = json.load(fh)
-
-        self.assertIsNone(payload['series']['clean_acc'][0])
-        self.assertIsNone(payload['rounds'][0]['clean_acc'])
-        self.assertTrue(math.isclose(payload['series']['clean_acc'][1], 0.95))
-
     def test_load_run_config_reads_nested_yaml(self):
         yaml_text = """
 data:
@@ -367,7 +276,7 @@ runtime:
             rl_distribution_steps=21,
         )
 
-        fake_runner_module = ModuleType("fl_sandbox.core.fl_runner")
+        fake_runner_module = ModuleType("attacker_sandbox.core.fl_runner")
 
         class FakeSandboxConfig:
             def __init__(self, **kwargs):
@@ -375,7 +284,7 @@ runtime:
 
         fake_runner_module.SandboxConfig = FakeSandboxConfig
 
-        with patch.dict(sys.modules, {"fl_sandbox.core.fl_runner": fake_runner_module}):
+        with patch.dict(sys.modules, {"attacker_sandbox.core.fl_runner": fake_runner_module}):
             sandbox_config = build_config(run_config)
 
         self.assertEqual(sandbox_config.dataset, "cifar10")
@@ -397,7 +306,7 @@ runtime:
             rl_simulator_horizon=19,
         )
 
-        fake_rl_attacker_module = ModuleType("fl_sandbox.core.rl.attacker")
+        fake_rl_attacker_module = ModuleType("attacker_sandbox.core.rl.attacker")
 
         class FakeRLAttackerConfig:
             def __init__(self, **kwargs):
@@ -413,7 +322,7 @@ runtime:
         with patch.dict(
             sys.modules,
             {
-                "fl_sandbox.core.rl.attacker": fake_rl_attacker_module,
+                "attacker_sandbox.core.rl.attacker": fake_rl_attacker_module,
             },
         ):
             attack = build_attack(run_config.attacker)

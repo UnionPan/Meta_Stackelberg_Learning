@@ -35,15 +35,15 @@ def split_suffix(split_mode: str, noniid_q: float) -> str:
 def default_output_dir(attacker: AttackerSection, defender: DefenderSection, data: DataSection) -> str:
     suffix = split_suffix(data.split_mode, data.noniid_q)
     if attacker.type == "clean":
-        return f"attacker_sandbox/outputs/clean_{defender.type}_{suffix}_benchmark"
-    return f"attacker_sandbox/outputs/{attacker.type}_{defender.type}_{suffix}_demo"
+        return f"fl_sandbox/outputs/clean_{defender.type}_{suffix}_benchmark"
+    return f"fl_sandbox/outputs/{attacker.type}_{defender.type}_{suffix}_demo"
 
 
 def default_tb_dir(attacker: AttackerSection, defender: DefenderSection, data: DataSection) -> str:
     suffix = split_suffix(data.split_mode, data.noniid_q)
     if attacker.type == "clean":
-        return f"attacker_sandbox/runs/clean_{defender.type}_{suffix}_benchmark"
-    return f"attacker_sandbox/runs/{attacker.type}_{defender.type}_{suffix}_demo"
+        return f"fl_sandbox/runs/clean_{defender.type}_{suffix}_benchmark"
+    return f"fl_sandbox/runs/{attacker.type}_{defender.type}_{suffix}_demo"
 
 
 def build_attack(attacker: AttackerSection):
@@ -74,6 +74,8 @@ def build_config(run_config: RunConfig):
         base_class=run_config.attacker.base_class,
         target_class=run_config.attacker.target_class,
         pattern_type=run_config.attacker.pattern_type,
+        ipm_scaling=run_config.attacker.ipm_scaling,
+        lmp_scale=run_config.attacker.lmp_scale,
         bfl_poison_frac=run_config.attacker.bfl_poison_frac,
         dba_poison_frac=run_config.attacker.dba_poison_frac,
         dba_num_sub_triggers=run_config.attacker.dba_num_sub_triggers,

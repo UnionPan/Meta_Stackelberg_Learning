@@ -96,7 +96,7 @@ class AttackerRLEnv(gym.Env):
             {
                 "type": self.attack_type,
                 "ipm_scaling": self.config.ipm_scaling if hasattr(self.config, "ipm_scaling") else 2.0,
-                "lmp_scale": self.config.lmp_scale if hasattr(self.config, "lmp_scale") else 2.0,
+                "lmp_scale": self.config.lmp_scale if hasattr(self.config, "lmp_scale") else 5.0,
                 "bfl_poison_frac": self.config.bfl_poison_frac,
                 "dba_poison_frac": self.config.dba_poison_frac,
                 "dba_num_sub_triggers": self.config.dba_num_sub_triggers,

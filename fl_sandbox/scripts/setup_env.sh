@@ -17,7 +17,7 @@ source "${VENV_DIR}/bin/activate"
 
 python -m ensurepip --upgrade
 python -m pip install --upgrade pip "setuptools<81" wheel
-python -m pip install -r "${ROOT_DIR}/attacker_sandbox/envs/requirements.txt"
+python -m pip install -r "${ROOT_DIR}/fl_sandbox/envs/requirements.txt"
 
 case "${TORCH_VARIANT}" in
   cpu)

@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import os
 import random
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
@@ -222,7 +223,9 @@ class MinimalFLRunner:
             )
             attack.observe_round(ctx)
             if round_state.selected_attackers:
-                malicious_weights = attack.execute(ctx, attacker_action=ctx.attacker_action)
+                # Pass through the raw override so RL attackers can distinguish
+                # "no external override" from an explicit fixed action.
+                malicious_weights = attack.execute(ctx, attacker_action=attacker_action)
                 all_weights.extend(malicious_weights)
 
         if all_weights:
@@ -265,9 +268,20 @@ class MinimalFLRunner:
     ) -> List[RoundSummary]:
         """Run multiple rounds and collect summaries."""
         summaries = []
+        progress_label = progress_desc or "FL rounds"
+        use_tqdm = show_progress and tqdm is not None and self._supports_live_progress()
         iterator = range(1, rounds + 1)
-        if show_progress and tqdm is not None:
-            iterator = tqdm(iterator, total=rounds, desc=progress_desc or "FL rounds", unit="round")
+        if use_tqdm:
+            iterator = tqdm(
+                iterator,
+                total=rounds,
+                desc=progress_label,
+                unit="round",
+                file=sys.stdout,
+                dynamic_ncols=True,
+            )
+        elif show_progress:
+            print(f"{progress_label}: starting {rounds} rounds", flush=True)
         for round_idx in iterator:
             should_evaluate = eval_every <= 1 or round_idx % eval_every == 0 or round_idx == rounds
             summary = self.run_round(
@@ -277,12 +291,50 @@ class MinimalFLRunner:
                 attacker_action=attacker_action,
             )
             summaries.append(summary)
-            if show_progress and tqdm is not None:
+            if use_tqdm:
                 postfix = {"sec": f"{summary.round_seconds:.2f}"}
                 if should_evaluate:
                     postfix["acc"] = f"{summary.clean_acc:.4f}"
                 iterator.set_postfix(**postfix)
+            elif show_progress:
+                self._print_progress_line(
+                    progress_label=progress_label,
+                    round_idx=round_idx,
+                    rounds=rounds,
+                    summary=summary,
+                    evaluated=should_evaluate,
+                )
         return summaries
+
+    @staticmethod
+    def _supports_live_progress() -> bool:
+        output_stream = getattr(sys, "stdout", None)
+        if output_stream is None or not hasattr(output_stream, "isatty"):
+            return False
+        try:
+            return bool(output_stream.isatty())
+        except Exception:  # pragma: no cover - ultra-defensive around wrapped streams
+            return False
+
+    @staticmethod
+    def _print_progress_line(
+        *,
+        progress_label: str,
+        round_idx: int,
+        rounds: int,
+        summary: RoundSummary,
+        evaluated: bool,
+    ) -> None:
+        metrics = [f"sec={summary.round_seconds:.2f}"]
+        if evaluated:
+            metrics.append(f"acc={summary.clean_acc:.4f}")
+            if not np.isnan(summary.backdoor_acc):
+                metrics.append(f"asr={summary.backdoor_acc:.4f}")
+        print(
+            f"{progress_label}: round {round_idx}/{rounds} "
+            f"({' '.join(metrics)})",
+            flush=True,
+        )
 
     def _train_client(self, old_weights, client_id: int) -> tuple[List[np.ndarray], float, float]:
         self._load_numpy_weights(self.client_model, old_weights)
@@ -490,6 +542,14 @@ class MinimalFLRunner:
         return loaders
 
     def _prepare_poisoned_eval_loader(self) -> Optional[DataLoader]:
+        targets = self.test_dataset.targets
+        if isinstance(targets, torch.Tensor):
+            base_idxs = targets.eq(self.config.base_class).nonzero(as_tuple=True)[0].tolist()
+        else:
+            base_idxs = [idx for idx, target in enumerate(targets) if int(target) == self.config.base_class]
+        if not base_idxs:
+            return None
+
         poisoned_eval_dataset = copy.deepcopy(self.test_dataset)
         poison_dataset(
             poisoned_eval_dataset,
@@ -501,7 +561,7 @@ class MinimalFLRunner:
             poison_all=True,
         )
         return DataLoader(
-            poisoned_eval_dataset,
+            DatasetSplit(poisoned_eval_dataset, base_idxs),
             batch_size=self.config.eval_batch_size,
             **self.eval_loader_kwargs,
         )
@@ -649,6 +709,11 @@ class MinimalFLRunner:
         targets = self._dataset_targets()
         classes = sorted({int(label) for label in targets})
         num_groups = len(classes)
+        if self.config.num_clients < num_groups:
+            raise ValueError(
+                "split_mode='noniid' requires num_clients >= number of classes; "
+                "otherwise some groups have no clients and samples are silently dropped."
+            )
         class_to_group = {label: idx for idx, label in enumerate(classes)}
         group_to_clients = {group_id: [] for group_id in range(num_groups)}
         for client_id, group_id in enumerate(self.client_groups):
@@ -684,6 +749,11 @@ class MinimalFLRunner:
         targets = self._dataset_targets()
         classes = sorted({int(label) for label in targets})
         num_groups = len(classes)
+        if self.config.num_clients < num_groups:
+            raise ValueError(
+                "split_mode='paper_q' requires num_clients >= number of classes; "
+                "otherwise some groups have no clients and samples are silently dropped."
+            )
         class_to_group = {label: idx for idx, label in enumerate(classes)}
         group_to_clients = {group_id: [] for group_id in range(num_groups)}
         for client_id, group_id in enumerate(self.client_groups):
@@ -750,7 +820,10 @@ class MinimalFLRunner:
         return [int(value) for value in list(targets)]
 
     def _sample_clients(self, round_idx: int) -> List[int]:
-        num_sampled = max(1, int(self.config.num_clients * self.config.subsample_rate))
+        num_sampled = min(
+            self.config.num_clients,
+            max(1, int(self.config.num_clients * self.config.subsample_rate)),
+        )
         rng = random.Random(self.config.seed + round_idx * 997)
         return sorted(rng.sample(range(self.config.num_clients), num_sampled))
 

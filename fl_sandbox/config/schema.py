@@ -53,7 +53,7 @@ class InitSection:
 class AttackerSection:
     type: str = "clean"
     ipm_scaling: float = 2.0
-    lmp_scale: float = 2.0
+    lmp_scale: float = 5.0
     base_class: int = 1
     target_class: int = 7
     pattern_type: str = "square"
@@ -83,8 +83,8 @@ class DefenderSection:
 
 @dataclass
 class OutputSection:
-    output_root: str = "attacker_sandbox/outputs/paper_suite"
-    tb_root: str = "attacker_sandbox/runs/paper_suite"
+    output_root: str = "fl_sandbox/outputs/paper_suite"
+    tb_root: str = "fl_sandbox/runs/paper_suite"
 
 
 @dataclass

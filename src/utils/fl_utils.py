@@ -10,7 +10,18 @@ from functools import reduce
 import numpy as np
 import torch
 
-DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+def _default_device() -> torch.device:
+    """Prefer CUDA, then Apple MPS, and finally CPU."""
+    if torch.cuda.is_available():
+        return torch.device("cuda:0")
+    mps_backend = getattr(torch.backends, "mps", None)
+    if mps_backend is not None and mps_backend.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
+
+
+DEVICE = _default_device()
 
 
 def resolve_device(device=None):

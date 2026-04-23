@@ -272,15 +272,15 @@ def summaries_to_dict(summaries: List[RoundSummary]) -> Dict[str, List[float]]:
         "round_seconds": [summary.round_seconds for summary in summaries],
         "defense_name": [summary.defense_name for summary in summaries],
         "mean_benign_norm": [
-            float(np.mean(summary.benign_update_norms)) if summary.benign_update_norms else 0.0
+            float(np.nanmean(summary.benign_update_norms)) if summary.benign_update_norms else 0.0
             for summary in summaries
         ],
         "mean_malicious_norm": [
-            float(np.mean(summary.malicious_update_norms)) if summary.malicious_update_norms else 0.0
+            float(np.nanmean(summary.malicious_update_norms)) if summary.malicious_update_norms else 0.0
             for summary in summaries
         ],
         "mean_malicious_cosine": [
-            float(np.mean(summary.malicious_cosines_to_benign))
+            float(np.nanmean(summary.malicious_cosines_to_benign))
             if summary.malicious_cosines_to_benign else 0.0
             for summary in summaries
         ],

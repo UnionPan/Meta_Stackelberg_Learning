@@ -101,9 +101,11 @@ def write_common_scalars(writer, series: Mapping[str, list[float]]) -> None:
     _write_scalar_series(writer, 'metrics/accuracy', series['clean_acc'])
     _write_scalar_series(writer, 'metrics/backdoor_accuracy', series.get('backdoor_acc', []))
     _write_scalar_series(writer, 'metrics/asr', series.get('asr', series.get('backdoor_acc', [])))
-    _write_scalar_series(writer, 'metrics/round_duration_seconds', series['round_seconds'])
-    _write_scalar_series(writer, 'metrics/elapsed_seconds', np.cumsum(series['round_seconds']).tolist())
-    _write_scalar_series(writer, 'metrics/mean_benign_norm', series['mean_benign_norm'])
+    round_seconds = series.get('round_seconds', [])
+    _write_scalar_series(writer, 'metrics/round_duration_seconds', round_seconds)
+    if round_seconds:
+        _write_scalar_series(writer, 'metrics/elapsed_seconds', np.cumsum(round_seconds).tolist())
+    _write_scalar_series(writer, 'metrics/mean_benign_norm', series.get('mean_benign_norm', []))
 
 
 def write_attack_scalars(writer, series: Mapping[str, list[float]]) -> None:

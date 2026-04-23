@@ -57,5 +57,5 @@ defender:
   fltrust_root_size: 100
 
 output:
-  output_root: attacker_sandbox/outputs/demo
-  tb_root: attacker_sandbox/runs/demo
+  output_root: fl_sandbox/outputs/demo
+  tb_root: fl_sandbox/runs/demo

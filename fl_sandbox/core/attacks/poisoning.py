@@ -16,13 +16,16 @@ from typing import List, Optional
 import numpy as np
 
 from .base import SandboxAttack, Weights, train_on_loader
+from fl_sandbox.core.metrics import update_norm
 
 
 def craft_ipm(old_weights: Weights, benign_avg_weights: Weights, scale: float = 2.0) -> Weights:
-    """Construct an IPM malicious model from the benign average."""
-    weight_diff = [old - benign for old, benign in zip(old_weights, benign_avg_weights)]
-    crafted_diff = [scale * diff * (-1.0) for diff in weight_diff]
-    return [old - diff for old, diff in zip(old_weights, crafted_diff)]
+    """Construct an IPM malicious model from the benign average.
+
+    Submits old + scale*(old - benign_avg), i.e. the update points in the opposite
+    direction from the benign average update, amplified by *scale*.
+    """
+    return [old + scale * (old - benign) for old, benign in zip(old_weights, benign_avg_weights)]
 
 
 @dataclass
@@ -43,7 +46,7 @@ class IPMAttack(SandboxAttack):
             for layer in range(len(ctx.old_weights))
         ]
         crafted = craft_ipm(ctx.old_weights, benign_avg, scale=self.scale)
-        return [crafted] * num_attackers
+        return [[layer.copy() for layer in crafted] for _ in range(num_attackers)]
 
 
 def _weights_to_vector(weights: Weights) -> np.ndarray:
@@ -54,7 +57,7 @@ def craft_lmp(
     old_weights: Weights,
     benign_weights_list: List[Weights],
     attacker_local_weights_list: Optional[List[Weights]] = None,
-    scale: float = 2.0,
+    scale: float = 5.0,
 ) -> Weights:
     """Construct an LMP malicious model aligned with the reference repo's Median_craft_real."""
     temp_weights_lis = list(benign_weights_list) + list(attacker_local_weights_list or [])
@@ -102,7 +105,7 @@ def craft_lmp(
 class LMPAttack(SandboxAttack):
     """Local Model Poisoning against coordinate-wise robust aggregators."""
 
-    scale: float = 2.0
+    scale: float = 5.0
     name: str = "LMP"
     attack_type: str = "lmp"
 
@@ -127,4 +130,22 @@ class LMPAttack(SandboxAttack):
             attacker_local_weights_list=attacker_local_weights,
             scale=self.scale,
         )
-        return [crafted] * num_attackers
+
+        # Prevent NaN divergence under FedAvg: if the crafted update norm is much
+        # larger than the mean benign update norm, scale it down while keeping the
+        # attack direction.  The ceiling is generous (scale * 20 * mean_benign_norm)
+        # so this only kicks in when the feedback loop would otherwise cause overflow.
+        if ctx.benign_weights:
+            benign_norms = [update_norm(ctx.old_weights, w) for w in ctx.benign_weights]
+            mean_benign = float(np.mean(benign_norms)) if benign_norms else 0.0
+            if mean_benign > 0:
+                crafted_norm = update_norm(ctx.old_weights, crafted)
+                max_norm = self.scale * mean_benign * 20.0
+                if crafted_norm > max_norm:
+                    ratio = max_norm / crafted_norm
+                    crafted = [
+                        old + ratio * (c - old)
+                        for old, c in zip(ctx.old_weights, crafted)
+                    ]
+
+        return [[layer.copy() for layer in crafted] for _ in range(num_attackers)]

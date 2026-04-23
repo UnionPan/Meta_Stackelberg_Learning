@@ -98,8 +98,25 @@ def build_payload(
     summaries,
     total_seconds: float,
 ) -> dict[str, object]:
-    final_clean_acc = next((acc for acc in reversed(series["clean_acc"]) if not math.isnan(acc)), float("nan"))
-    final_backdoor_acc = next((acc for acc in reversed(series["backdoor_acc"]) if not math.isnan(acc)), float("nan"))
+    final_clean_acc = float("nan")
+    final_backdoor_acc = float("nan")
+    final_mean_benign_norm = float("nan")
+    final_mean_malicious_norm = float("nan")
+    final_mean_malicious_cosine = float("nan")
+    for summary in reversed(summaries):
+        if (
+            math.isfinite(summary.clean_loss)
+            and math.isfinite(summary.clean_acc)
+            and math.isfinite(summary.backdoor_acc)
+        ):
+            final_clean_acc = summary.clean_acc
+            final_backdoor_acc = summary.backdoor_acc
+            idx = summary.round_idx - 1
+            if 0 <= idx < len(series["mean_benign_norm"]):
+                final_mean_benign_norm = series["mean_benign_norm"][idx]
+                final_mean_malicious_norm = series["mean_malicious_norm"][idx]
+                final_mean_malicious_cosine = series["mean_malicious_cosine"][idx]
+            break
     config_payload = {
         "dataset": config.dataset,
         "data_dir": config.data_dir,
@@ -116,7 +133,7 @@ def build_payload(
         "eval_batch_size": config.eval_batch_size,
         "num_workers": config.num_workers,
         "parallel_clients": config.parallel_clients,
-        "eval_every": args.eval_every,
+        "eval_every": run_config.runtime.eval_every,
         "base_class": config.base_class,
         "target_class": config.target_class,
         "pattern_type": config.pattern_type,
@@ -175,11 +192,9 @@ def build_payload(
             "clean_acc": final_clean_acc,
             "backdoor_acc": final_backdoor_acc,
             "asr": final_backdoor_acc,
-            "mean_benign_norm": series["mean_benign_norm"][-1] if series["mean_benign_norm"] else float("nan"),
-            "mean_malicious_norm": series["mean_malicious_norm"][-1]
-            if series["mean_malicious_norm"] else float("nan"),
-            "mean_malicious_cosine": series["mean_malicious_cosine"][-1]
-            if series["mean_malicious_cosine"] else float("nan"),
+            "mean_benign_norm": final_mean_benign_norm,
+            "mean_malicious_norm": final_mean_malicious_norm,
+            "mean_malicious_cosine": final_mean_malicious_cosine,
         },
     }
 
@@ -251,13 +266,20 @@ def execute_experiment(
 
     runner = MinimalFLRunner(config)
     timer = ExperimentTimer.start()
+    from fl_sandbox.core.attacks.rl import RLAttack
+    # For RL attacks let the internal policy pick the action (pass None).  For all other
+    # parameterised attacks (e.g. BRL) pass the configured default action so it is used
+    # as a fallback when no per-round override is provided.
+    attacker_action_arg = None
+    if attack is not None and not isinstance(attack, RLAttack):
+        attacker_action_arg = tuple(run_config.attacker.attacker_action)
     summaries = runner.run_many_rounds(
         run_config.runtime.rounds,
         attack=attack,
         show_progress=True,
         progress_desc=progress_desc or f"{run_config.attacker.type} ({config.dataset})",
         eval_every=run_config.runtime.eval_every,
-        attacker_action=None if attack is None else tuple(run_config.attacker.attacker_action),
+        attacker_action=attacker_action_arg,
     )
     total_seconds = timer.elapsed_seconds()
     series = summaries_to_dict(summaries)

@@ -478,11 +478,14 @@ class SimulatedFLEnv:
     def _simulate_benign_update(self, old_weights: Weights) -> Weights:
         model = _build_model_from_template(self.model_template, old_weights, self.device)
         optimizer = torch.optim.SGD(model.parameters(), lr=self.fl_config.lr)
-        images, labels = self.proxy_buffer.sample(self.fl_config.batch_size, self.device)
-        loss = F.cross_entropy(model(images), labels)
-        optimizer.zero_grad(set_to_none=True)
-        loss.backward()
-        optimizer.step()
+        for _ in range(max(1, self.fl_config.local_epochs)):
+            images, labels = self.proxy_buffer.sample(self.fl_config.batch_size, self.device)
+            loss = F.cross_entropy(model(images), labels)
+            if not torch.isfinite(loss):
+                break
+            optimizer.zero_grad(set_to_none=True)
+            loss.backward()
+            optimizer.step()
         return _capture_weights(model)
 
     def _trusted_reference_update(self, old_weights: Weights) -> Optional[Weights]:
@@ -834,7 +837,12 @@ class PaperRLAttacker:
         if self.model_template is None:
             raise RuntimeError("RL attacker state requested before initialization")
         model = _build_model_from_template(self.model_template, ctx.old_weights, self.device)
-        max_attackers = max(1, getattr(ctx.fl_config, "num_attackers", 1))
+        num_attackers = max(0, getattr(ctx.fl_config, "num_attackers", 1))
+        num_clients = max(1, getattr(ctx.fl_config, "num_clients", 1))
+        subsample_rate = float(getattr(ctx.fl_config, "subsample_rate", 1.0))
+        # Match the ceiling used by SimulatedFLEnv so the num_attacker scalar is
+        # normalized identically during policy training and live execution.
+        max_attackers = max(1, min(num_attackers, max(1, int(num_clients * subsample_rate))))
         state_dict = self.config.format_state(model, len(ctx.selected_attacker_ids), max_attackers)
         return self.config.flatten_state(state_dict, max_attackers)
 
@@ -891,4 +899,4 @@ class PaperRLAttacker:
             raise RuntimeError("Cannot infer RL attacker state dim before initialization")
         model = _build_model_from_template(self.model_template, self.latest_policy_weights, self.device)
         compressed, _ = get_compressed_state(model, num_tail_layers=self.config.state_tail_layers)
-        return int(compressed.shape[0] + 1)
+        return int(compressed.shape[0] + (1 if self.config.state_include_num_attacker else 0))

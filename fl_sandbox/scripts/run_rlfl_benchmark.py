@@ -10,7 +10,7 @@ from pathlib import Path
 import sys
 from typing import Optional
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -51,9 +51,9 @@ DEFAULT_RLFL_ARGS = [
     "--ipm_scaling",
     "5.0",
     "--output_root",
-    "attacker_sandbox/outputs/rlfl_benchmark",
+    "fl_sandbox/outputs/rlfl_benchmark",
     "--tb_root",
-    "attacker_sandbox/runs/rlfl_benchmark",
+    "fl_sandbox/runs/rlfl_benchmark",
 ]
 
 

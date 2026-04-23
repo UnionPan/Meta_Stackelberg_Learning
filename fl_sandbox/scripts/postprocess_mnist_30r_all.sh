@@ -4,9 +4,9 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 VENV_DIR="${ROOT_DIR}/.venv"
-SCRIPT_PATH="${ROOT_DIR}/attacker_sandbox/core/postprocess/postprocess.py"
-OUTPUT_ROOT="${ROOT_DIR}/attacker_sandbox/outputs"
-RUN_ROOT="${ROOT_DIR}/attacker_sandbox/runs"
+SCRIPT_PATH="${ROOT_DIR}/fl_sandbox/core/postprocess/postprocess.py"
+OUTPUT_ROOT="${ROOT_DIR}/fl_sandbox/outputs"
+RUN_ROOT="${ROOT_DIR}/fl_sandbox/runs"
 CLEAN_DIR="${OUTPUT_ROOT}/mnist_clean_20c_30r"
 TB_ROOT="${RUN_ROOT}/mnist_30r_all"
 
@@ -53,7 +53,7 @@ cmd=(
 
 if ! "${cmd[@]}"; then
   echo "Postprocess failed. If the error mentions missing Python packages," >&2
-  echo "set up or refresh the sandbox environment with: bash attacker_sandbox/scripts/setup_env.sh cpu" >&2
+  echo "set up or refresh the sandbox environment with: bash fl_sandbox/scripts/setup_env.sh cpu" >&2
   exit 1
 fi
 

@@ -3,14 +3,14 @@
 Main re-exports in this file:
 - ``SandboxAttack``
 - ``IPMAttack`` / ``LMPAttack``
-- ``BFLAttack`` / ``DBAAttack`` / ``BRLAttack``
+- ``BFLAttack`` / ``DBAAttack`` / ``BRLAttack`` / ``SelfGuidedBRLAttack``
 - ``RLAttack``
 - ``craft_ipm`` / ``craft_lmp``
 - ``create_attack``
 - ``supported_attack_types``
 """
 
-from .backdoor import BFLAttack, BRLAttack, DBAAttack
+from .backdoor import BFLAttack, BRLAttack, DBAAttack, SelfGuidedBRLAttack
 from .base import SandboxAttack, Weights
 from .factory import ATTACK_CHOICES, create_attack, supported_attack_types
 from .poisoning import IPMAttack, LMPAttack, craft_ipm, craft_lmp
@@ -25,6 +25,7 @@ __all__ = [
     "LMPAttack",
     "RLAttack",
     "SandboxAttack",
+    "SelfGuidedBRLAttack",
     "Weights",
     "craft_ipm",
     "craft_lmp",

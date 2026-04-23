@@ -60,15 +60,15 @@ def build_postprocess_hint_lines(
     if attack_type == "clean":
         return [
             "Run postprocess with: "
-            f"python attacker_sandbox/core/postprocess/postprocess.py --input_dir {output_dir} "
+            f"python fl_sandbox/core/postprocess/postprocess.py --input_dir {output_dir} "
             f"--tb_dir {tb_dir}"
         ]
 
     suffix = split_suffix(split_mode, noniid_q)
-    suggested_clean_dir = Path(f"attacker_sandbox/outputs/clean_{defense_type}_{suffix}_benchmark")
+    suggested_clean_dir = Path(f"fl_sandbox/outputs/clean_{defense_type}_{suffix}_benchmark")
     return [
         "Run postprocess with: "
-        "python attacker_sandbox/core/postprocess/postprocess.py "
+        "python fl_sandbox/core/postprocess/postprocess.py "
         f"--clean_input_dir {suggested_clean_dir} "
         f"--attack_input_dir {output_dir} --tb_dir {tb_dir}_compare"
     ]

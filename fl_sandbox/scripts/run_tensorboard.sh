@@ -4,7 +4,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 VENV_DIR="${ROOT_DIR}/.venv"
-DEFAULT_LOGDIR="${ROOT_DIR}/attacker_sandbox/runs/clean_benchmark_100r"
+DEFAULT_LOGDIR="${ROOT_DIR}/fl_sandbox/runs/clean_benchmark_100r"
 
 if [[ -f "${VENV_DIR}/bin/activate" ]]; then
   # Keep the launcher self-contained for quick debugging sessions.

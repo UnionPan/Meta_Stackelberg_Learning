@@ -10,13 +10,13 @@ from __future__ import annotations
 
 from typing import Optional
 
-from .backdoor import BFLAttack, BRLAttack, DBAAttack
+from .backdoor import BFLAttack, BRLAttack, DBAAttack, SelfGuidedBRLAttack
 from .base import SandboxAttack
 from .poisoning import IPMAttack, LMPAttack
 from .rl import RLAttack
 
 
-ATTACK_CHOICES = ("clean", "ipm", "lmp", "bfl", "dba", "rl", "brl")
+ATTACK_CHOICES = ("clean", "ipm", "lmp", "bfl", "dba", "rl", "brl", "sgbrl")
 
 
 def supported_attack_types() -> tuple[str, ...]:
@@ -62,4 +62,6 @@ def create_attack(attacker_config) -> Optional[SandboxAttack]:
         )
     if attack_type == "brl":
         return BRLAttack(default_action=tuple(attacker_config.attacker_action))
+    if attack_type == "sgbrl":
+        return SelfGuidedBRLAttack()
     raise AssertionError(f"Unreachable attack type branch: {attack_type}")

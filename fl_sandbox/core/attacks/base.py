@@ -147,3 +147,14 @@ def bounded_local_epochs(action_value: float) -> int:
     clipped = float(np.clip(float(action_value), -1.0, 1.0))
     local_epochs = int(clipped * 5 + 6)
     return max(1, min(11, local_epochs))
+
+
+def bounded_boost(action_value: float) -> float:
+    """Maps action in [-1, 1] to a malicious-update boost multiplier in [0.5, 2.0].
+
+    action=0 → 1.0 (no amplification; submit trained weights as-is).
+    action=1 → 2.0 (double the delta from old weights to trained weights).
+    action=-1 → 0.5 (halve the delta, i.e. attenuate the attack).
+    """
+    clipped = float(np.clip(float(action_value), -1.0, 1.0))
+    return max(0.5, min(2.0, clipped + 1.0))

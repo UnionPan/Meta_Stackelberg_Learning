@@ -30,5 +30,6 @@ class RLAttack(SandboxAttack):
         self._attacker.observe_round(ctx)
 
     def execute(self, ctx, attacker_action=None):
-        action = self.resolve_action(ctx, attacker_action, default_action=self.default_action)
-        return self._attacker.execute(ctx, attacker_action=action)
+        # Do not resolve a default action here — PaperRLAttacker uses its learned TD3 policy
+        # when attacker_action is None. Resolving a default would always bypass the policy.
+        return self._attacker.execute(ctx, attacker_action=attacker_action)
