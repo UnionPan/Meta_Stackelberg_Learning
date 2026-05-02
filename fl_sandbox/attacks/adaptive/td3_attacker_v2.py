@@ -1,10 +1,10 @@
-"""RL attacker v2: defense-aware policy with aggressive paper-style robust crafting.
+"""RL attacker v2: paper-inspired defense-specific attack routing.
 
-Improvements over v1:
-1. Krum-family defenses use stealth-aware local search with explicit bypass reward.
-2. Coordinate-wise robust defenses default to a stronger paper-style 2-D attack space.
-3. Robust attack ranges are widened toward the paper's clipped-median operating regime.
-4. policy_lr = 1e-4 — much faster than v1 for online sandbox training.
+Strategy summary:
+1. ``clipmed_ls``   for clipped-median: aggressive local-search craft with learned stealth.
+2. ``coord_ls``     for median / trimmed / geometric median: moderate local-search craft.
+3. ``krum_stealth`` for Krum-family defenses: stealth-aware local search + bypass reward.
+4. ``fltrust_ls``   for FLTrust: local-search craft with trust-aware stealth term.
 """
 
 from __future__ import annotations
@@ -23,12 +23,14 @@ from fl_sandbox.attacks.adaptive.td3_attacker import (
     DecodedAction,
     ReplayBuffer,
     TD3Agent,
+    _match_update_norm,
+    _update_norm,
     local_search_update,
-    _train_proxy_model,
 )
 
 _KRUM_DEFENSES = frozenset({"krum", "multi_krum"})
-_AGGRESSIVE_ROBUST_DEFENSES = frozenset({"median", "clipped_median", "trimmed_mean", "geometric_median"})
+_COORD_MEDIAN_DEFENSES = frozenset({"median", "trimmed_mean", "geometric_median", "paper_norm_trimmed_mean"})
+_CLIPMED_DEFENSES = frozenset({"clipped_median"})
 _STEALTH_DEFENSES = frozenset({"krum", "multi_krum"})
 
 
@@ -54,43 +56,65 @@ class RLAttackerConfigV2(RLAttackerConfig):
     stealth_steps_scale: float = 9.0
     stealth_lambda_center: float = 0.5
     stealth_lambda_scale: float = 0.45
-    aggressive_gamma_center: float = 15.0
-    aggressive_gamma_scale: float = 14.9
-    aggressive_steps_center: float = 25.0
-    aggressive_steps_scale: float = 24.0
+    clipmed_gamma_center: float = 15.0
+    clipmed_gamma_scale: float = 14.9
+    clipmed_steps_center: float = 25.0
+    clipmed_steps_scale: float = 24.0
+    clipmed_lambda_center: float = 0.20
+    clipmed_lambda_scale: float = 0.20
+    coord_gamma_center: float = 8.0
+    coord_gamma_scale: float = 7.9
+    coord_steps_center: float = 18.0
+    coord_steps_scale: float = 17.0
+    coord_lambda_center: float = 0.30
+    coord_lambda_scale: float = 0.20
+
+    def strategy_for_defense(self, defense_type: str) -> str:
+        defense = defense_type.lower()
+        if defense in _CLIPMED_DEFENSES:
+            return "clipmed_ls"
+        if defense in _COORD_MEDIAN_DEFENSES:
+            return "coord_ls"
+        if defense in _KRUM_DEFENSES:
+            return "krum_stealth"
+        if defense == "fltrust":
+            return "fltrust_ls"
+        return "base"
 
     def action_dim(self, defense_type: str) -> int:
-        defense = defense_type.lower()
-        if defense in _AGGRESSIVE_ROBUST_DEFENSES:
-            return 2
-        if defense == "fltrust":
-            return super().action_dim(defense_type)
-        if defense in _STEALTH_DEFENSES:
-            return 3
-        return super().action_dim(defense_type)
+        return 3
 
     def decode_action(self, action: np.ndarray, defense_type: str) -> DecodedAction:
-        defense = defense_type.lower()
-        if defense == "fltrust":
+        strategy = self.strategy_for_defense(defense_type)
+        if strategy == "fltrust_ls":
             return super().decode_action(action, defense_type)
-        if defense in _AGGRESSIVE_ROBUST_DEFENSES:
+        if strategy in {"clipmed_ls", "coord_ls"}:
             action_arr = np.asarray(action, dtype=np.float32)
-            if action_arr.shape[0] < 2:
-                padded = np.zeros(2, dtype=np.float32)
+            action_arr = np.nan_to_num(action_arr, nan=0.0, posinf=1.0, neginf=-1.0)
+            if action_arr.shape[0] < 3:
+                padded = np.zeros(3, dtype=np.float32)
                 padded[: action_arr.shape[0]] = action_arr
                 action_arr = padded
-            action_arr = np.clip(action_arr[:2], -1.0, 1.0)
-            gamma_scale = float(action_arr[0]) * self.aggressive_gamma_scale + self.aggressive_gamma_center
-            local_steps = int(round(float(action_arr[1]) * self.aggressive_steps_scale + self.aggressive_steps_center))
+            action_arr = np.clip(action_arr[:3], -1.0, 1.0)
+            if strategy == "clipmed_ls":
+                gamma_scale = float(action_arr[0]) * self.clipmed_gamma_scale + self.clipmed_gamma_center
+                local_steps = int(round(float(action_arr[1]) * self.clipmed_steps_scale + self.clipmed_steps_center))
+                lambda_stealth = float(action_arr[2]) * self.clipmed_lambda_scale + self.clipmed_lambda_center
+            else:
+                gamma_scale = float(action_arr[0]) * self.coord_gamma_scale + self.coord_gamma_center
+                local_steps = int(round(float(action_arr[1]) * self.coord_steps_scale + self.coord_steps_center))
+                lambda_stealth = float(action_arr[2]) * self.coord_lambda_scale + self.coord_lambda_center
             return DecodedAction(
                 gamma_scale=max(0.1, gamma_scale),
                 local_steps=max(1, local_steps),
-                lambda_stealth=0.0,
+                lambda_stealth=float(np.clip(lambda_stealth, 0.0, 1.0)),
                 local_search_lr=self.attacker_local_lr,
             )
-        if defense not in _STEALTH_DEFENSES:
+        if strategy != "krum_stealth":
             return super().decode_action(action, defense_type)
+        defense = defense_type.lower()
         action_arr = np.asarray(action, dtype=np.float32)
+        action_arr = np.nan_to_num(action_arr, nan=0.0, posinf=1.0, neginf=-1.0)
         if action_arr.shape[0] < 3:
             padded = np.zeros(3, dtype=np.float32)
             padded[: action_arr.shape[0]] = action_arr
@@ -122,7 +146,7 @@ class RLAttackerConfigV2(RLAttackerConfig):
 
 
 class SimulatedFLEnvV2(SimulatedFLEnv):
-    """V2 simulator: stealth-craft for robust defenses + bypass reward for krum."""
+    """V2 simulator with explicit attack-strategy routing per defense family."""
 
     def step(self, action: np.ndarray):
         if self.current_weights is None:
@@ -136,6 +160,8 @@ class SimulatedFLEnvV2(SimulatedFLEnv):
             self._simulate_malicious_weight(self.current_weights, action)
             for _ in range(self.current_num_attackers)
         ]
+        benign_norm_mean = float(np.mean([_update_norm(self.current_weights, w) for w in benign_weights])) if benign_weights else 0.0
+        malicious_norm_mean = float(np.mean([_update_norm(self.current_weights, w) for w in malicious_weights])) if malicious_weights else 0.0
         bypass_reward = 0.0
         defense_type = self.defender.defense_type.lower()
         bypass_weight = float(getattr(self.config, "bypass_reward_weight", 0.0))
@@ -145,43 +171,44 @@ class SimulatedFLEnvV2(SimulatedFLEnv):
         updates = benign_weights + malicious_weights
         if updates:
             self.current_weights = self.defender.aggregate(self.current_weights, updates, trusted_weights=trusted_weights)
-        new_loss = self._evaluate_proxy_loss(self.current_weights)
+        new_loss, new_acc = self._evaluate_proxy_metrics(self.current_weights)
         loss_reward = new_loss - self.current_loss
+        acc_reward = self.current_acc - new_acc
+        norm_penalty = 0.0
+        if benign_norm_mean > 0 and malicious_norm_mean > 0:
+            target_norm = benign_norm_mean * self.config.target_norm_ratio(defense_type)
+            norm_penalty = max(0.0, malicious_norm_mean - target_norm) / benign_norm_mean
         self.current_loss = new_loss
+        self.current_acc = new_acc
         self.round_idx += 1
         done = self.round_idx >= max(1, self.config.simulator_horizon)
         self.current_num_attackers = self._sample_num_attackers(require_positive=True)
         bw = bypass_weight
-        reward = (1.0 - bw) * loss_reward + bw * bypass_reward
+        base_reward = (
+            loss_reward
+            + self.config.reward_accuracy_weight * acc_reward
+            - self.config.reward_norm_penalty_weight * norm_penalty
+        )
+        reward = (1.0 - bw) * base_reward + bw * bypass_reward
         return self._get_state(), reward, done
 
     def _simulate_malicious_weight(self, old_weights, action):
         defense_type = self.defender.defense_type.lower()
         action_params = self.config.decode_action(action, defense_type)
-        if defense_type in _STEALTH_DEFENSES or defense_type == "fltrust":
-            return local_search_update(
-                model_template=self.model_template,
-                old_weights=old_weights,
-                proxy_buffer=self.proxy_buffer,
-                device=self.device,
-                fl_lr=action_params.local_search_lr,
-                steps=action_params.local_steps,
-                gamma_scale=action_params.gamma_scale,
-                lambda_stealth=action_params.lambda_stealth,
-                search_batch_size=self.config.local_search_batch_size,
-                state_tail_layers=self.config.state_tail_layers,
-            )
-        trained_weights = _train_proxy_model(
+        crafted = local_search_update(
             model_template=self.model_template,
             old_weights=old_weights,
             proxy_buffer=self.proxy_buffer,
             device=self.device,
-            lr=action_params.local_search_lr,
+            fl_lr=action_params.local_search_lr,
             steps=action_params.local_steps,
-            batch_size=self.config.local_search_batch_size,
+            gamma_scale=action_params.gamma_scale,
+            lambda_stealth=action_params.lambda_stealth,
+            search_batch_size=self.config.local_search_batch_size,
+            state_tail_layers=self.config.state_tail_layers,
         )
-        from fl_sandbox.attacks.vector import craft_ipm
-        return craft_ipm(old_weights, trained_weights, scale=action_params.gamma_scale)
+        target_norm = self._sampled_target_norm(old_weights)
+        return _match_update_norm(old_weights, crafted, target_norm=target_norm)
 
     def _compute_bypass_reward(self, benign_weights, malicious_weights) -> float:
         from fl_sandbox.aggregators.rules import _krum_candidate_indices, _stack_updates
@@ -209,36 +236,24 @@ class SimulatedFLEnvV2(SimulatedFLEnv):
 
 
 class PaperRLAttackerV2(PaperRLAttacker):
-    """V2 attacker: stealth craft + bypass reward + faster policy learning."""
+    """V2 attacker with paper-style attack routing by known defense family."""
 
     def __init__(self, config: Optional[RLAttackerConfigV2] = None) -> None:
         super().__init__(config or RLAttackerConfigV2())
 
     def _craft_malicious_weights(self, old_weights, decoded: DecodedAction, defense_type: str):
-        if defense_type.lower() in _STEALTH_DEFENSES or defense_type.lower() == "fltrust":
-            return local_search_update(
-                model_template=self.model_template,
-                old_weights=old_weights,
-                proxy_buffer=self.distribution_learner.buffer,
-                device=self.device,
-                fl_lr=decoded.local_search_lr,
-                steps=decoded.local_steps,
-                gamma_scale=decoded.gamma_scale,
-                lambda_stealth=decoded.lambda_stealth,
-                search_batch_size=self.config.local_search_batch_size,
-                state_tail_layers=self.config.state_tail_layers,
-            )
-        from fl_sandbox.attacks.vector import craft_ipm
-        trained_weights = _train_proxy_model(
+        return local_search_update(
             model_template=self.model_template,
             old_weights=old_weights,
             proxy_buffer=self.distribution_learner.buffer,
             device=self.device,
-            lr=decoded.local_search_lr,
+            fl_lr=decoded.local_search_lr,
             steps=decoded.local_steps,
-            batch_size=self.config.local_search_batch_size,
+            gamma_scale=decoded.gamma_scale,
+            lambda_stealth=decoded.lambda_stealth,
+            search_batch_size=self.config.local_search_batch_size,
+            state_tail_layers=self.config.state_tail_layers,
         )
-        return craft_ipm(old_weights, trained_weights, scale=decoded.gamma_scale)
 
     def _train_policy(self) -> None:
         if not self.ready or self.model_template is None or self.defender is None or self.fl_config is None:

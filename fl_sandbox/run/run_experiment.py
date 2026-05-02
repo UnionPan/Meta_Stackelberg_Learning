@@ -228,7 +228,7 @@ def main(
         result,
         write_client_metrics=True,
         write_tensorboard=True,
-        write_round_metrics=False,
+        write_round_metrics=True,
     )
 
     for line in completion_lines(result):

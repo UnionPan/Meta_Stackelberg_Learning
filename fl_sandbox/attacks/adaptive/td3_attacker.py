@@ -51,6 +51,31 @@ def _weights_to_vector(weights: Sequence[np.ndarray]) -> np.ndarray:
     return np.concatenate([np.asarray(layer).ravel() for layer in weights], axis=0)
 
 
+def _update_norm(old_weights: Weights, new_weights: Weights) -> float:
+    return float(np.linalg.norm(_weights_to_vector(old_weights) - _weights_to_vector(new_weights)))
+
+
+def _match_update_norm(
+    old_weights: Weights,
+    new_weights: Weights,
+    *,
+    target_norm: float,
+) -> Weights:
+    if target_norm <= 0:
+        return [layer.copy() for layer in old_weights]
+    current_norm = _update_norm(old_weights, new_weights)
+    if current_norm <= 1e-8:
+        return [layer.copy() for layer in new_weights]
+    scale = min(1.0, float(target_norm) / current_norm)
+    if scale >= 0.999999:
+        return [layer.copy() for layer in new_weights]
+    matched = []
+    for old_layer, new_layer in zip(old_weights, new_weights):
+        delta = np.asarray(new_layer) - np.asarray(old_layer)
+        matched.append(np.asarray(old_layer) + scale * delta)
+    return matched
+
+
 def _vectorize_tensors(tensors: Sequence[torch.Tensor]) -> torch.Tensor:
     return torch.cat([tensor.reshape(-1) for tensor in tensors], dim=0)
 
@@ -405,12 +430,13 @@ class SimulatedFLEnv:
         )
         self.current_num_attackers = 0
         self.current_loss = 0.0
+        self.current_acc = 0.0
 
     def reset(self, initial_weights: Weights) -> np.ndarray:
         self.round_idx = 0
         self.current_weights = [layer.copy() for layer in initial_weights]
         self.current_num_attackers = self._sample_num_attackers(require_positive=True)
-        self.current_loss = self._evaluate_proxy_loss(self.current_weights)
+        self.current_loss, self.current_acc = self._evaluate_proxy_metrics(self.current_weights)
         return self._get_state()
 
     def step(self, action: np.ndarray) -> tuple[np.ndarray, float, bool]:
@@ -425,13 +451,26 @@ class SimulatedFLEnv:
             self._simulate_malicious_weight(self.current_weights, action)
             for _ in range(self.current_num_attackers)
         ]
+        benign_norm_mean = float(np.mean([_update_norm(self.current_weights, w) for w in benign_weights])) if benign_weights else 0.0
+        malicious_norm_mean = float(np.mean([_update_norm(self.current_weights, w) for w in malicious_weights])) if malicious_weights else 0.0
         trusted_weights = self._trusted_reference_update(self.current_weights)
         updates = benign_weights + malicious_weights
         if updates:
             self.current_weights = self.defender.aggregate(self.current_weights, updates, trusted_weights=trusted_weights)
-        new_loss = self._evaluate_proxy_loss(self.current_weights)
-        reward = new_loss - self.current_loss
+        new_loss, new_acc = self._evaluate_proxy_metrics(self.current_weights)
+        loss_reward = new_loss - self.current_loss
+        acc_reward = self.current_acc - new_acc
+        norm_penalty = 0.0
+        if benign_norm_mean > 0 and malicious_norm_mean > 0:
+            target_norm = benign_norm_mean * self.config.target_norm_ratio(self.defender.defense_type)
+            norm_penalty = max(0.0, malicious_norm_mean - target_norm) / benign_norm_mean
+        reward = (
+            loss_reward
+            + self.config.reward_accuracy_weight * acc_reward
+            - self.config.reward_norm_penalty_weight * norm_penalty
+        )
         self.current_loss = new_loss
+        self.current_acc = new_acc
         self.round_idx += 1
         done = self.round_idx >= max(1, self.config.simulator_horizon)
         self.current_num_attackers = self._sample_num_attackers(require_positive=True)
@@ -489,7 +528,7 @@ class SimulatedFLEnv:
         from fl_sandbox.attacks.vector import craft_ipm
         action_params = self.config.decode_action(action, self.defender.defense_type)
         if self.defender.defense_type == "fltrust":
-            return local_search_update(
+            crafted = local_search_update(
                 model_template=self.model_template,
                 old_weights=old_weights,
                 proxy_buffer=self.proxy_buffer,
@@ -501,6 +540,8 @@ class SimulatedFLEnv:
                 search_batch_size=self.config.local_search_batch_size,
                 state_tail_layers=self.config.state_tail_layers,
             )
+            target_norm = self._sampled_target_norm(old_weights)
+            return _match_update_norm(old_weights, crafted, target_norm=target_norm)
         trained_weights = _train_proxy_model(
             model_template=self.model_template,
             old_weights=old_weights,
@@ -510,14 +551,23 @@ class SimulatedFLEnv:
             steps=action_params.local_steps,
             batch_size=self.config.local_search_batch_size,
         )
-        return craft_ipm(old_weights, trained_weights, scale=action_params.gamma_scale)
+        crafted = craft_ipm(old_weights, trained_weights, scale=action_params.gamma_scale)
+        target_norm = self._sampled_target_norm(old_weights)
+        return _match_update_norm(old_weights, crafted, target_norm=target_norm)
 
-    def _evaluate_proxy_loss(self, weights: Weights) -> float:
+    def _evaluate_proxy_metrics(self, weights: Weights) -> tuple[float, float]:
         model = _build_model_from_template(self.model_template, weights, self.device)
         images, labels = self.proxy_buffer.sample(self.config.local_search_batch_size, self.device)
         with torch.no_grad():
-            loss = F.cross_entropy(model(images), labels)
-        return float(loss.item())
+            logits = model(images)
+            loss = F.cross_entropy(logits, labels)
+            acc = float((torch.argmax(logits, dim=1) == labels).float().mean().item())
+        return float(loss.item()), acc
+
+    def _sampled_target_norm(self, old_weights: Weights) -> float:
+        benign_samples = [self._simulate_benign_update(old_weights) for _ in range(max(2, self.current_num_attackers or 1))]
+        benign_norm_mean = float(np.mean([_update_norm(old_weights, w) for w in benign_samples])) if benign_samples else 0.0
+        return benign_norm_mean * self.config.target_norm_ratio(self.defender.defense_type)
 
 
 @dataclass
@@ -574,6 +624,12 @@ class RLAttackerConfig:
     fltrust_lr_scale: float = 0.04
     fltrust_alpha_center: float = 0.5
     fltrust_alpha_scale: float = 0.5
+    reward_accuracy_weight: float = 6.0
+    reward_norm_penalty_weight: float = 0.75
+    clipmed_target_norm_ratio: float = 1.25
+    coord_target_norm_ratio: float = 1.10
+    krum_target_norm_ratio: float = 1.05
+    fltrust_target_norm_ratio: float = 1.50
 
     def action_dim(self, defense_type: str) -> int:
         return 3 if defense_type.lower() == "fltrust" else 2
@@ -586,6 +642,7 @@ class RLAttackerConfig:
 
     def decode_action(self, action: np.ndarray, defense_type: str) -> DecodedAction:
         action_arr = np.asarray(action, dtype=np.float32)
+        action_arr = np.nan_to_num(action_arr, nan=0.0, posinf=1.0, neginf=-1.0)
         dim = self.action_dim(defense_type)
         if action_arr.shape[0] < dim:
             padded = np.zeros(dim, dtype=np.float32)
@@ -614,6 +671,18 @@ class RLAttackerConfig:
             lambda_stealth=min(1.0, max(0.0, lambda_stealth)),
             local_search_lr=max(1e-4, float(local_search_lr)),
         )
+
+    def target_norm_ratio(self, defense_type: str) -> float:
+        defense = defense_type.lower()
+        if defense == "clipped_median":
+            return self.clipmed_target_norm_ratio
+        if defense in {"median", "trimmed_mean", "geometric_median", "paper_norm_trimmed_mean"}:
+            return self.coord_target_norm_ratio
+        if defense in {"krum", "multi_krum"}:
+            return self.krum_target_norm_ratio
+        if defense == "fltrust":
+            return self.fltrust_target_norm_ratio
+        return 1.0
 
     def format_state(self, model: nn.Module, num_attackers: int, max_attackers: int) -> dict[str, Any]:
         compressed, _ = get_compressed_state(model, num_tail_layers=self.state_tail_layers)
@@ -782,7 +851,16 @@ class PaperRLAttacker:
         if num_attackers == 0:
             return []
         if not self.ready or ctx.round_idx < self.config.attack_start_round or self.model_template is None:
-            return [[layer.copy() for layer in ctx.old_weights] for _ in range(num_attackers)]
+            from fl_sandbox.attacks.base import train_on_loader
+
+            benign_fallback_weights: list[Weights] = []
+            for attacker_id in ctx.selected_attacker_ids:
+                loader = (ctx.selected_attacker_train_loaders or {}).get(attacker_id)
+                if loader is None:
+                    benign_fallback_weights.append([layer.copy() for layer in ctx.old_weights])
+                    continue
+                benign_fallback_weights.append(train_on_loader(ctx, loader))
+            return benign_fallback_weights
         state = self._current_state(ctx)
         if attacker_action is not None:
             action = np.asarray(attacker_action, dtype=np.float32)
@@ -793,6 +871,16 @@ class PaperRLAttacker:
             action = 0.5 * (low + high)
         decoded = self.config.decode_action(action, ctx.defense_type)
         crafted = self._craft_malicious_weights(ctx.old_weights, decoded, ctx.defense_type)
+        benign_norm_mean = (
+            float(np.mean([_update_norm(ctx.old_weights, w) for w in ctx.benign_weights]))
+            if ctx.benign_weights else 0.0
+        )
+        if benign_norm_mean > 0:
+            crafted = _match_update_norm(
+                ctx.old_weights,
+                crafted,
+                target_norm=benign_norm_mean * self.config.target_norm_ratio(ctx.defense_type),
+            )
         return [[layer.copy() for layer in crafted] for _ in range(num_attackers)]
 
     def _craft_malicious_weights(self, old_weights: Weights, decoded: DecodedAction, defense_type: str) -> Weights:

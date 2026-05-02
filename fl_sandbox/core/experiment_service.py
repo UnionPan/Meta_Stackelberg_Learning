@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import json
 import math
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -38,6 +39,169 @@ ROUND_METRICS_FIELDNAMES = [
 ]
 
 
+class LiveMetricsLogger:
+    """Append per-round metrics to disk and TensorBoard during execution."""
+
+    def __init__(
+        self,
+        *,
+        output_dir: Path,
+        tb_dir: Path,
+        attack_type: str,
+        config_payload: dict[str, object],
+        target_rounds: int,
+        payload_factory,
+    ) -> None:
+        self.output_dir = output_dir
+        self.tb_dir = tb_dir
+        self.attack_type = attack_type
+        self.config_payload = config_payload
+        self.target_rounds = int(target_rounds)
+        self._payload_factory = payload_factory
+        self.csv_path = output_dir / "live_metrics.csv"
+        self._csv_file = self.csv_path.open("w", encoding="utf-8", newline="")
+        self._csv_writer = csv.DictWriter(
+            self._csv_file,
+            fieldnames=[
+                "round_idx",
+                "clean_loss",
+                "clean_acc",
+                "backdoor_acc",
+                "asr",
+                "round_seconds",
+                "num_sampled_clients",
+                "num_selected_attackers",
+                "mean_benign_norm",
+                "mean_malicious_norm",
+                "mean_malicious_cosine",
+            ],
+        )
+        self._csv_writer.writeheader()
+        self._round_metrics_path = output_dir / "round_metrics.csv"
+        self._round_metrics_file = self._round_metrics_path.open("w", encoding="utf-8", newline="")
+        self._round_metrics_writer = csv.DictWriter(
+            self._round_metrics_file,
+            fieldnames=ROUND_METRICS_FIELDNAMES,
+        )
+        self._round_metrics_writer.writeheader()
+        self._client_metrics_path = output_dir / "client_metrics.csv"
+        self._client_metrics_file = self._client_metrics_path.open("w", encoding="utf-8", newline="")
+        self._client_metrics_writer = csv.DictWriter(
+            self._client_metrics_file,
+            fieldnames=CLIENT_METRICS_FIELDNAMES,
+        )
+        self._client_metrics_writer.writeheader()
+        self._writer = build_summary_writer(tb_dir)
+        self._writer.add_text("config/json", json.dumps(config_payload, indent=2), global_step=0)
+        self._writer.add_text("run/status", "in_progress", global_step=0)
+        self._elapsed_seconds = 0.0
+        self._summaries = []
+        self._last_total_seconds = 0.0
+        self._run_status = "in_progress"
+        self._started_at = time.time()
+
+    def log_round(self, summary) -> None:
+        self._summaries.append(summary)
+        mean_benign_norm = (
+            float(sum(summary.benign_update_norms) / len(summary.benign_update_norms))
+            if summary.benign_update_norms
+            else 0.0
+        )
+        mean_malicious_norm = (
+            float(sum(summary.malicious_update_norms) / len(summary.malicious_update_norms))
+            if summary.malicious_update_norms
+            else 0.0
+        )
+        mean_malicious_cosine = (
+            float(sum(summary.malicious_cosines_to_benign) / len(summary.malicious_cosines_to_benign))
+            if summary.malicious_cosines_to_benign
+            else 0.0
+        )
+        row = {
+            "round_idx": summary.round_idx,
+            "clean_loss": summary.clean_loss,
+            "clean_acc": summary.clean_acc,
+            "backdoor_acc": summary.backdoor_acc,
+            "asr": summary.backdoor_acc,
+            "round_seconds": summary.round_seconds,
+            "num_sampled_clients": len(summary.sampled_clients),
+            "num_selected_attackers": len(summary.selected_attackers),
+            "mean_benign_norm": mean_benign_norm,
+            "mean_malicious_norm": mean_malicious_norm,
+            "mean_malicious_cosine": mean_malicious_cosine,
+        }
+        self._csv_writer.writerow(row)
+        self._csv_file.flush()
+        self._round_metrics_writer.writerow(
+            {
+                "round_idx": summary.round_idx,
+                "clean_loss": summary.clean_loss,
+                "clean_acc": summary.clean_acc,
+                "backdoor_acc": summary.backdoor_acc,
+                "asr": summary.backdoor_acc,
+                "round_seconds": summary.round_seconds,
+                "num_sampled_clients": len(summary.sampled_clients),
+                "num_selected_attackers": len(summary.selected_attackers),
+            }
+        )
+        self._round_metrics_file.flush()
+        self._client_metrics_writer.writerows(client_metrics_to_rows([summary]))
+        self._client_metrics_file.flush()
+
+        step = int(summary.round_idx)
+        if not math.isnan(summary.clean_loss):
+            self._writer.add_scalar("metrics/loss", summary.clean_loss, step)
+        if not math.isnan(summary.clean_acc):
+            self._writer.add_scalar("metrics/accuracy", summary.clean_acc, step)
+            self._writer.add_scalar("paper/clean_acc", summary.clean_acc, step)
+        if not math.isnan(summary.backdoor_acc):
+            self._writer.add_scalar("metrics/backdoor_accuracy", summary.backdoor_acc, step)
+            self._writer.add_scalar("metrics/asr", summary.backdoor_acc, step)
+            self._writer.add_scalar("paper/backdoor_acc", summary.backdoor_acc, step)
+            self._writer.add_scalar("paper/asr", summary.backdoor_acc, step)
+        self._writer.add_scalar("metrics/round_duration_seconds", summary.round_seconds, step)
+        self._elapsed_seconds += float(summary.round_seconds)
+        self._writer.add_scalar("metrics/elapsed_seconds", self._elapsed_seconds, step)
+        self._writer.add_scalar("metrics/num_sampled_clients", len(summary.sampled_clients), step)
+        self._writer.add_scalar("metrics/num_selected_attackers", len(summary.selected_attackers), step)
+        self._writer.add_scalar("metrics/mean_benign_norm", mean_benign_norm, step)
+        if self.attack_type != "clean":
+            self._writer.add_scalar("attack_only/mean_malicious_norm", mean_malicious_norm, step)
+            self._writer.add_scalar("attack_only/mean_malicious_cosine", mean_malicious_cosine, step)
+        self._writer.flush()
+        self._write_partial_summary()
+
+    def mark_completed(self, total_seconds: float) -> None:
+        self._last_total_seconds = float(total_seconds)
+        self._run_status = "completed"
+        self._write_partial_summary()
+        self._writer.add_text("run/status", "completed", global_step=max(len(self._summaries), 1))
+        self._writer.flush()
+
+    def mark_interrupted(self, total_seconds: float) -> None:
+        self._last_total_seconds = float(total_seconds)
+        self._run_status = "interrupted"
+        self._write_partial_summary()
+        self._writer.add_text("run/status", "interrupted", global_step=max(len(self._summaries), 1))
+        self._writer.flush()
+
+    def _write_partial_summary(self) -> None:
+        payload = self._payload_factory(self._summaries, self._last_total_seconds or self._elapsed_seconds)
+        payload["run_status"] = self._run_status
+        payload["completed_rounds"] = len(self._summaries)
+        payload["target_rounds"] = self.target_rounds
+        payload["wall_clock_started_at"] = self._started_at
+        payload["wall_clock_updated_at"] = time.time()
+        write_summary_json(self.output_dir, payload)
+
+    def close(self) -> None:
+        self._writer.flush()
+        self._writer.close()
+        self._csv_file.close()
+        self._round_metrics_file.close()
+        self._client_metrics_file.close()
+
+
 @dataclass
 class ExperimentRunResult:
     args: Any
@@ -67,24 +231,28 @@ def write_tensorboard_logs(
 
     for summary in summaries:
         if not math.isnan(summary.clean_loss):
-            writer.add_scalar("loss", summary.clean_loss, summary.round_idx)
+            writer.add_scalar("metrics/loss", summary.clean_loss, summary.round_idx)
         if not math.isnan(summary.clean_acc):
-            writer.add_scalar("accuracy", summary.clean_acc, summary.round_idx)
+            writer.add_scalar("metrics/accuracy", summary.clean_acc, summary.round_idx)
+            writer.add_scalar("paper/clean_acc", summary.clean_acc, summary.round_idx)
         if not math.isnan(summary.backdoor_acc):
-            writer.add_scalar("backdoor_accuracy", summary.backdoor_acc, summary.round_idx)
-            writer.add_scalar("asr", summary.backdoor_acc, summary.round_idx)
-        writer.add_scalar("round_seconds", summary.round_seconds, summary.round_idx)
-        writer.add_scalar("num_sampled_clients", len(summary.sampled_clients), summary.round_idx)
+            writer.add_scalar("metrics/backdoor_accuracy", summary.backdoor_acc, summary.round_idx)
+            writer.add_scalar("metrics/asr", summary.backdoor_acc, summary.round_idx)
+            writer.add_scalar("paper/backdoor_acc", summary.backdoor_acc, summary.round_idx)
+            writer.add_scalar("paper/asr", summary.backdoor_acc, summary.round_idx)
+        writer.add_scalar("metrics/round_duration_seconds", summary.round_seconds, summary.round_idx)
+        writer.add_scalar("metrics/num_sampled_clients", len(summary.sampled_clients), summary.round_idx)
+        writer.add_scalar("metrics/num_selected_attackers", len(summary.selected_attackers), summary.round_idx)
 
+    for round_idx, value in enumerate(series["mean_benign_norm"], start=1):
+        writer.add_scalar("metrics/mean_benign_norm", value, round_idx)
     if attack_type != "clean":
-        for round_idx, value in enumerate(series["mean_benign_norm"], start=1):
-            writer.add_scalar("attack/mean_benign_norm", value, round_idx)
         for round_idx, value in enumerate(series["mean_malicious_norm"], start=1):
-            writer.add_scalar("attack/mean_malicious_norm", value, round_idx)
+            writer.add_scalar("attack_only/mean_malicious_norm", value, round_idx)
         for round_idx, value in enumerate(series["mean_malicious_cosine"], start=1):
-            writer.add_scalar("attack/mean_malicious_cosine", value, round_idx)
+            writer.add_scalar("attack_only/mean_malicious_cosine", value, round_idx)
 
-    writer.add_scalar("total_seconds", total_seconds, 0)
+    writer.add_scalar("metrics/total_seconds", total_seconds, 0)
     writer.flush()
     writer.close()
 
@@ -265,6 +433,43 @@ def execute_experiment(
     output_dir.mkdir(parents=True, exist_ok=True)
     tb_dir.mkdir(parents=True, exist_ok=True)
 
+    live_config_payload = {
+        "dataset": config.dataset,
+        "device": args.device,
+        "attack_type": args.attack_type,
+        "defense_type": config.defense_type,
+        "rounds": args.rounds,
+        "num_clients": config.num_clients,
+        "num_attackers": config.num_attackers,
+        "subsample_rate": config.subsample_rate,
+        "local_epochs": config.local_epochs,
+        "lr": config.lr,
+        "batch_size": config.batch_size,
+        "eval_batch_size": config.eval_batch_size,
+        "split_mode": config.split_mode,
+        "noniid_q": config.noniid_q,
+        "rl_distribution_steps": config.rl_distribution_steps,
+        "rl_attack_start_round": config.rl_attack_start_round,
+        "rl_policy_train_end_round": config.rl_policy_train_end_round,
+        "rl_policy_train_episodes_per_round": config.rl_policy_train_episodes_per_round,
+        "rl_simulator_horizon": config.rl_simulator_horizon,
+    }
+    live_logger = LiveMetricsLogger(
+        output_dir=output_dir,
+        tb_dir=tb_dir,
+        attack_type=args.attack_type,
+        config_payload=live_config_payload,
+        target_rounds=run_config.runtime.rounds,
+        payload_factory=lambda live_summaries, total_seconds: build_payload(
+            args,
+            config,
+            run_config,
+            summaries_to_dict(live_summaries),
+            live_summaries,
+            total_seconds,
+        ),
+    )
+
     runner = MinimalFLRunner(config)
     timer = ExperimentTimer.start()
     from fl_sandbox.core.attacks.rl import RLAttack
@@ -274,14 +479,23 @@ def execute_experiment(
     attacker_action_arg = None
     if attack is not None and not isinstance(attack, RLAttack):
         attacker_action_arg = tuple(run_config.attacker.attacker_action)
-    summaries = runner.run_many_rounds(
-        run_config.runtime.rounds,
-        attack=attack,
-        show_progress=True,
-        progress_desc=progress_desc or f"{run_config.attacker.type} ({config.dataset})",
-        eval_every=run_config.runtime.eval_every,
-        attacker_action=attacker_action_arg,
-    )
+    completed = False
+    try:
+        summaries = runner.run_many_rounds(
+            run_config.runtime.rounds,
+            attack=attack,
+            show_progress=True,
+            progress_desc=progress_desc or f"{run_config.attacker.type} ({config.dataset})",
+            eval_every=run_config.runtime.eval_every,
+            attacker_action=attacker_action_arg,
+            per_round_callback=live_logger.log_round,
+        )
+        completed = True
+        live_logger.mark_completed(timer.elapsed_seconds())
+    finally:
+        if not completed:
+            live_logger.mark_interrupted(timer.elapsed_seconds())
+        live_logger.close()
     total_seconds = timer.elapsed_seconds()
     series = summaries_to_dict(summaries)
     payload = build_payload(args, config, run_config, series, summaries, total_seconds)

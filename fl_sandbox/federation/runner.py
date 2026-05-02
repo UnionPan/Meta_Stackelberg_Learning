@@ -9,7 +9,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 import numpy as np
 import torch
@@ -256,6 +256,7 @@ class MinimalFLRunner:
         eval_every: int = 1,
         attacker_action: Optional[np.ndarray] = None,
         defense_decision: object | None = None,
+        per_round_callback: Optional[Callable[[RoundSummary], None]] = None,
     ) -> List[RoundSummary]:
         summaries = []
         progress_label = progress_desc or "FL rounds"
@@ -275,6 +276,8 @@ class MinimalFLRunner:
                 defense_decision=defense_decision,
             )
             summaries.append(summary)
+            if per_round_callback is not None:
+                per_round_callback(summary)
             if use_tqdm:
                 postfix = {"sec": f"{summary.round_seconds:.2f}"}
                 if should_evaluate:
