@@ -69,6 +69,8 @@ def build_config(run_config: RunConfig):
         lr=run_config.runtime.lr,
         batch_size=run_config.runtime.batch_size,
         eval_batch_size=run_config.runtime.eval_batch_size,
+        max_client_samples_per_client=run_config.runtime.max_client_samples_per_client,
+        max_eval_samples=run_config.runtime.max_eval_samples,
         num_workers=run_config.runtime.num_workers,
         parallel_clients=run_config.runtime.parallel_clients,
         base_class=run_config.attacker.base_class,

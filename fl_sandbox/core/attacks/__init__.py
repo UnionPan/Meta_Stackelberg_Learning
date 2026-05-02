@@ -1,32 +1,43 @@
-"""Sandbox attacker implementations and factories.
+"""Compatibility shim — implementations live in fl_sandbox.attacks.*."""
 
-Main re-exports in this file:
-- ``SandboxAttack``
-- ``IPMAttack`` / ``LMPAttack``
-- ``BFLAttack`` / ``DBAAttack`` / ``BRLAttack`` / ``SelfGuidedBRLAttack``
-- ``RLAttack``
-- ``craft_ipm`` / ``craft_lmp``
-- ``create_attack``
-- ``supported_attack_types``
-"""
-
-from .backdoor import BFLAttack, BRLAttack, DBAAttack, SelfGuidedBRLAttack
-from .base import SandboxAttack, Weights
-from .factory import ATTACK_CHOICES, create_attack, supported_attack_types
-from .poisoning import IPMAttack, LMPAttack, craft_ipm, craft_lmp
-from .rl import RLAttack
+from fl_sandbox.attacks import (
+    ATTACK_CHOICES,
+    ALIEAttack,
+    BFLAttack,
+    BRLAttack,
+    DBAAttack,
+    GaussianAttack,
+    IPMAttack,
+    LMPAttack,
+    RLAttack,
+    RLAttackV2,
+    SandboxAttack,
+    SelfGuidedBRLAttack,
+    SignFlipAttack,
+    Weights,
+    craft_alie,
+    craft_ipm,
+    craft_lmp,
+    create_attack,
+    supported_attack_types,
+)
 
 __all__ = [
     "ATTACK_CHOICES",
+    "ALIEAttack",
     "BFLAttack",
     "BRLAttack",
     "DBAAttack",
+    "GaussianAttack",
     "IPMAttack",
     "LMPAttack",
     "RLAttack",
+    "RLAttackV2",
+    "SignFlipAttack",
     "SandboxAttack",
     "SelfGuidedBRLAttack",
     "Weights",
+    "craft_alie",
     "craft_ipm",
     "craft_lmp",
     "create_attack",

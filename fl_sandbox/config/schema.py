@@ -37,6 +37,8 @@ class RuntimeSection:
     lr: float = 0.05
     batch_size: int = 256
     eval_batch_size: int = 1024
+    max_client_samples_per_client: int | None = None
+    max_eval_samples: int | None = None
     num_workers: int = 0
     parallel_clients: int = 1
     eval_every: int = 1
@@ -54,6 +56,8 @@ class AttackerSection:
     type: str = "clean"
     ipm_scaling: float = 2.0
     lmp_scale: float = 5.0
+    alie_tau: float = 1.5
+    gaussian_sigma: float = 0.01
     base_class: int = 1
     target_class: int = 7
     pattern_type: str = "square"
@@ -171,6 +175,8 @@ class RunConfig:
             "lr": self.runtime.lr,
             "batch_size": self.runtime.batch_size,
             "eval_batch_size": self.runtime.eval_batch_size,
+            "max_client_samples_per_client": self.runtime.max_client_samples_per_client,
+            "max_eval_samples": self.runtime.max_eval_samples,
             "num_workers": self.runtime.num_workers,
             "parallel_clients": self.runtime.parallel_clients,
             "eval_every": self.runtime.eval_every,
@@ -179,6 +185,8 @@ class RunConfig:
             "init_checkpoint_path": self.init.init_checkpoint_path,
             "ipm_scaling": self.attacker.ipm_scaling,
             "lmp_scale": self.attacker.lmp_scale,
+            "alie_tau": self.attacker.alie_tau,
+            "gaussian_sigma": self.attacker.gaussian_sigma,
             "base_class": self.attacker.base_class,
             "target_class": self.attacker.target_class,
             "pattern_type": self.attacker.pattern_type,
@@ -231,6 +239,8 @@ def _set_flat_value(config: RunConfig, key: str, value: Any) -> None:
         "lr": (config.runtime, "lr"),
         "batch_size": (config.runtime, "batch_size"),
         "eval_batch_size": (config.runtime, "eval_batch_size"),
+        "max_client_samples_per_client": (config.runtime, "max_client_samples_per_client"),
+        "max_eval_samples": (config.runtime, "max_eval_samples"),
         "num_workers": (config.runtime, "num_workers"),
         "parallel_clients": (config.runtime, "parallel_clients"),
         "eval_every": (config.runtime, "eval_every"),
@@ -239,6 +249,8 @@ def _set_flat_value(config: RunConfig, key: str, value: Any) -> None:
         "init_checkpoint_path": (config.init, "init_checkpoint_path"),
         "ipm_scaling": (config.attacker, "ipm_scaling"),
         "lmp_scale": (config.attacker, "lmp_scale"),
+        "alie_tau": (config.attacker, "alie_tau"),
+        "gaussian_sigma": (config.attacker, "gaussian_sigma"),
         "base_class": (config.attacker, "base_class"),
         "target_class": (config.attacker, "target_class"),
         "pattern_type": (config.attacker, "pattern_type"),

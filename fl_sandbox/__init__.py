@@ -5,7 +5,6 @@ __all__ = ["AttackerRLEnv"]
 
 def __getattr__(name):
     if name == "AttackerRLEnv":
-        from .core.rl.env import AttackerRLEnv
-
+        from fl_sandbox.attacks.adaptive.env import AttackerRLEnv
         return AttackerRLEnv
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

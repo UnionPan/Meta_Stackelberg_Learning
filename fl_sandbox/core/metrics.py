@@ -4,7 +4,7 @@ from typing import Iterable, List
 
 import numpy as np
 
-from src.utils.fl_utils import weights_to_vector
+from fl_sandbox.utils.weights import weights_to_vector
 
 
 def mean_update_vector(old_weights, weight_list: List[List[np.ndarray]]) -> np.ndarray:

@@ -100,6 +100,8 @@ def _build_parser(
     )
     parser.add_argument('--ipm_scaling', type=float, **_default_kwargs(defaults.attacker.ipm_scaling, use_defaults))
     parser.add_argument('--lmp_scale', type=float, **_default_kwargs(defaults.attacker.lmp_scale, use_defaults))
+    parser.add_argument('--alie_tau', type=float, **_default_kwargs(defaults.attacker.alie_tau, use_defaults))
+    parser.add_argument('--gaussian_sigma', type=float, **_default_kwargs(defaults.attacker.gaussian_sigma, use_defaults))
     parser.add_argument('--base_class', type=int, **_default_kwargs(defaults.attacker.base_class, use_defaults))
     parser.add_argument('--target_class', type=int, **_default_kwargs(defaults.attacker.target_class, use_defaults))
     parser.add_argument('--pattern_type', type=str, **_default_kwargs(defaults.attacker.pattern_type, use_defaults))

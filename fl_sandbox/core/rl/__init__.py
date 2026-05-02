@@ -7,6 +7,7 @@ from importlib import import_module
 
 __all__ = [
     'AttackerPolicyParallelEnv',
+    'AttackerPolicyGymEnv',
     'AttackerRLEnv',
     'DecodedAction',
     'GradientDistributionLearner',
@@ -22,6 +23,7 @@ __all__ = [
 
 _EXPORTS = {
     'AttackerPolicyParallelEnv': ('.pz_env', 'AttackerPolicyParallelEnv'),
+    'AttackerPolicyGymEnv': ('.pz_env', 'AttackerPolicyGymEnv'),
     'AttackerRLEnv': ('.env', 'AttackerRLEnv'),
     'DecodedAction': ('.attacker', 'DecodedAction'),
     'GradientDistributionLearner': ('.attacker', 'GradientDistributionLearner'),

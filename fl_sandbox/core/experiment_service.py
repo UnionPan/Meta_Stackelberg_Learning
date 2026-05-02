@@ -65,17 +65,16 @@ def write_tensorboard_logs(
     writer = build_summary_writer(tb_dir)
     writer.add_text("config/json", json.dumps(config_payload, indent=2), global_step=0)
 
-    metric_prefix = "clean" if attack_type == "clean" else "attack"
     for summary in summaries:
         if not math.isnan(summary.clean_loss):
-            writer.add_scalar(f"{metric_prefix}/loss", summary.clean_loss, summary.round_idx)
+            writer.add_scalar("loss", summary.clean_loss, summary.round_idx)
         if not math.isnan(summary.clean_acc):
-            writer.add_scalar(f"{metric_prefix}/accuracy", summary.clean_acc, summary.round_idx)
+            writer.add_scalar("accuracy", summary.clean_acc, summary.round_idx)
         if not math.isnan(summary.backdoor_acc):
-            writer.add_scalar(f"{metric_prefix}/backdoor_accuracy", summary.backdoor_acc, summary.round_idx)
-            writer.add_scalar(f"{metric_prefix}/asr", summary.backdoor_acc, summary.round_idx)
-        writer.add_scalar(f"{metric_prefix}/round_seconds", summary.round_seconds, summary.round_idx)
-        writer.add_scalar(f"{metric_prefix}/num_sampled_clients", len(summary.sampled_clients), summary.round_idx)
+            writer.add_scalar("backdoor_accuracy", summary.backdoor_acc, summary.round_idx)
+            writer.add_scalar("asr", summary.backdoor_acc, summary.round_idx)
+        writer.add_scalar("round_seconds", summary.round_seconds, summary.round_idx)
+        writer.add_scalar("num_sampled_clients", len(summary.sampled_clients), summary.round_idx)
 
     if attack_type != "clean":
         for round_idx, value in enumerate(series["mean_benign_norm"], start=1):
@@ -85,7 +84,7 @@ def write_tensorboard_logs(
         for round_idx, value in enumerate(series["mean_malicious_cosine"], start=1):
             writer.add_scalar("attack/mean_malicious_cosine", value, round_idx)
 
-    writer.add_scalar(f"{metric_prefix}/total_seconds", total_seconds, 0)
+    writer.add_scalar("total_seconds", total_seconds, 0)
     writer.flush()
     writer.close()
 
@@ -140,6 +139,8 @@ def build_payload(
         "attack_type": args.attack_type,
         "ipm_scaling": args.ipm_scaling,
         "lmp_scale": args.lmp_scale,
+        "alie_tau": args.alie_tau,
+        "gaussian_sigma": args.gaussian_sigma,
         "bfl_poison_frac": args.bfl_poison_frac,
         "dba_poison_frac": args.dba_poison_frac,
         "dba_num_sub_triggers": args.dba_num_sub_triggers,

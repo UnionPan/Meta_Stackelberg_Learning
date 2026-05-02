@@ -22,6 +22,10 @@ from fl_sandbox.core.experiment_builders import (
 )
 from fl_sandbox.core.postprocess import build_postprocess_hint_lines
 from fl_sandbox.config import RunConfig, config_to_namespace, load_run_config, merge_cli_overrides
+from fl_sandbox.application import execute_experiment as application_execute_experiment
+from fl_sandbox.federation import FederatedCoordinator
+from fl_sandbox.aggregators import AggregationDefender as NewAggregationDefender
+from fl_sandbox.attacks.registry import create_attack as create_benchmark_attack
 from fl_sandbox.run.run_experiment import parse_args
 
 
@@ -94,11 +98,11 @@ class TestAttackerSandboxApplication(unittest.TestCase):
 
         self.assertEqual(
             default_output_dir(clean_config.attacker, clean_config.defender, clean_config.data),
-            "attacker_sandbox/outputs/clean_krum_iid_benchmark",
+            "fl_sandbox/outputs/clean_krum_iid_benchmark",
         )
         self.assertEqual(
             default_tb_dir(attack_config.attacker, attack_config.defender, attack_config.data),
-            "attacker_sandbox/runs/ipm_fltrust_noniid_q0.3_demo",
+            "fl_sandbox/runs/ipm_fltrust_noniid_q0.3_demo",
         )
 
     def test_resolve_num_attackers_defaults_by_mode(self):
@@ -196,6 +200,22 @@ class TestAttackerSandboxApplication(unittest.TestCase):
         self.assertEqual(len(lines), 1)
         self.assertIn("clean_krum_noniid_q0.3_benchmark", lines[0])
         self.assertIn("core/postprocess/postprocess.py", lines[0])
+
+    def test_new_benchmark_paths_expose_compatibility_entrypoints(self):
+        run_config = _run_config(attack_type="ipm", ipm_scaling=3.0)
+
+        self.assertEqual(FederatedCoordinator.__name__, "MinimalFLRunner")
+        self.assertTrue(NewAggregationDefender.__module__.startswith("fl_sandbox.aggregators"))
+        self.assertEqual(create_benchmark_attack(run_config.attacker).scale, 3.0)
+        self.assertTrue(callable(application_execute_experiment))
+
+    def test_schema_round_trip_includes_vector_attack_hyperparameters(self):
+        run_config = _run_config(attack_type="alie", alie_tau=2.25, gaussian_sigma=0.2)
+        flat = run_config.to_flat_dict()
+        restored = RunConfig.from_flat_dict(flat)
+
+        self.assertEqual(restored.attacker.alie_tau, 2.25)
+        self.assertEqual(restored.attacker.gaussian_sigma, 0.2)
 
     def test_rlfl_protocol_adjusts_rl_schedule(self):
         run_config = _run_config(

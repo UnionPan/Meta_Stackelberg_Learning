@@ -13,6 +13,7 @@ from fl_sandbox.core.rl import (
     RLAttackerConfig,
     SimulatedFLEnv,
 )
+from fl_sandbox.attacks.adaptive.td3_attacker_v2 import RLAttackerConfigV2
 from fl_sandbox.core.defender import AggregationDefender
 from fl_sandbox.core.fl_runner import MinimalFLRunner, SandboxConfig
 from fl_sandbox.core.runtime import RoundContext, RoundSummary, summaries_to_dict
@@ -119,6 +120,18 @@ class TestRLAttacker(unittest.TestCase):
         self.assertEqual(config.action_dim("krum"), 2)
         self.assertEqual(config.action_dim("clipped_median"), 2)
         self.assertEqual(config.action_dim("fltrust"), 3)
+
+    def test_v2_action_dims_are_stealth_aware_for_robust_defenses(self):
+        config = RLAttackerConfigV2()
+
+        self.assertEqual(config.action_dim("krum"), 3)
+        self.assertEqual(config.action_dim("multi_krum"), 3)
+        self.assertEqual(config.action_dim("trimmed_mean"), 3)
+        self.assertEqual(config.action_dim("clipped_median"), 3)
+        decoded = config.decode_action(np.asarray([0.0, 0.0, 0.0], dtype=np.float32), "clipped_median")
+        self.assertGreater(decoded.gamma_scale, 0.0)
+        self.assertGreater(decoded.local_steps, 0)
+        self.assertGreater(decoded.lambda_stealth, 0.0)
 
     def test_simulator_samples_positive_attack_steps(self):
         model = MNISTClassifier()
