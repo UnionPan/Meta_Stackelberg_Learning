@@ -69,8 +69,8 @@ def create_attack(attacker_config) -> Optional[SandboxAttack]:
                 policy_train_end_round=attacker_config.rl_policy_train_end_round,
                 inversion_steps=attacker_config.rl_inversion_steps,
                 reconstruction_batch_size=attacker_config.rl_reconstruction_batch_size,
-                episodes_per_observation=attacker_config.rl_policy_train_episodes_per_round,
-                simulator_horizon=attacker_config.rl_simulator_horizon,
+                episodes_per_observation=max(2, attacker_config.rl_policy_train_episodes_per_round),
+                simulator_horizon=max(10, attacker_config.rl_simulator_horizon),
             ),
         )
     if attack_type == "brl":

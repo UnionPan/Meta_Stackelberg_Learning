@@ -2,6 +2,19 @@
 
 This file intentionally lives under ``scripts/`` rather than ``run/``
 because it is a specialized preset, not a core runtime surface of the sandbox.
+
+The schedule below follows the NeurIPS 2022 paper defaults much more closely
+than the lightweight local benchmarks:
+  - 100 total workers / 20 attackers
+  - subsampling rate 0.1
+  - 1000 FL rounds
+  - paper_q non-IID split with q=0.1
+  - distribution learning through round 100
+  - attack starts at round 101
+  - policy learning ends at round 400
+
+To run the newer stealth-aware attacker on the same paper-aligned FL setup:
+    python fl_sandbox/scripts/run_rlfl_benchmark.py --attack_type rl2
 """
 
 from __future__ import annotations
@@ -26,6 +39,12 @@ DEFAULT_RLFL_ARGS = [
     "1000",
     "--warmup_rounds",
     "100",
+    "--rl_distribution_steps",
+    "100",
+    "--rl_attack_start_round",
+    "101",
+    "--rl_policy_train_end_round",
+    "400",
     "--num_clients",
     "100",
     "--num_attackers",
@@ -65,4 +84,4 @@ def main(argv: Optional[list[str]] = None) -> None:
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])

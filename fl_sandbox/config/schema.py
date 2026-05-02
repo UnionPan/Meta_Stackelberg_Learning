@@ -134,7 +134,7 @@ class RunConfig:
             return self
 
         warmup_rounds = int(self.protocol.warmup_rounds or 0)
-        if self.attacker.type == 'rl':
+        if self.attacker.type in {'rl', 'rl2'}:
             self.attacker.rl_distribution_steps = self.attacker.rl_distribution_steps or warmup_rounds
             self.attacker.rl_policy_train_end_round = self.attacker.rl_policy_train_end_round or warmup_rounds
             self.attacker.rl_attack_start_round = self.attacker.rl_attack_start_round or (warmup_rounds + 1)

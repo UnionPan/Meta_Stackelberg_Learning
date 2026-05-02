@@ -1,10 +1,10 @@
-"""RL attacker v2: defense-aware stealth policy with bypass reward.
+"""RL attacker v2: defense-aware policy with aggressive paper-style robust crafting.
 
 Improvements over v1:
-1. Robust-defense-aware attack craft — local_search_update instead of raw craft_ipm.
-2. 3-D action space for robust defenses — [gamma_scale, local_steps, lambda_stealth].
-3. Bypass reward — explicit +1/-0.1 signal for evading Krum selection.
-4. policy_lr = 1e-4 — 1000x faster than v1.
+1. Krum-family defenses use stealth-aware local search with explicit bypass reward.
+2. Coordinate-wise robust defenses default to a stronger paper-style 2-D attack space.
+3. Robust attack ranges are widened toward the paper's clipped-median operating regime.
+4. policy_lr = 1e-4 — much faster than v1 for online sandbox training.
 """
 
 from __future__ import annotations
@@ -28,13 +28,18 @@ from fl_sandbox.attacks.adaptive.td3_attacker import (
 )
 
 _KRUM_DEFENSES = frozenset({"krum", "multi_krum"})
-_STEALTH_DEFENSES = frozenset({"krum", "multi_krum", "median", "clipped_median", "trimmed_mean", "geometric_median"})
+_AGGRESSIVE_ROBUST_DEFENSES = frozenset({"median", "clipped_median", "trimmed_mean", "geometric_median"})
+_STEALTH_DEFENSES = frozenset({"krum", "multi_krum"})
 
 
 @dataclass
 class RLAttackerConfigV2(RLAttackerConfig):
     """V2 config — faster learning, stealth-aware robust action space, bypass reward."""
 
+    simulator_horizon: int = 10
+    episodes_per_observation: int = 2
+    td3_batch_size: int = 64
+    td3_train_freq_steps: int = 1
     policy_lr: float = 1e-4
     bypass_reward_weight: float = 0.5
     krum_gamma_center: float = 1.5
@@ -49,14 +54,40 @@ class RLAttackerConfigV2(RLAttackerConfig):
     stealth_steps_scale: float = 9.0
     stealth_lambda_center: float = 0.5
     stealth_lambda_scale: float = 0.45
+    aggressive_gamma_center: float = 15.0
+    aggressive_gamma_scale: float = 14.9
+    aggressive_steps_center: float = 25.0
+    aggressive_steps_scale: float = 24.0
 
     def action_dim(self, defense_type: str) -> int:
-        if defense_type.lower() in _STEALTH_DEFENSES:
+        defense = defense_type.lower()
+        if defense in _AGGRESSIVE_ROBUST_DEFENSES:
+            return 2
+        if defense == "fltrust":
+            return super().action_dim(defense_type)
+        if defense in _STEALTH_DEFENSES:
             return 3
         return super().action_dim(defense_type)
 
     def decode_action(self, action: np.ndarray, defense_type: str) -> DecodedAction:
         defense = defense_type.lower()
+        if defense == "fltrust":
+            return super().decode_action(action, defense_type)
+        if defense in _AGGRESSIVE_ROBUST_DEFENSES:
+            action_arr = np.asarray(action, dtype=np.float32)
+            if action_arr.shape[0] < 2:
+                padded = np.zeros(2, dtype=np.float32)
+                padded[: action_arr.shape[0]] = action_arr
+                action_arr = padded
+            action_arr = np.clip(action_arr[:2], -1.0, 1.0)
+            gamma_scale = float(action_arr[0]) * self.aggressive_gamma_scale + self.aggressive_gamma_center
+            local_steps = int(round(float(action_arr[1]) * self.aggressive_steps_scale + self.aggressive_steps_center))
+            return DecodedAction(
+                gamma_scale=max(0.1, gamma_scale),
+                local_steps=max(1, local_steps),
+                lambda_stealth=0.0,
+                local_search_lr=self.attacker_local_lr,
+            )
         if defense not in _STEALTH_DEFENSES:
             return super().decode_action(action, defense_type)
         action_arr = np.asarray(action, dtype=np.float32)

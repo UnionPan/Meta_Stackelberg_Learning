@@ -246,7 +246,7 @@ def run_claim1(
     print(f"Done in {total_elapsed/60:.1f} min  |  defense={DEFENSE}  rounds={rounds}\n")
 
     baseline_clean = next(
-        (r["last15_mean_clean"] for r in summary_rows if r.get("attack_type") == "clean"),
+        (r["last15_mean_clean"] for r in summary_rows if r.get("attack_type") == "clean" and "last15_mean_clean" in r),
         float("nan"),
     )
 
