@@ -1,4 +1,4 @@
-"""Structured configuration schema for attacker_sandbox runs."""
+"""Structured configuration schema for fl_sandbox runs."""
 
 from __future__ import annotations
 

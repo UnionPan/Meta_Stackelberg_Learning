@@ -1,4 +1,4 @@
-"""Unified single-run experiment entry point for attacker_sandbox."""
+"""Unified single-run experiment entry point for fl_sandbox."""
 
 from __future__ import annotations
 
@@ -202,7 +202,7 @@ def _build_parser(
 def parse_args(
     argv: Optional[list[str]] = None,
     *,
-    description: str = 'Run one configured attacker_sandbox experiment',
+    description: str = 'Run one configured fl_sandbox experiment',
 ) -> argparse.Namespace:
     pre_parser = argparse.ArgumentParser(add_help=False)
     pre_parser.add_argument('--config', type=str, default='')
@@ -234,7 +234,7 @@ def _prepare_run_args(args: argparse.Namespace) -> tuple[argparse.Namespace, str
 def main(
     argv: Optional[list[str]] = None,
     *,
-    description: str = 'Run one configured attacker_sandbox experiment',
+    description: str = 'Run one configured fl_sandbox experiment',
 ) -> None:
     args = parse_args(argv, description=description)
     run_args, run_name, run_config = _prepare_run_args(args)

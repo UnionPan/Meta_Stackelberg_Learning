@@ -1,1 +1,1 @@
-"""Run entry points for attacker_sandbox experiments."""
+"""Run entry points for fl_sandbox experiments."""

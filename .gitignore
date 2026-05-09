@@ -214,6 +214,8 @@ runs/
 fl_sandbox/runs/
 notebooks/demo_*
 data/
+!fl_sandbox/data/
+!fl_sandbox/data/**
 notebooks/cifar_diffusion.pth
 *.pth
 
@@ -226,5 +228,6 @@ checkpoints/
 docs/
 outputs/
 fl_sandbox/outputs/
+fl_sandbox/logs/
 .venv312
 .obsidian/

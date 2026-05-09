@@ -1,4 +1,4 @@
-"""Run configuration schema and loading utilities for attacker_sandbox."""
+"""Run configuration schema and loading utilities for fl_sandbox."""
 
 from .loader import config_to_namespace, load_run_config, merge_cli_overrides
 from .attack import AttackConfig

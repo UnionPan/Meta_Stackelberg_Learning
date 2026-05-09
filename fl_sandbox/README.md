@@ -19,41 +19,44 @@ without coupling them to the full Meta-SG experiment stack.
 
 ## Folder Layout
 
-- `context.py`
-  Shared sandbox data structures.
-- `run/`
-  Python run entry points. `run_experiment.py` is the unified single-run
-  experiment entry.
-- `core/`
-  Shared runtime helpers, experiment builders, metrics, and postprocess entry points.
-  Attacker and defender implementations do not live under `core/`.
-  Visualization/export helpers now live under `core/postprocess/`, including plotting helpers
-  (`visualization.py`), shared TensorBoard exporters (`tensorboard_utils.py`), the unified Python
-  postprocess entry point (`postprocess.py`), and compatibility wrappers
-  (`postprocess_clean.py`, `postprocess_sandbox.py`).
-- `attacks/`
-  Public attacker subsystem. External code should import attackers and the attack factory from
-  `fl_sandbox.attacks`. Fixed attackers live as direct files, and the adaptive RL attacker lives
-  under `attacks/rl_attacker/`.
-- `defenders/`
-  Public defender adapter subsystem. External code should import defender factories and typed
-  defender wrappers from `fl_sandbox.defenders`.
-- `aggregators/`
-  Pure server-side aggregation and robust defense algorithms used by the defender adapters and
-  FL runner.
-- `scripts/`
-  Shell and preset helpers (`setup_env.sh`, `run_tensorboard.sh`,
-  `postprocess_mnist_30r_all.sh`, `run_rlfl_benchmark.py`).
-- `docs/`
-  Usage guides and operational docs.
-- `assets/`
-  Static image assets used in docs/inspection.
-- `config/`
-  Run configuration examples for experiment entry points.
-- `envs/`
-  Environment/dependency files (`requirements.txt`, `environment.yml`).
-- `outputs/` / `runs/`
-  Experiment outputs and TensorBoard logs.
+The source tree is organized around public package boundaries. External code
+should import attackers from `fl_sandbox.attacks`, defenders from
+`fl_sandbox.defenders`, and aggregation rules from `fl_sandbox.aggregators`.
+
+```text
+fl_sandbox/
+  attacks/                 fixed attacks and the public attack factory
+    rl_attacker/           adaptive RL attacker package
+      proxy/               proxy buffer, inversion, and distribution learner
+      simulator/           Gymnasium-compatible FL simulator and reward logic
+      tianshou_backend/    TD3/PPO trainers backed by Tianshou
+  defenders/               defender adapters and defender factory
+  aggregators/             pure aggregation / robust-defense algorithms
+  federation/              client, partitioning, poisoning, and FL runner logic
+  config/                  typed config objects, parser, and YAML examples
+  data/                    sandbox-local dataset loading and poisoning helpers
+  models/                  model registry and state helpers
+  evaluation/              evaluation helpers
+  application/             batch and experiment-service orchestration layer
+  core/                    runtime glue, metrics, builders, and postprocess tools
+  run/                     Python entry points for single-run experiments
+  apps/                    app-facing wrappers around run entry points
+  scripts/                 shell helpers and benchmark presets
+  docs/                    usage guides, specs, and implementation plans
+  assets/                  static inspection/doc assets
+```
+
+Generated local artifacts are intentionally kept out of the source boundary:
+
+```text
+fl_sandbox/outputs/        experiment outputs
+fl_sandbox/runs/           TensorBoard and run directories
+fl_sandbox/logs/           long-running command logs
+__pycache__/               Python bytecode caches
+```
+
+Those generated paths are ignored by git and can be removed locally when a run
+is no longer needed.
 
 ## Scope
 
@@ -97,15 +100,15 @@ The sandbox now accepts an explicit runtime device:
 Example:
 
 ```bash
-python attacker_sandbox/run/run_experiment.py --attack_type clean --device auto
-python attacker_sandbox/run/run_experiment.py --attack_type ipm --device cuda:0
+python fl_sandbox/run/run_experiment.py --attack_type clean --device auto
+python fl_sandbox/run/run_experiment.py --attack_type ipm --device cuda:0
 ```
 
 For the paper-style untargeted `RL` attacker, the sandbox exposes the main
 online-learning schedule and algorithm directly from CLI:
 
 ```bash
-python attacker_sandbox/run/run_experiment.py \
+python fl_sandbox/run/run_experiment.py \
   --attack_type rl \
   --defense_type krum \
   --rl_algorithm td3 \
@@ -123,13 +126,13 @@ For a more paper-aligned benchmark protocol with fixed warmup rounds and
 round-wise `clean_acc` plus `backdoor_acc` / `ASR` CSV outputs, use:
 
 ```bash
-python attacker_sandbox/scripts/run_rlfl_benchmark.py
+python fl_sandbox/scripts/run_rlfl_benchmark.py
 ```
 
 For custom protocol-aligned single runs, prefer:
 
 ```bash
-python attacker_sandbox/run/run_experiment.py \
+python fl_sandbox/run/run_experiment.py \
   --protocol rlfl \
   --attack_type rl \
   --defense_type clipped_median \
@@ -149,8 +152,8 @@ install the required packages:
 
 ```bash
 cd /home/antik/rl/Meta_Stackelberg_Learning
-bash attacker_sandbox/scripts/setup_env.sh cpu
-bash attacker_sandbox/scripts/setup_env.sh cu121
+bash fl_sandbox/scripts/setup_env.sh cpu
+bash fl_sandbox/scripts/setup_env.sh cu121
 ```
 
 After activation, install mode and device can be checked with:

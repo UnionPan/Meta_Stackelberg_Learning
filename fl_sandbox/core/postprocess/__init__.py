@@ -1,4 +1,4 @@
-"""Unified postprocess API for attacker_sandbox experiments."""
+"""Unified postprocess API for fl_sandbox experiments."""
 
 from __future__ import annotations
 
