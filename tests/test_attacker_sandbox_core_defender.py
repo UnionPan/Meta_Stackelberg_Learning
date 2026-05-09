@@ -24,6 +24,7 @@ class TestAttackerSandboxCoreDefender(unittest.TestCase):
                 "geometric_median",
                 "trimmed_mean",
                 "fltrust",
+                "paper_norm_trimmed_mean",
             ),
         )
 
