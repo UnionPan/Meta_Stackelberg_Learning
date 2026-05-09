@@ -26,7 +26,7 @@ without coupling them to the full Meta-SG experiment stack.
   experiment entry.
 - `core/`
   Shared runtime helpers, experiment builders, metrics, and postprocess entry points.
-  Attacker implementations do not live under `core/`.
+  Attacker and defender implementations do not live under `core/`.
   Visualization/export helpers now live under `core/postprocess/`, including plotting helpers
   (`visualization.py`), shared TensorBoard exporters (`tensorboard_utils.py`), the unified Python
   postprocess entry point (`postprocess.py`), and compatibility wrappers
@@ -35,6 +35,12 @@ without coupling them to the full Meta-SG experiment stack.
   Public attacker subsystem. External code should import attackers and the attack factory from
   `fl_sandbox.attacks`. Fixed attackers live as direct files, and the adaptive RL attacker lives
   under `attacks/rl_attacker/`.
+- `defenders/`
+  Public defender adapter subsystem. External code should import defender factories and typed
+  defender wrappers from `fl_sandbox.defenders`.
+- `aggregators/`
+  Pure server-side aggregation and robust defense algorithms used by the defender adapters and
+  FL runner.
 - `scripts/`
   Shell and preset helpers (`setup_env.sh`, `run_tensorboard.sh`,
   `postprocess_mnist_30r_all.sh`, `run_rlfl_benchmark.py`).
