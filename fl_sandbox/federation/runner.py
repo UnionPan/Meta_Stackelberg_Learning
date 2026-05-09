@@ -32,6 +32,7 @@ from fl_sandbox.core.runtime import (
     build_round_summary,
     summarize_round_updates,
 )
+from fl_sandbox.utils.weights import weights_to_vector
 
 try:
     from tqdm.auto import tqdm
@@ -80,8 +81,8 @@ class SandboxConfig:
     rl_policy_train_end_round: int = 30
     rl_inversion_steps: int = 50
     rl_reconstruction_batch_size: int = 8
-    rl_policy_train_episodes_per_round: int = 1
-    rl_simulator_horizon: int = 8
+    rl_policy_train_episodes_per_round: int = 2
+    rl_simulator_horizon: int = 10
     init_mode: str = "seed"
     init_checkpoint_path: str = ""
 
@@ -155,6 +156,7 @@ class MinimalFLRunner:
         round_timer = RoundTimer.start()
         old_weights = [weights.copy() for weights in self.current_weights]
         sampled_clients = self._sample_clients(round_idx)
+        attack_ctx = None
         round_state = RoundRuntimeState.from_selection(
             round_idx=round_idx,
             sampled_clients=sampled_clients,
@@ -187,9 +189,12 @@ class MinimalFLRunner:
                         cid, train_loss=train_loss, train_acc=train_acc, update_norm=update_norm(old_weights, weights)
                     )
         all_weights = list(benign_weights)
+        needs_attack_feedback = attack is not None and hasattr(attack, "after_round")
+        clean_loss_before, clean_acc_before = float("nan"), float("nan")
 
         malicious_weights: List[List[np.ndarray]] = []
         attack_name = attack.name if attack is not None else "clean"
+        round_defender = self._round_defender(defense_decision)
         if attack is not None:
             ctx = build_round_context(
                 round_idx=round_idx,
@@ -199,7 +204,7 @@ class MinimalFLRunner:
                 model=self.model,
                 device=self.device,
                 fl_config=self.config,
-                defense_type=self._round_defender(defense_decision).defense_type,
+                defense_type=round_defender.defense_type,
                 lr=self.config.lr,
                 local_epochs=self.config.local_epochs,
                 attacker_train_iter=selected_attacker_loader,
@@ -214,13 +219,16 @@ class MinimalFLRunner:
                 ),
                 trusted_reference_weights=trusted_weights,
             )
+            attack_ctx = ctx
             attack.observe_round(ctx)
             if round_state.selected_attackers:
                 malicious_weights = attack.execute(ctx, attacker_action=attacker_action)
                 all_weights.extend(malicious_weights)
 
+        if evaluate and needs_attack_feedback:
+            clean_loss_before, clean_acc_before = test_model(self.model, self.test_loader, device=self.device)
+
         if all_weights:
-            round_defender = self._round_defender(defense_decision)
             self.current_weights = round_defender.aggregate(
                 old_weights, all_weights, trusted_weights=trusted_weights
             )
@@ -235,16 +243,35 @@ class MinimalFLRunner:
         else:
             clean_loss, clean_acc, backdoor_acc = float("nan"), float("nan"), float("nan")
 
+        attack_metrics = {}
+        if needs_attack_feedback and attack_ctx is not None:
+            malicious_indices = list(range(len(benign_weights), len(benign_weights) + len(malicious_weights)))
+            aggregated_delta = weights_to_vector(self.current_weights) - weights_to_vector(old_weights)
+            num_byzantine = int(getattr(round_defender, "krum_attackers", len(round_state.selected_attackers)))
+            attack_metrics = attack.after_round(
+                ctx=attack_ctx,
+                all_weights=all_weights,
+                malicious_indices=malicious_indices,
+                aggregated_weights=self.current_weights,
+                aggregated_delta=aggregated_delta,
+                clean_loss_before=clean_loss_before,
+                clean_acc_before=clean_acc_before,
+                clean_loss=clean_loss,
+                clean_acc=clean_acc,
+                num_byzantine=num_byzantine,
+            ) or {}
+
         update_stats = summarize_round_updates(old_weights, benign_weights, malicious_weights)
         return build_round_summary(
             state=round_state,
             attack_name=attack_name,
-            defense_name=self._round_defender(defense_decision).defense_type,
+            defense_name=round_defender.defense_type,
             clean_loss=clean_loss,
             clean_acc=clean_acc,
             backdoor_acc=backdoor_acc,
             round_seconds=round_timer.elapsed_seconds(),
             update_stats=update_stats,
+            attack_metrics=attack_metrics,
         )
 
     def run_many_rounds(

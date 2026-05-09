@@ -79,6 +79,16 @@ def _build_parser(
     parser.add_argument('--lr', type=float, **_default_kwargs(defaults.runtime.lr, use_defaults))
     parser.add_argument('--batch_size', type=int, **_default_kwargs(defaults.runtime.batch_size, use_defaults))
     parser.add_argument('--eval_batch_size', type=int, **_default_kwargs(defaults.runtime.eval_batch_size, use_defaults))
+    parser.add_argument(
+        '--max_client_samples_per_client',
+        type=int,
+        **_default_kwargs(defaults.runtime.max_client_samples_per_client, use_defaults),
+    )
+    parser.add_argument(
+        '--max_eval_samples',
+        type=int,
+        **_default_kwargs(defaults.runtime.max_eval_samples, use_defaults),
+    )
     parser.add_argument('--num_workers', type=int, **_default_kwargs(defaults.runtime.num_workers, use_defaults))
     parser.add_argument(
         '--parallel_clients',
@@ -117,6 +127,11 @@ def _build_parser(
         type=float,
         nargs=3,
         **_default_kwargs(defaults.attacker.attacker_action, use_defaults),
+    )
+    parser.add_argument(
+        '--rl_algorithm',
+        choices=('sac', 'td3'),
+        **_default_kwargs(defaults.attacker.rl_algorithm, use_defaults),
     )
     parser.add_argument('--krum_attackers', type=int, **_default_kwargs(defaults.defender.krum_attackers, use_defaults))
     parser.add_argument(

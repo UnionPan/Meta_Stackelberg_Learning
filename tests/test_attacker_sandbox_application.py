@@ -59,6 +59,7 @@ def _args(**overrides):
         "dba_poison_frac": 0.5,
         "dba_num_sub_triggers": 4,
         "attacker_action": (0.0, 0.0, 0.0),
+        "rl_algorithm": "sac",
         "defense_type": "fedavg",
         "krum_attackers": 1,
         "multi_krum_selected": None,
@@ -317,6 +318,7 @@ runtime:
         run_config = _run_config(
             attack_type="rl",
             attacker_action=(0.2, 0.4, 0.6),
+            rl_algorithm="td3",
             rl_distribution_steps=13,
             rl_attack_start_round=14,
             rl_policy_train_end_round=15,
@@ -326,29 +328,11 @@ runtime:
             rl_simulator_horizon=19,
         )
 
-        fake_rl_attacker_module = ModuleType("attacker_sandbox.core.rl.attacker")
-
-        class FakeRLAttackerConfig:
-            def __init__(self, **kwargs):
-                self.__dict__.update(kwargs)
-
-        class FakePaperRLAttacker:
-            def __init__(self, config):
-                self.config = config
-
-        fake_rl_attacker_module.RLAttackerConfig = FakeRLAttackerConfig
-        fake_rl_attacker_module.PaperRLAttacker = FakePaperRLAttacker
-
-        with patch.dict(
-            sys.modules,
-            {
-                "attacker_sandbox.core.rl.attacker": fake_rl_attacker_module,
-            },
-        ):
-            attack = build_attack(run_config.attacker)
+        attack = build_attack(run_config.attacker)
 
         self.assertEqual(attack.name, "RL")
         self.assertEqual(tuple(attack.default_action), (0.2, 0.4, 0.6))
+        self.assertEqual(attack.config.algorithm, "td3")
         self.assertEqual(attack.config.distribution_steps, 13)
         self.assertEqual(attack.config.attack_start_round, 14)
         self.assertEqual(attack.config.policy_train_end_round, 15)

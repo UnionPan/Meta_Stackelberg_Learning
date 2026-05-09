@@ -1,0 +1,6 @@
+numpy
+torch
+torchvision
+tensorboard
+gymnasium>=1.0
+tianshou>=2.0

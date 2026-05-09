@@ -39,13 +39,14 @@ attacker:
   dba_poison_frac: 0.5
   dba_num_sub_triggers: 4
   attacker_action: [0.0, 0.0, 0.0]
+  rl_algorithm: sac
   rl_distribution_steps: 10
   rl_attack_start_round: 11
   rl_policy_train_end_round: 10
   rl_inversion_steps: 50
   rl_reconstruction_batch_size: 8
-  rl_policy_train_episodes_per_round: 1
-  rl_simulator_horizon: 8
+  rl_policy_train_episodes_per_round: 2
+  rl_simulator_horizon: 10
 
 defender:
   type: clipped_median

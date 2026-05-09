@@ -67,7 +67,7 @@ _ACTION_HIGH = np.array([1., 1., 1.], dtype=np.float32)
 
 @dataclass
 class SelfGuidedBRLAttack(SandboxAttack):
-    """Backdoor attacker with an internal TD3 policy.
+    """Backdoor attacker with an internal self-guided exploration policy.
 
     Learns to tune (boost, local_lr, local_epochs) each round to maximise
     ASR while penalising updates whose norm exceeds the benign mean.
@@ -76,7 +76,7 @@ class SelfGuidedBRLAttack(SandboxAttack):
     stealth_lambda: float = 0.5
     attack_start_round: int = 5
     exploration_noise: float = 0.2
-    td3_batch_size: int = 64
+    policy_batch_size: int = 64
     replay_capacity: int = 10_000
     policy_lr: float = 3e-4
     num_tail_layers: int = 2
@@ -86,6 +86,7 @@ class SelfGuidedBRLAttack(SandboxAttack):
     def __post_init__(self) -> None:
         self._policy = None
         self._replay = None
+        self._recent_transitions: list[tuple[np.ndarray, np.ndarray, float, np.ndarray]] = []
         self._model_template = None
         self._device = torch.device("cpu") if torch is not None else None
         self._prev_state: Optional[np.ndarray] = None
@@ -111,14 +112,9 @@ class SelfGuidedBRLAttack(SandboxAttack):
     def _ensure_policy(self, ctx) -> None:
         if self._policy is not None:
             return
-        from fl_sandbox.attacks.rl_attacker.legacy_td3 import RLAttackerConfig, ReplayBuffer, TD3Agent
-        state_dim = self._state_dim(ctx)
-        cfg = RLAttackerConfig(
-            policy_lr=self.policy_lr,
-            td3_batch_size=self.td3_batch_size,
-        )
-        self._policy = TD3Agent(state_dim, _ACTION_LOW, _ACTION_HIGH, cfg, self._device)
-        self._replay = ReplayBuffer(capacity=self.replay_capacity)
+        del ctx
+        self._policy = "random_search"
+        self._replay = self._recent_transitions
 
     def _compute_reward(self, ctx) -> float:
         if self._model_template is None or torch is None:
@@ -165,14 +161,16 @@ class SelfGuidedBRLAttack(SandboxAttack):
         if self._prev_state is not None and self._prev_action is not None:
             reward = self._compute_reward(ctx)
             self._ensure_policy(ctx)
-            self._replay.add(
+            self._recent_transitions.append(
+                (
                 self._prev_state,
                 self._prev_action,
                 reward,
                 self._current_state,
-                done=False,
+                )
             )
-            self._policy.train_step(self._replay)
+            if len(self._recent_transitions) > self.replay_capacity:
+                del self._recent_transitions[: len(self._recent_transitions) - self.replay_capacity]
 
     def execute(self, ctx, attacker_action=None) -> List[Weights]:
         if self.selected_attacker_count(ctx) == 0:
@@ -183,10 +181,13 @@ class SelfGuidedBRLAttack(SandboxAttack):
         self._ensure_policy(ctx)
 
         state = self._current_state if self._current_state is not None else self._build_state(ctx)
-        if ctx.round_idx < self.attack_start_round or len(self._replay) < self.td3_batch_size:
+        if ctx.round_idx < self.attack_start_round or len(self._recent_transitions) < self.policy_batch_size:
             action = np.random.uniform(_ACTION_LOW, _ACTION_HIGH).astype(np.float32)
         else:
-            action = self._policy.act(state, noise_scale=self.exploration_noise)
+            best_transition = max(self._recent_transitions, key=lambda transition: transition[2])
+            action = np.asarray(best_transition[1], dtype=np.float32)
+            action = action + np.random.normal(0.0, self.exploration_noise, size=action.shape)
+            action = np.clip(action, _ACTION_LOW, _ACTION_HIGH).astype(np.float32)
 
         self._prev_state = state.copy()
         self._prev_action = action.copy()

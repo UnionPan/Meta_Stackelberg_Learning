@@ -95,6 +95,7 @@ class RoundSummary:
     benign_update_norms: List[float] = field(default_factory=list)
     malicious_update_norms: List[float] = field(default_factory=list)
     malicious_cosines_to_benign: List[float] = field(default_factory=list)
+    attack_metrics: Dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -239,6 +240,7 @@ def build_round_summary(
     backdoor_acc: float,
     round_seconds: float,
     update_stats: RoundUpdateStats,
+    attack_metrics: Optional[Dict[str, float]] = None,
 ) -> RoundSummary:
     """Convert completed runtime state into the public round summary."""
 
@@ -257,6 +259,7 @@ def build_round_summary(
         benign_update_norms=update_stats.benign_update_norms,
         malicious_update_norms=update_stats.malicious_update_norms,
         malicious_cosines_to_benign=update_stats.malicious_cosines_to_benign,
+        attack_metrics=attack_metrics or {},
     )
 
 
@@ -264,7 +267,7 @@ def summaries_to_dict(summaries: List[RoundSummary]) -> Dict[str, List[float]]:
     """Flatten summaries into round-wise scalar series."""
 
     backdoor_acc = [summary.backdoor_acc for summary in summaries]
-    return {
+    series = {
         "clean_loss": [summary.clean_loss for summary in summaries],
         "clean_acc": [summary.clean_acc for summary in summaries],
         "backdoor_acc": backdoor_acc,
@@ -285,6 +288,10 @@ def summaries_to_dict(summaries: List[RoundSummary]) -> Dict[str, List[float]]:
             for summary in summaries
         ],
     }
+    metric_keys = sorted({key for summary in summaries for key in summary.attack_metrics})
+    for key in metric_keys:
+        series[key] = [float(summary.attack_metrics.get(key, 0.0)) for summary in summaries]
+    return series
 
 
 def client_metrics_to_rows(summaries: List[RoundSummary]) -> List[Dict[str, object]]:

@@ -13,6 +13,7 @@ from fl_sandbox.attacks.rl_attacker import (
     RLAttackerConfig,
     SimulatedFLEnv,
 )
+from fl_sandbox.attacks.rl_attacker.action_decoder import decode_action
 from fl_sandbox.defenders import AggregationDefender
 from fl_sandbox.core.fl_runner import MinimalFLRunner, SandboxConfig
 from fl_sandbox.core.runtime import RoundContext, RoundSummary, summaries_to_dict
@@ -121,7 +122,7 @@ class TestRLAttacker(unittest.TestCase):
         self.assertEqual(config.action_dim("multi_krum"), 3)
         self.assertEqual(config.action_dim("trimmed_mean"), 3)
         self.assertEqual(config.action_dim("clipped_median"), 3)
-        decoded = config.decode_action(np.asarray([0.0, 0.0, 0.0], dtype=np.float32), "clipped_median")
+        decoded = decode_action(np.asarray([0.0, 0.0, 0.0], dtype=np.float32), "clipped_median", config)
         self.assertGreater(decoded.gamma_scale, 0.0)
         self.assertGreater(decoded.local_steps, 0)
         self.assertGreater(decoded.lambda_stealth, 0.0)
@@ -146,7 +147,7 @@ class TestRLAttacker(unittest.TestCase):
 
         self.assertGreaterEqual(sim.current_num_attackers, 1)
 
-    def test_gym_wrapper_exposes_dict_observation(self):
+    def test_gym_wrapper_exposes_flat_observation(self):
         model = MNISTClassifier()
         weights = _weights(model)
         images = torch.randn(16, 1, 28, 28)
@@ -167,8 +168,9 @@ class TestRLAttacker(unittest.TestCase):
 
         obs, info = env.reset()
 
-        self.assertIn("pram", obs)
-        self.assertIn("num_attacker", obs)
+        self.assertIsInstance(obs, np.ndarray)
+        self.assertEqual(obs.ndim, 1)
+        self.assertEqual(env.observation_space.shape, obs.shape)
         self.assertEqual(info["defense_type"], "krum")
 
     def test_checkpoint_init_mode_loads_saved_weights(self):

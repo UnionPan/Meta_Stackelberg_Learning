@@ -19,6 +19,7 @@ def _default_attacker_config(attack_type: str) -> SimpleNamespace:
         dba_poison_frac=0.5,
         dba_num_sub_triggers=4,
         attacker_action=(0.0, 0.0, 0.0),
+        rl_algorithm="sac",
         rl_distribution_steps=0,
         rl_attack_start_round=0,
         rl_policy_train_end_round=0,

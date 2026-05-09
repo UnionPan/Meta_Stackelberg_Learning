@@ -73,8 +73,10 @@ The first runnable slice in this folder is:
 - MNIST clean FL
 - standalone `IPM` / `LMP` untargeted attackers
 - standalone `BFL` / `DBA` backdoor attackers
-- paper-style legacy TD3 `RL` attacker preserved under `attacks/rl_attacker/` for Phase 1a; the next phase replaces the hand-written TD3 backend with Tianshou SAC/TD3 trainers
-- minimal single-agent `gymnasium` attacker RL environment
+- adaptive `RL` attacker under `attacks/rl_attacker/`, split into proxy learning,
+  simulation, action decoding, diagnostics, and a Tianshou-backed trainer protocol
+- SAC is the default RL algorithm; Tianshou TD3 is selectable with `--rl_algorithm td3`
+- minimal single-agent `gymnasium` attacker RL environment for simulator training
 - round-wise attack metrics including backdoor accuracy
 - TensorBoard postprocess helpers for clean-vs-attack comparison
 
@@ -100,12 +102,13 @@ python attacker_sandbox/run/run_experiment.py --attack_type ipm --device cuda:0
 ```
 
 For the paper-style untargeted `RL` attacker, the sandbox exposes the main
-online-learning schedule directly from CLI:
+online-learning schedule and algorithm directly from CLI:
 
 ```bash
 python attacker_sandbox/run/run_experiment.py \
   --attack_type rl \
   --defense_type krum \
+  --rl_algorithm sac \
   --rounds 50 \
   --rl_distribution_steps 10 \
   --rl_attack_start_round 10 \

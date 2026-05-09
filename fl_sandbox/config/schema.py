@@ -65,13 +65,14 @@ class AttackerSection:
     dba_poison_frac: float = 0.5
     dba_num_sub_triggers: int = 4
     attacker_action: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    rl_algorithm: str = "sac"
     rl_distribution_steps: int | None = 10
     rl_attack_start_round: int | None = 10
     rl_policy_train_end_round: int | None = 30
     rl_inversion_steps: int = 50
     rl_reconstruction_batch_size: int = 8
-    rl_policy_train_episodes_per_round: int = 1
-    rl_simulator_horizon: int = 8
+    rl_policy_train_episodes_per_round: int = 2
+    rl_simulator_horizon: int = 10
 
 
 @dataclass
@@ -194,6 +195,7 @@ class RunConfig:
             "dba_poison_frac": self.attacker.dba_poison_frac,
             "dba_num_sub_triggers": self.attacker.dba_num_sub_triggers,
             "attacker_action": list(self.attacker.attacker_action),
+            "rl_algorithm": self.attacker.rl_algorithm,
             "krum_attackers": self.defender.krum_attackers,
             "multi_krum_selected": self.defender.multi_krum_selected,
             "clipped_median_norm": self.defender.clipped_median_norm,
@@ -258,6 +260,7 @@ def _set_flat_value(config: RunConfig, key: str, value: Any) -> None:
         "dba_poison_frac": (config.attacker, "dba_poison_frac"),
         "dba_num_sub_triggers": (config.attacker, "dba_num_sub_triggers"),
         "attacker_action": (config.attacker, "attacker_action"),
+        "rl_algorithm": (config.attacker, "rl_algorithm"),
         "krum_attackers": (config.defender, "krum_attackers"),
         "multi_krum_selected": (config.defender, "multi_krum_selected"),
         "clipped_median_norm": (config.defender, "clipped_median_norm"),

@@ -68,11 +68,12 @@ def create_attack(attacker_config) -> Optional[SandboxAttack]:
             poison_frac=attacker_config.dba_poison_frac,
         )
     if attack_type == "rl":
-        from fl_sandbox.attacks.rl_attacker.legacy_td3 import RLAttackerConfig
+        from fl_sandbox.attacks.rl_attacker.config import RLAttackerConfig
 
         return RLAttack(
             default_action=tuple(attacker_config.attacker_action),
             config=RLAttackerConfig(
+                algorithm=getattr(attacker_config, "rl_algorithm", "sac"),
                 distribution_steps=attacker_config.rl_distribution_steps,
                 attack_start_round=attacker_config.rl_attack_start_round,
                 policy_train_end_round=attacker_config.rl_policy_train_end_round,

@@ -168,6 +168,9 @@ class LiveMetricsLogger:
         if self.attack_type != "clean":
             self._writer.add_scalar("attack_only/mean_malicious_norm", mean_malicious_norm, step)
             self._writer.add_scalar("attack_only/mean_malicious_cosine", mean_malicious_cosine, step)
+            for key, value in summary.attack_metrics.items():
+                if isinstance(value, (int, float)) and math.isfinite(float(value)):
+                    self._writer.add_scalar(f"attack_only/{key}", float(value), step)
         self._writer.flush()
         self._write_partial_summary()
 
@@ -313,6 +316,7 @@ def build_payload(
         "dba_poison_frac": args.dba_poison_frac,
         "dba_num_sub_triggers": args.dba_num_sub_triggers,
         "attacker_action": list(args.attacker_action),
+        "rl_algorithm": args.rl_algorithm,
         "defense_type": config.defense_type,
         "krum_attackers": config.krum_attackers,
         "multi_krum_selected": config.multi_krum_selected,
@@ -353,6 +357,7 @@ def build_payload(
                 "mean_benign_norm": series["mean_benign_norm"][summary.round_idx - 1],
                 "mean_malicious_norm": series["mean_malicious_norm"][summary.round_idx - 1],
                 "mean_malicious_cosine": series["mean_malicious_cosine"][summary.round_idx - 1],
+                "attack_metrics": summary.attack_metrics,
                 "evaluated": not math.isnan(summary.clean_acc),
             }
             for summary in summaries

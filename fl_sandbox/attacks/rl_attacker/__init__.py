@@ -1,45 +1,45 @@
-"""Adaptive RL attacker package.
-
-Phase 1a keeps the existing TD3 implementation in ``legacy_td3`` while the
-public package path moves to ``fl_sandbox.attacks.rl_attacker``.
-"""
+"""Adaptive RL attacker package."""
 
 from importlib import import_module
 
 __all__ = [
     "AttackerPolicyGymEnv",
-    "AttackerPolicyParallelEnv",
     "AttackerRLEnv",
+    "AttackParameters",
     "ConvDenoiser",
     "DecodedAction",
     "GradientDistributionLearner",
-    "PaperRLAttacker",
     "ProxyDatasetBuffer",
     "RLAttack",
     "RLAttackerConfig",
-    "ReplayBuffer",
+    "RLSim2RealDiagnostics",
     "SimulatedFLEnv",
-    "TD3Agent",
+    "TianshouSACTrainer",
+    "TianshouTD3Trainer",
+    "build_trainer",
+    "decode_action",
+    "deploy_guard_allows",
     "local_search_update",
 ]
 
-_LEGACY_TD3_MODULE = "fl_sandbox.attacks.rl_attacker.legacy_td3"
-
 _EXPORTS = {
     "RLAttack": ("fl_sandbox.attacks.rl_attacker.attack", "RLAttack"),
-    "AttackerRLEnv": ("fl_sandbox.attacks.rl_attacker.env", "AttackerRLEnv"),
-    "AttackerPolicyGymEnv": ("fl_sandbox.attacks.rl_attacker.pz_env", "AttackerPolicyGymEnv"),
-    "AttackerPolicyParallelEnv": ("fl_sandbox.attacks.rl_attacker.pz_env", "AttackerPolicyParallelEnv"),
-    "ConvDenoiser": (_LEGACY_TD3_MODULE, "ConvDenoiser"),
-    "DecodedAction": (_LEGACY_TD3_MODULE, "DecodedAction"),
-    "GradientDistributionLearner": (_LEGACY_TD3_MODULE, "GradientDistributionLearner"),
-    "PaperRLAttacker": (_LEGACY_TD3_MODULE, "PaperRLAttacker"),
-    "ProxyDatasetBuffer": (_LEGACY_TD3_MODULE, "ProxyDatasetBuffer"),
-    "ReplayBuffer": (_LEGACY_TD3_MODULE, "ReplayBuffer"),
-    "RLAttackerConfig": (_LEGACY_TD3_MODULE, "RLAttackerConfig"),
-    "SimulatedFLEnv": (_LEGACY_TD3_MODULE, "SimulatedFLEnv"),
-    "TD3Agent": (_LEGACY_TD3_MODULE, "TD3Agent"),
-    "local_search_update": (_LEGACY_TD3_MODULE, "local_search_update"),
+    "AttackerRLEnv": ("fl_sandbox.attacks.rl_attacker.simulator", "AttackerRLEnv"),
+    "AttackerPolicyGymEnv": ("fl_sandbox.attacks.rl_attacker.simulator", "AttackerPolicyGymEnv"),
+    "AttackParameters": ("fl_sandbox.attacks.rl_attacker.action_decoder", "AttackParameters"),
+    "ConvDenoiser": ("fl_sandbox.attacks.rl_attacker.proxy", "ConvDenoiser"),
+    "DecodedAction": ("fl_sandbox.attacks.rl_attacker.action_decoder", "DecodedAction"),
+    "GradientDistributionLearner": ("fl_sandbox.attacks.rl_attacker.proxy", "GradientDistributionLearner"),
+    "ProxyDatasetBuffer": ("fl_sandbox.attacks.rl_attacker.proxy", "ProxyDatasetBuffer"),
+    "RLAttackerConfig": ("fl_sandbox.attacks.rl_attacker.config", "RLAttackerConfig"),
+    "RLSim2RealDiagnostics": ("fl_sandbox.attacks.rl_attacker.diagnostics", "RLSim2RealDiagnostics"),
+    "SimulatedFLEnv": ("fl_sandbox.attacks.rl_attacker.simulator", "SimulatedFLEnv"),
+    "TianshouSACTrainer": ("fl_sandbox.attacks.rl_attacker.tianshou_backend", "TianshouSACTrainer"),
+    "TianshouTD3Trainer": ("fl_sandbox.attacks.rl_attacker.tianshou_backend", "TianshouTD3Trainer"),
+    "build_trainer": ("fl_sandbox.attacks.rl_attacker.trainer", "build_trainer"),
+    "decode_action": ("fl_sandbox.attacks.rl_attacker.action_decoder", "decode_action"),
+    "deploy_guard_allows": ("fl_sandbox.attacks.rl_attacker.diagnostics", "deploy_guard_allows"),
+    "local_search_update": ("fl_sandbox.attacks.rl_attacker.simulator", "local_search_update"),
 }
 
 
