@@ -13,8 +13,7 @@ than the lightweight local benchmarks:
   - attack starts at round 101
   - policy learning ends at round 400
 
-To run the newer stealth-aware attacker on the same paper-aligned FL setup:
-    python fl_sandbox/scripts/run_rlfl_benchmark.py --attack_type rl2
+The default ``rl`` attacker is the latest stealth-aware TD3 implementation.
 """
 
 from __future__ import annotations
