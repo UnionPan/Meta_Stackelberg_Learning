@@ -4,7 +4,8 @@ Main re-exports in this file:
 - ``SandboxDefender``
 - ``FedAvgDefender`` / ``KrumDefender`` / ``MultiKrumDefender``
 - ``MedianDefender`` / ``ClippedMedianDefender``
-- ``GeometricMedianDefender`` / ``TrimmedMeanDefender`` / ``FLTrustDefender``
+- ``GeometricMedianDefender`` / ``TrimmedMeanDefender`` /
+  ``PaperNormTrimmedMeanDefender`` / ``FLTrustDefender``
 - ``AggregationDefender``
 - ``DEFENSE_CHOICES``
 - ``create_defender``
@@ -21,6 +22,7 @@ from .aggregation import (
     KrumDefender,
     MedianDefender,
     MultiKrumDefender,
+    PaperNormTrimmedMeanDefender,
     TrimmedMeanDefender,
 )
 from .aggregation_runtime import (
@@ -67,6 +69,7 @@ __all__ = [
     "KrumDefender",
     "MedianDefender",
     "MultiKrumDefender",
+    "PaperNormTrimmedMeanDefender",
     "SandboxDefender",
     "TrimmedMeanDefender",
     "build_defender_config_kwargs",

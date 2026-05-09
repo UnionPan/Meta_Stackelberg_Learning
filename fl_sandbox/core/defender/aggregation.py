@@ -94,6 +94,21 @@ class TrimmedMeanDefender(SandboxDefender):
 
 
 @dataclass
+class PaperNormTrimmedMeanDefender(SandboxDefender):
+    clipped_median_norm: float = 2.0
+    trimmed_mean_ratio: float = 0.2
+    name: str = "PaperNormTrimmedMean"
+    defense_type: str = "paper_norm_trimmed_mean"
+
+    def build_config_kwargs(self) -> dict[str, Any]:
+        return {
+            "defense_type": self.defense_type,
+            "clipped_median_norm": self.clipped_median_norm,
+            "trimmed_mean_ratio": self.trimmed_mean_ratio,
+        }
+
+
+@dataclass
 class FLTrustDefender(SandboxDefender):
     fltrust_root_size: int = 100
     name: str = "FLTrust"

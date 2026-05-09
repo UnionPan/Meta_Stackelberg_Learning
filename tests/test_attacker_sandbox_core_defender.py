@@ -1,13 +1,15 @@
 import unittest
 
-from fl_sandbox.config.schema import DefenderSection
+from fl_sandbox.config.schema import DefenderSection, RunConfig
 from fl_sandbox.core.defender import (
     DEFENSE_CHOICES,
+    PaperNormTrimmedMeanDefender,
     SandboxDefender,
     TrimmedMeanDefender,
     build_defender_config_kwargs,
     create_defender,
 )
+from fl_sandbox.core.experiment_builders import build_config
 
 
 class TestAttackerSandboxCoreDefender(unittest.TestCase):
@@ -58,6 +60,39 @@ class TestAttackerSandboxCoreDefender(unittest.TestCase):
         self.assertIsInstance(defender, SandboxDefender)
         self.assertIsInstance(defender, TrimmedMeanDefender)
         self.assertEqual(defender.build_config_kwargs(), {"defense_type": "trimmed_mean", "trimmed_mean_ratio": 0.3})
+
+    def test_paper_norm_trimmed_mean_builds_from_schema(self):
+        defender = create_defender(
+            DefenderSection(
+                type="paper_norm_trimmed_mean",
+                clipped_median_norm=1.25,
+                trimmed_mean_ratio=0.15,
+            )
+        )
+
+        self.assertIsInstance(defender, SandboxDefender)
+        self.assertIsInstance(defender, PaperNormTrimmedMeanDefender)
+        self.assertEqual(
+            defender.build_config_kwargs(),
+            {
+                "defense_type": "paper_norm_trimmed_mean",
+                "clipped_median_norm": 1.25,
+                "trimmed_mean_ratio": 0.15,
+            },
+        )
+
+        config = build_config(
+            RunConfig.from_flat_dict(
+                {
+                    "defense_type": "paper_norm_trimmed_mean",
+                    "clipped_median_norm": 1.25,
+                    "trimmed_mean_ratio": 0.15,
+                }
+            )
+        )
+        self.assertEqual(config.defense_type, "paper_norm_trimmed_mean")
+        self.assertEqual(config.clipped_median_norm, 1.25)
+        self.assertEqual(config.trimmed_mean_ratio, 0.15)
 
 
 if __name__ == "__main__":

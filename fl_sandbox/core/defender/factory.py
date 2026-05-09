@@ -12,6 +12,7 @@ from .aggregation import (
     KrumDefender,
     MedianDefender,
     MultiKrumDefender,
+    PaperNormTrimmedMeanDefender,
     TrimmedMeanDefender,
 )
 from .aggregation_runtime import DEFENSE_CHOICES
@@ -48,6 +49,11 @@ def create_defender(defender_config: DefenderSection) -> SandboxDefender:
         return GeometricMedianDefender(geometric_median_iters=defender_config.geometric_median_iters)
     if defense_type == "trimmed_mean":
         return TrimmedMeanDefender(trimmed_mean_ratio=defender_config.trimmed_mean_ratio)
+    if defense_type == "paper_norm_trimmed_mean":
+        return PaperNormTrimmedMeanDefender(
+            clipped_median_norm=defender_config.clipped_median_norm,
+            trimmed_mean_ratio=defender_config.trimmed_mean_ratio,
+        )
     if defense_type == "fltrust":
         return FLTrustDefender(fltrust_root_size=defender_config.fltrust_root_size)
     raise AssertionError(f"Unreachable defense type branch: {defense_type}")
