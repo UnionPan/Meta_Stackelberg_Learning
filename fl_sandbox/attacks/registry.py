@@ -4,13 +4,35 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fl_sandbox.attacks.backdoor import BFLAttack, BRLAttack, DBAAttack, SelfGuidedBRLAttack
+from fl_sandbox.attacks.alie import ALIEAttack
 from fl_sandbox.attacks.base import SandboxAttack
-from fl_sandbox.attacks.vector import ALIEAttack, GaussianAttack, IPMAttack, LMPAttack, SignFlipAttack
-from fl_sandbox.attacks.adaptive import RLAttack, RLAttackV2
+from fl_sandbox.attacks.bfl import BFLAttack
+from fl_sandbox.attacks.brl import BRLAttack, SelfGuidedBRLAttack
+from fl_sandbox.attacks.clipped_median_geometry_search import ClippedMedianGeometrySearchAttack
+from fl_sandbox.attacks.dba import DBAAttack
+from fl_sandbox.attacks.gaussian import GaussianAttack
+from fl_sandbox.attacks.ipm import IPMAttack
+from fl_sandbox.attacks.krum_geometry_search import KrumGeometrySearchAttack
+from fl_sandbox.attacks.lmp import LMPAttack
+from fl_sandbox.attacks.rl_attacker import RLAttack
+from fl_sandbox.attacks.signflip import SignFlipAttack
 
 
-ATTACK_CHOICES = ("clean", "ipm", "lmp", "alie", "signflip", "gaussian", "bfl", "dba", "rl", "rl2", "brl", "sgbrl")
+ATTACK_CHOICES = (
+    "clean",
+    "ipm",
+    "lmp",
+    "alie",
+    "signflip",
+    "gaussian",
+    "bfl",
+    "dba",
+    "rl",
+    "krum_geometry_search",
+    "clipped_median_geometry_search",
+    "brl",
+    "sgbrl",
+)
 
 
 def supported_attack_types() -> tuple[str, ...]:
@@ -46,24 +68,11 @@ def create_attack(attacker_config) -> Optional[SandboxAttack]:
             poison_frac=attacker_config.dba_poison_frac,
         )
     if attack_type == "rl":
-        from fl_sandbox.attacks.adaptive.td3_attacker import RLAttackerConfig
+        from fl_sandbox.attacks.rl_attacker.legacy_td3 import RLAttackerConfig
+
         return RLAttack(
             default_action=tuple(attacker_config.attacker_action),
             config=RLAttackerConfig(
-                distribution_steps=attacker_config.rl_distribution_steps,
-                attack_start_round=attacker_config.rl_attack_start_round,
-                policy_train_end_round=attacker_config.rl_policy_train_end_round,
-                inversion_steps=attacker_config.rl_inversion_steps,
-                reconstruction_batch_size=attacker_config.rl_reconstruction_batch_size,
-                episodes_per_observation=attacker_config.rl_policy_train_episodes_per_round,
-                simulator_horizon=attacker_config.rl_simulator_horizon,
-            ),
-        )
-    if attack_type == "rl2":
-        from fl_sandbox.attacks.adaptive.td3_attacker_v2 import RLAttackerConfigV2
-        return RLAttackV2(
-            default_action=tuple(attacker_config.attacker_action),
-            config=RLAttackerConfigV2(
                 distribution_steps=attacker_config.rl_distribution_steps,
                 attack_start_round=attacker_config.rl_attack_start_round,
                 policy_train_end_round=attacker_config.rl_policy_train_end_round,
@@ -73,6 +82,14 @@ def create_attack(attacker_config) -> Optional[SandboxAttack]:
                 simulator_horizon=max(10, attacker_config.rl_simulator_horizon),
             ),
         )
+    if attack_type == "krum_geometry_search":
+        from fl_sandbox.attacks.krum_geometry_search import KrumGeometrySearchConfig
+
+        return KrumGeometrySearchAttack(config=KrumGeometrySearchConfig())
+    if attack_type == "clipped_median_geometry_search":
+        from fl_sandbox.attacks.clipped_median_geometry_search import ClippedMedianGeometrySearchConfig
+
+        return ClippedMedianGeometrySearchAttack(config=ClippedMedianGeometrySearchConfig())
     if attack_type == "brl":
         return BRLAttack(default_action=tuple(attacker_config.attacker_action))
     if attack_type == "sgbrl":
