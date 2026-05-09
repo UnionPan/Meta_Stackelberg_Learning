@@ -1,7 +1,7 @@
 import unittest
 
 from fl_sandbox.config.schema import DefenderSection, RunConfig
-from fl_sandbox.core.defender import (
+from fl_sandbox.defenders import (
     DEFENSE_CHOICES,
     PaperNormTrimmedMeanDefender,
     SandboxDefender,

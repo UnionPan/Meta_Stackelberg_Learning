@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 
-from fl_sandbox.core.defender import AggregationDefender, fltrust_aggregate, median_aggregate
+from fl_sandbox.defenders import AggregationDefender, fltrust_aggregate, median_aggregate
 
 
 def _weights(value: float):

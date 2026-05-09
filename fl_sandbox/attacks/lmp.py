@@ -27,7 +27,7 @@ def craft_lmp(
     if not temp_weights_lis:
         return old_weights
 
-    from fl_sandbox.core.defender import median_aggregate
+    from fl_sandbox.aggregators import median_aggregate
 
     aggregate_weight = median_aggregate(old_weights, temp_weights_lis)
     sign = [np.sign(aggregate - old) for aggregate, old in zip(aggregate_weight, old_weights)]

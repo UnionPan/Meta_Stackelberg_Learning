@@ -13,7 +13,7 @@ from fl_sandbox.attacks.rl_attacker import (
     RLAttackerConfig,
     SimulatedFLEnv,
 )
-from fl_sandbox.core.defender import AggregationDefender
+from fl_sandbox.defenders import AggregationDefender
 from fl_sandbox.core.fl_runner import MinimalFLRunner, SandboxConfig
 from fl_sandbox.core.runtime import RoundContext, RoundSummary, summaries_to_dict
 from src.models.cnn import MNISTClassifier

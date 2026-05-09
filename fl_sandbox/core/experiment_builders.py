@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fl_sandbox.config.schema import AttackerSection, DataSection, DefenderSection, FLSection, RunConfig
 from fl_sandbox.attacks import ATTACK_CHOICES
-from .defender import build_defender_config_kwargs
+from fl_sandbox.defenders import build_defender_config_kwargs
 
 
 def build_run_name(
