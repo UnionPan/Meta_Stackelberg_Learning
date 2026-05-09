@@ -89,20 +89,26 @@ def test_no_old_attacker_import_paths_remain_in_python_sources():
     allowed_files = {
         Path("tests/test_fl_sandbox_attacks_public_api.py"),
     }
+    source_roots = (
+        PROJECT_ROOT / "fl_sandbox",
+        PROJECT_ROOT / "meta_sg",
+        PROJECT_ROOT / "tests",
+    )
 
     offenders: list[tuple[str, str]] = []
-    for path in PROJECT_ROOT.rglob("*.py"):
-        rel_path = path.relative_to(PROJECT_ROOT)
-        if rel_path in allowed_files or "__pycache__" in rel_path.parts:
-            continue
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                for alias in node.names:
-                    if alias.name.startswith(banned_prefixes):
-                        offenders.append((str(rel_path), alias.name))
-            elif isinstance(node, ast.ImportFrom) and node.module:
-                if node.module.startswith(banned_prefixes):
-                    offenders.append((str(rel_path), node.module))
+    for source_root in source_roots:
+        for path in source_root.rglob("*.py"):
+            rel_path = path.relative_to(PROJECT_ROOT)
+            if rel_path in allowed_files or "__pycache__" in rel_path.parts:
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        if alias.name.startswith(banned_prefixes):
+                            offenders.append((str(rel_path), alias.name))
+                elif isinstance(node, ast.ImportFrom) and node.module:
+                    if node.module.startswith(banned_prefixes):
+                        offenders.append((str(rel_path), node.module))
 
     assert offenders == []

@@ -11,7 +11,6 @@ Attack types tested:
   - bfl       : Backdoor FL (targeted, fixed)
   - dba       : Distributed Backdoor Attack (targeted, fixed)
   - rl        : TD3-based RL attacker (untargeted, adaptive)
-  - rl2       : TD3-based RL attacker with stealth-aware robust-defense actions
   - brl       : externally-actioned adaptive backdoor attack
   - sgbrl     : self-guided RL backdoor attack
 

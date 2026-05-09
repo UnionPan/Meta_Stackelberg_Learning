@@ -525,7 +525,7 @@ class SimulatedFLEnv:
         return _capture_weights(model)
 
     def _simulate_malicious_weight(self, old_weights: Weights, action: np.ndarray) -> Weights:
-        from fl_sandbox.attacks.vector import craft_ipm
+        from fl_sandbox.attacks import craft_ipm
         action_params = self.config.decode_action(action, self.defender.defense_type)
         if self.defender.defense_type == "fltrust":
             crafted = local_search_update(
@@ -884,7 +884,7 @@ class PaperRLAttacker:
         return [[layer.copy() for layer in crafted] for _ in range(num_attackers)]
 
     def _craft_malicious_weights(self, old_weights: Weights, decoded: DecodedAction, defense_type: str) -> Weights:
-        from fl_sandbox.attacks.vector import craft_ipm
+        from fl_sandbox.attacks import craft_ipm
         if defense_type.lower() == "fltrust":
             return local_search_update(
                 model_template=self.model_template,
