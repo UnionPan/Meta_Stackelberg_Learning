@@ -1,5 +1,5 @@
-"""Compatibility shim — implementation lives in fl_sandbox.attacks.backdoor."""
+"""Compatibility shim for backdoor attacks."""
 
-from fl_sandbox.attacks.backdoor import BFLAttack, BRLAttack, DBAAttack, SelfGuidedBRLAttack
+from fl_sandbox.attacks import BFLAttack, BRLAttack, DBAAttack, SelfGuidedBRLAttack
 
 __all__ = ["BFLAttack", "BRLAttack", "DBAAttack", "SelfGuidedBRLAttack"]

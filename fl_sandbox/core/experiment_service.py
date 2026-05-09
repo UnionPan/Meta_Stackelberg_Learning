@@ -472,7 +472,7 @@ def execute_experiment(
 
     runner = MinimalFLRunner(config)
     timer = ExperimentTimer.start()
-    from fl_sandbox.core.attacks.rl import RLAttack
+    from fl_sandbox.attacks import RLAttack
     # For RL attacks let the internal policy pick the action (pass None).  For all other
     # parameterised attacks (e.g. BRL) pass the configured default action so it is used
     # as a fallback when no per-round override is provided.

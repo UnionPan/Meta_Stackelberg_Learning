@@ -31,7 +31,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from fl_sandbox.config import RunConfig, config_to_namespace
-from fl_sandbox.core.attacks import ATTACK_CHOICES
+from fl_sandbox.attacks import ATTACK_CHOICES
 from fl_sandbox.core.experiment_builders import build_run_name
 from fl_sandbox.core.experiment_service import (
     execute_experiment,
@@ -89,17 +89,6 @@ def _attack_overrides(scale: float, rounds: int) -> dict[str, dict]:
             rl_policy_train_episodes_per_round=2,
             rl_simulator_horizon=10,
         ),
-        "rl2": dict(
-            protocol="rlfl",
-            warmup_rounds=warmup,
-            rl_distribution_steps=0,
-            rl_attack_start_round=0,
-            rl_policy_train_end_round=rounds,
-            rl_inversion_steps=inversion_steps,
-            rl_reconstruction_batch_size=8,
-            rl_policy_train_episodes_per_round=2,
-            rl_simulator_horizon=10,
-        ),
     }
 
 
@@ -130,7 +119,7 @@ def _make_args(
         cfg["max_client_samples_per_client"] = max_client_samples_per_client
     if max_eval_samples is not None:
         cfg["max_eval_samples"] = max_eval_samples
-    if attack_type in {"rl", "rl2"}:
+    if attack_type == "rl":
         if rl_episodes is not None:
             cfg["rl_policy_train_episodes_per_round"] = rl_episodes
         if rl_horizon is not None:

@@ -1,4 +1,4 @@
-"""Adaptive RL-based attacks: RLAttack (TD3 policy) and RLAttackV2 (stealth-craft)."""
+"""Adaptive RL-based attacks."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ class RLAttack(SandboxAttack):
     attack_type: str = "rl"
 
     def __post_init__(self) -> None:
-        from fl_sandbox.attacks.adaptive.td3_attacker import PaperRLAttacker
+        from fl_sandbox.attacks.rl_attacker.legacy_td3 import PaperRLAttacker
         self._attacker = PaperRLAttacker(self.config)
 
     def observe_round(self, ctx) -> None:
@@ -29,17 +29,16 @@ class RLAttack(SandboxAttack):
 
 
 @dataclass
-class RLAttackV2(SandboxAttack):
-    """V2 RL attacker: stealth-craft + bypass reward + faster policy learning."""
+class KrumGeometrySearchAttackWrapper(SandboxAttack):
+    """Krum-aware non-RL geometry-search attacker."""
 
-    default_action: tuple[float, float, float] = (0.0, 0.0, 0.0)
     config: Optional[object] = None
-    name: str = "RLv2"
-    attack_type: str = "rl2"
+    name: str = "KrumGeometrySearch"
+    attack_type: str = "krum_geometry_search"
 
     def __post_init__(self) -> None:
-        from fl_sandbox.attacks.adaptive.td3_attacker_v2 import PaperRLAttackerV2
-        self._attacker = PaperRLAttackerV2(self.config)
+        from fl_sandbox.attacks.krum_geometry_search import KrumGeometrySearchAttack
+        self._attacker = KrumGeometrySearchAttack(self.config)
 
     def observe_round(self, ctx) -> None:
         self._attacker.observe_round(ctx)
@@ -47,5 +46,34 @@ class RLAttackV2(SandboxAttack):
     def execute(self, ctx, attacker_action=None):
         return self._attacker.execute(ctx, attacker_action=attacker_action)
 
+    def after_round(self, **kwargs):
+        return self._attacker.after_round(**kwargs)
 
-__all__ = ["RLAttack", "RLAttackV2"]
+
+@dataclass
+class ClippedMedianGeometrySearchAttackWrapper(SandboxAttack):
+    """Clipped-median-aware non-RL geometry-search attacker."""
+
+    config: Optional[object] = None
+    name: str = "ClippedMedianGeometrySearch"
+    attack_type: str = "clipped_median_geometry_search"
+
+    def __post_init__(self) -> None:
+        from fl_sandbox.attacks.clipped_median_geometry_search import ClippedMedianGeometrySearchAttack
+        self._attacker = ClippedMedianGeometrySearchAttack(self.config)
+
+    def observe_round(self, ctx) -> None:
+        self._attacker.observe_round(ctx)
+
+    def execute(self, ctx, attacker_action=None):
+        return self._attacker.execute(ctx, attacker_action=attacker_action)
+
+    def after_round(self, **kwargs):
+        return self._attacker.after_round(**kwargs)
+
+
+__all__ = [
+    "ClippedMedianGeometrySearchAttackWrapper",
+    "KrumGeometrySearchAttackWrapper",
+    "RLAttack",
+]

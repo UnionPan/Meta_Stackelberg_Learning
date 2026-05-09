@@ -1,6 +1,6 @@
-"""Compatibility shim — implementation lives in fl_sandbox.attacks.vector."""
+"""Compatibility shim for vector attacks."""
 
-from fl_sandbox.attacks.vector import (
+from fl_sandbox.attacks import (
     ALIEAttack,
     GaussianAttack,
     IPMAttack,

@@ -1,6 +1,6 @@
-"""Compatibility shim — implementation lives in fl_sandbox.attacks.adaptive.td3_attacker."""
+"""Compatibility shim for legacy TD3 attacker exports."""
 
-from fl_sandbox.attacks.adaptive.td3_attacker import (
+from fl_sandbox.attacks.rl_attacker.legacy_td3 import (
     Actor,
     Critic,
     ConvDenoiser,

@@ -37,7 +37,7 @@ except ImportError:  # pragma: no cover
         metadata: dict[str, Any] = {}
 
 if TYPE_CHECKING:
-    from fl_sandbox.attacks.adaptive.td3_attacker import RLAttackerConfig, SimulatedFLEnv
+    from fl_sandbox.attacks.rl_attacker.legacy_td3 import RLAttackerConfig, SimulatedFLEnv
 
 
 class AttackerPolicyParallelEnv(ParallelEnv):

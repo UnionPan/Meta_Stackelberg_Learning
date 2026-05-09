@@ -10,7 +10,7 @@ from unittest.mock import patch
 import numpy as np
 
 from fl_sandbox.core.batch_runner import BatchRunRequest, clone_args
-from fl_sandbox.core.attacks.poisoning import craft_lmp
+from fl_sandbox.attacks import craft_lmp
 from fl_sandbox.core.experiment_builders import (
     build_attack,
     build_config,

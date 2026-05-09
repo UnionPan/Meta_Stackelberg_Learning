@@ -157,7 +157,7 @@ class SelfGuidedBRLAttack(SandboxAttack):
     def _ensure_policy(self, ctx) -> None:
         if self._policy is not None:
             return
-        from fl_sandbox.attacks.adaptive.td3_attacker import RLAttackerConfig, ReplayBuffer, TD3Agent
+        from fl_sandbox.attacks.rl_attacker.legacy_td3 import RLAttackerConfig, ReplayBuffer, TD3Agent
         state_dim = self._state_dim(ctx)
         cfg = RLAttackerConfig(
             policy_lr=self.policy_lr,

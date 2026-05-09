@@ -931,7 +931,7 @@ class PaperRLAttacker:
             self.policy = TD3Agent(state_dim, low, high, self.config, self.device)
         if self.latest_policy_weights is None:
             return
-        from fl_sandbox.attacks.adaptive.pz_env import AttackerPolicyParallelEnv
+        from fl_sandbox.attacks.rl_attacker.pz_env import AttackerPolicyParallelEnv
         sim_env = SimulatedFLEnv(
             model_template=self.model_template,
             proxy_buffer=self.distribution_learner.buffer,

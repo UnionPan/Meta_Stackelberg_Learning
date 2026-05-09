@@ -1,5 +1,5 @@
-"""Compatibility shim — implementation lives in fl_sandbox.attacks.adaptive.pz_env."""
+"""Compatibility shim for PettingZoo-style attacker environments."""
 
-from fl_sandbox.attacks.adaptive.pz_env import AttackerPolicyGymEnv, AttackerPolicyParallelEnv
+from fl_sandbox.attacks.rl_attacker.pz_env import AttackerPolicyGymEnv, AttackerPolicyParallelEnv
 
 __all__ = ["AttackerPolicyGymEnv", "AttackerPolicyParallelEnv"]

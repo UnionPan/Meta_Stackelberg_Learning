@@ -42,7 +42,7 @@ from fl_sandbox.attacks.base import SandboxAttack
 from fl_sandbox.attacks.registry import create_attack, supported_attack_types
 from fl_sandbox.federation.runner import MinimalFLRunner, SandboxConfig
 from fl_sandbox.core.runtime import RoundSummary
-from fl_sandbox.attacks.adaptive.td3_attacker import RLAttackerConfig
+from fl_sandbox.attacks.rl_attacker.legacy_td3 import RLAttackerConfig
 
 BACKDOOR_ATTACKS = {"bfl", "dba", "brl"}
 

@@ -1,5 +1,5 @@
-"""Compatibility shim — implementation lives in fl_sandbox.attacks.adaptive.env."""
+"""Compatibility shim for the RL attacker environment."""
 
-from fl_sandbox.attacks.adaptive.env import AttackerRLEnv
+from fl_sandbox.attacks.rl_attacker.env import AttackerRLEnv
 
 __all__ = ["AttackerRLEnv"]

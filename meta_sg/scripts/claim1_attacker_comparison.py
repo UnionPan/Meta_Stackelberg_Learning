@@ -38,12 +38,17 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from fl_sandbox.attacks.adaptive import RLAttack, RLAttackV2
-from fl_sandbox.attacks.adaptive.td3_attacker import RLAttackerConfig
-from fl_sandbox.attacks.adaptive.td3_attacker_v2 import RLAttackerConfigV2
-from fl_sandbox.attacks.backdoor import BFLAttack, BRLAttack, DBAAttack, SelfGuidedBRLAttack
+from fl_sandbox.attacks import (
+    BFLAttack,
+    BRLAttack,
+    DBAAttack,
+    IPMAttack,
+    LMPAttack,
+    RLAttack,
+    SelfGuidedBRLAttack,
+)
 from fl_sandbox.attacks.base import SandboxAttack
-from fl_sandbox.attacks.vector import IPMAttack, LMPAttack
+from fl_sandbox.attacks.rl_attacker.legacy_td3 import RLAttackerConfig
 from fl_sandbox.federation.runner import MinimalFLRunner, SandboxConfig
 
 
@@ -126,15 +131,6 @@ def build_attacks(config: SandboxConfig) -> Dict[str, Optional[SandboxAttack]]:
         simulator_horizon=config.rl_simulator_horizon,
         episodes_per_observation=config.rl_policy_train_episodes_per_round,
     )
-    rl2_cfg = RLAttackerConfigV2(
-        attack_start_round=config.rl_attack_start_round,
-        policy_train_end_round=config.rl_policy_train_end_round,
-        distribution_steps=config.rl_distribution_steps,
-        inversion_steps=config.rl_inversion_steps,
-        reconstruction_batch_size=config.rl_reconstruction_batch_size,
-        simulator_horizon=config.rl_simulator_horizon,
-        episodes_per_observation=max(2, config.rl_policy_train_episodes_per_round),
-    )
     return {
         "clean": None,
         "ipm":   IPMAttack(scale=2.0),
@@ -142,7 +138,6 @@ def build_attacks(config: SandboxConfig) -> Dict[str, Optional[SandboxAttack]]:
         "bfl":   BFLAttack(poison_frac=1.0),
         "dba":   DBAAttack(num_sub_triggers=4, poison_frac=0.5),
         "rl":    RLAttack(config=rl_cfg),
-        "rl2":   RLAttackV2(config=rl2_cfg),
         "brl":   BRLAttack(),
         "sgbrl": SelfGuidedBRLAttack(),
     }
@@ -208,7 +203,7 @@ def print_summary(results: Dict[str, ConditionResult], defense: str) -> None:
 
     for name, r in results.items():
         marker = ""
-        if name in {"rl", "rl2"}:
+        if name == "rl":
             marker = " *"
         elif name == "clean":
             marker = " (baseline)"
@@ -221,12 +216,12 @@ def print_summary(results: Dict[str, ConditionResult], defense: str) -> None:
         )
 
     print("=" * W)
-    print("  * RL/RL2 are adaptive attackers. Lower clean_acc = more effective untargeted attack.")
+    print("  * RL is an adaptive attacker. Lower clean_acc = more effective untargeted attack.")
     print("    Higher backdoor_acc = more effective targeted attack.")
 
     if not np.isnan(baseline_final):
         untargeted_fixed = ["ipm", "lmp"]
-        adaptive_untargeted = ["rl", "rl2"]
+        adaptive_untargeted = ["rl"]
         fixed_drops = {
             name: baseline_final - results[name].final_clean_acc
             for name in untargeted_fixed
@@ -249,7 +244,7 @@ def print_summary(results: Dict[str, ConditionResult], defense: str) -> None:
                     print(f"  => {best_adaptive_name} is MORE effective than best fixed untargeted attack. Claim 1 SUPPORTED.")
                 else:
                     print("  => Adaptive drop not larger than fixed untargeted attacks in this run.")
-                    print("     (Try more rounds, RL2, or a statistics-based defense such as krum/trimmed_mean.)")
+                    print("     (Try more rounds or a statistics-based defense such as krum/trimmed_mean.)")
 
     targeted_fixed = ["bfl", "dba"]
     adaptive_targeted = ["brl", "sgbrl"]
@@ -297,7 +292,7 @@ def main() -> None:
                         help="fixed defense applied to all conditions")
     parser.add_argument("--seed",    type=int, default=42)
     parser.add_argument("--out-dir", default="runs/claim1")
-    parser.add_argument("--attacks", default="clean,ipm,lmp,rl2",
+    parser.add_argument("--attacks", default="clean,ipm,lmp,rl",
                         help="comma-separated list of attack types to run")
     args = parser.parse_args()
 

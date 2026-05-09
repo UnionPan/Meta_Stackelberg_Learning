@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from fl_sandbox.config.schema import AttackerSection, DataSection, DefenderSection, FLSection, RunConfig
-from fl_sandbox.core.attacks import ATTACK_CHOICES
+from fl_sandbox.attacks import ATTACK_CHOICES
 from .defender import build_defender_config_kwargs
 
 
@@ -47,7 +47,7 @@ def default_tb_dir(attacker: AttackerSection, defender: DefenderSection, data: D
 
 
 def build_attack(attacker: AttackerSection):
-    from fl_sandbox.core.attacks import create_attack
+    from fl_sandbox.attacks import create_attack
 
     return create_attack(attacker)
 

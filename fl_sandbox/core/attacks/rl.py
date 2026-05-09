@@ -1,5 +1,5 @@
-"""Compatibility shim — implementation lives in fl_sandbox.attacks.adaptive."""
+"""Compatibility shim for the public attacks package."""
 
-from fl_sandbox.attacks.adaptive import RLAttack, RLAttackV2
+from fl_sandbox.attacks import RLAttack
 
-__all__ = ["RLAttack", "RLAttackV2"]
+__all__ = ["RLAttack"]
