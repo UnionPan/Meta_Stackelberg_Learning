@@ -1,14 +1,14 @@
-"""SAC trainer entry point backed by Tianshou infrastructure."""
+"""PPO trainer entry point for the Path-B hybrid action policy."""
 
 from __future__ import annotations
 
 from fl_sandbox.attacks.rl_attacker.tianshou_backend.common import BaseTianshouTrainer
 
 
-class TianshouSACTrainer(BaseTianshouTrainer):
-    algorithm_name = "sac"
+class TianshouPPOTrainer(BaseTianshouTrainer):
+    algorithm_name = "ppo"
 
     def diagnostics(self) -> dict[str, float]:
         data = super().diagnostics()
-        data["trainer_entropy"] = 0.0
+        data["trainer_entropy_coef"] = float(self.config.ppo_entropy_coef)
         return data

@@ -16,6 +16,7 @@ class ProxyDatasetBuffer:
         self._samples: deque[tuple[torch.Tensor, torch.Tensor]] = deque(maxlen=self.limit)
         self.accepted_reconstructions = 0
         self.rejected_reconstructions = 0
+        self.reconstruction_quality_sum = 0.0
 
     def __len__(self) -> int:
         return len(self._samples)
@@ -25,13 +26,25 @@ class ProxyDatasetBuffer:
         total = self.accepted_reconstructions + self.rejected_reconstructions
         return 0.0 if total == 0 else self.accepted_reconstructions / total
 
-    def add_batch(self, images: torch.Tensor, labels: torch.Tensor, *, reconstructed: bool = False) -> None:
+    @property
+    def mean_reconstruction_quality(self) -> float:
+        return 0.0 if self.accepted_reconstructions == 0 else self.reconstruction_quality_sum / self.accepted_reconstructions
+
+    def add_batch(
+        self,
+        images: torch.Tensor,
+        labels: torch.Tensor,
+        *,
+        reconstructed: bool = False,
+        quality: float | None = None,
+    ) -> None:
         images = images.detach().cpu()
         labels = labels.detach().cpu().long()
         for image, label in zip(images, labels):
             self._samples.append((image.clone(), label.clone()))
         if reconstructed:
             self.accepted_reconstructions += int(images.shape[0])
+            self.reconstruction_quality_sum += float(quality if quality is not None else 0.0) * int(images.shape[0])
 
     def reject_reconstruction(self, count: int = 1) -> None:
         self.rejected_reconstructions += int(count)

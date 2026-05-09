@@ -105,9 +105,9 @@ def test_simulator_env_reset_and_step_return_flat_state():
     assert done is True
 
 
-def test_build_trainer_defaults_to_sac_and_can_build_td3():
-    assert build_trainer(RLAttackerConfig()).algorithm_name == "sac"
-    assert build_trainer(RLAttackerConfig(algorithm="td3")).algorithm_name == "td3"
+def test_build_trainer_defaults_to_td3_and_can_build_ppo():
+    assert build_trainer(RLAttackerConfig()).algorithm_name == "td3"
+    assert build_trainer(RLAttackerConfig(algorithm="ppo")).algorithm_name == "ppo"
 
 
 def test_deploy_guard_and_diagnostics_report_gap():

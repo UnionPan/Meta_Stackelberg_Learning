@@ -19,9 +19,15 @@ class AttackParameters:
     local_steps: int
     lambda_stealth: float
     local_search_lr: float
+    template_index: int = 3
+    template_name: str = "fang_specific"
+    scale: float = 1.0
+    parameters: np.ndarray | None = None
 
 
 DecodedAction = AttackParameters
+
+TEMPLATE_NAMES = ("benign_passthrough", "sign_flip", "alie_lmp", "fang_specific", "no_op")
 
 
 def normalized_action(action: np.ndarray, dim: int = 3) -> np.ndarray:
@@ -34,7 +40,56 @@ def normalized_action(action: np.ndarray, dim: int = 3) -> np.ndarray:
     return np.clip(action_arr[:dim], -1.0, 1.0)
 
 
+def decode_hybrid_action(action: np.ndarray, defense_type: str, config: RLAttackerConfig) -> AttackParameters:
+    """Decode Path-B PPO flattened hybrid actions.
+
+    The first scalar selects a template. The remaining continuous vector is
+    interpreted as ``scale`` plus template-specific bypass parameters; unused
+    parameters stay present and are masked by consumers.
+    """
+
+    del defense_type
+    action_arr = normalized_action(action, config.action_dim("hybrid"))
+    template_count = max(1, int(config.hybrid_template_dim))
+    raw_template = float(action_arr[0])
+    template_index = int(np.floor((raw_template + 1.0) * 0.5 * template_count))
+    template_index = int(np.clip(template_index, 0, template_count - 1))
+    template_name = TEMPLATE_NAMES[template_index] if template_index < len(TEMPLATE_NAMES) else f"template_{template_index}"
+    parameters = action_arr[1:].astype(np.float32)
+    scale = float(np.clip((parameters[0] + 1.0) * 0.5, 0.0, 1.0)) if parameters.size else 0.0
+
+    if template_name in {"benign_passthrough", "no_op"}:
+        gamma_scale = 0.1
+        local_steps = 1
+        lambda_stealth = 0.0
+    elif template_name == "sign_flip":
+        gamma_scale = 0.5 + 2.5 * scale
+        local_steps = 1
+        lambda_stealth = 0.0
+    elif template_name == "alie_lmp":
+        gamma_scale = 1.0 + 5.0 * scale
+        local_steps = max(1, int(round(1.0 + 4.0 * (parameters[1] + 1.0) * 0.5))) if parameters.size > 1 else 2
+        lambda_stealth = 0.1
+    else:
+        gamma_scale = 0.5 + 8.0 * scale
+        local_steps = max(1, int(round(1.0 + 20.0 * (parameters[1] + 1.0) * 0.5))) if parameters.size > 1 else 10
+        lambda_stealth = float(np.clip((parameters[2] + 1.0) * 0.5, 0.0, 1.0)) if parameters.size > 2 else 0.5
+
+    return AttackParameters(
+        gamma_scale=float(gamma_scale),
+        local_steps=int(local_steps),
+        lambda_stealth=float(lambda_stealth),
+        local_search_lr=max(1e-4, float(config.attacker_local_lr)),
+        template_index=template_index,
+        template_name=template_name,
+        scale=scale,
+        parameters=parameters,
+    )
+
+
 def decode_action(action: np.ndarray, defense_type: str, config: RLAttackerConfig) -> AttackParameters:
+    if config.algorithm.lower() == "ppo" or np.asarray(action).reshape(-1).shape[0] > 3:
+        return decode_hybrid_action(action, defense_type, config)
     action_arr = normalized_action(action, config.action_dim(defense_type))
     defense = defense_type.lower()
     if defense in KRUM_DEFENSES:
@@ -69,4 +124,8 @@ def decode_action(action: np.ndarray, defense_type: str, config: RLAttackerConfi
         local_steps=max(1, local_steps),
         lambda_stealth=float(np.clip(lambda_stealth, 0.0, 1.0)),
         local_search_lr=max(1e-4, float(config.attacker_local_lr)),
+        template_index=3,
+        template_name="fang_specific",
+        scale=float(np.clip((action_arr[2] + 1.0) * 0.5, 0.0, 1.0)),
+        parameters=action_arr.copy(),
     )

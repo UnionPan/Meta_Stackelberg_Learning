@@ -71,6 +71,6 @@ class GradientDistributionLearner:
         )
         if quality >= self.config.reconstruction_quality_threshold:
             images, labels = samples
-            self.buffer.add_batch(images, labels, reconstructed=True)
+            self.buffer.add_batch(images, labels, reconstructed=True, quality=quality)
         else:
             self.buffer.reject_reconstruction(self.config.reconstruction_batch_size)

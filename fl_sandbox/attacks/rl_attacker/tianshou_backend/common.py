@@ -12,6 +12,43 @@ from fl_sandbox.attacks.rl_attacker.config import RLAttackerConfig
 from fl_sandbox.attacks.rl_attacker.trainer import CollectStats, UpdateStats
 
 
+class RecencyWeightedReplayBuffer:
+    """Tianshou ReplayBuffer with exponential recency-biased sampling."""
+
+    def __new__(cls, *args, **kwargs):
+        from tianshou.data import ReplayBuffer
+
+        class _RecencyWeightedReplayBuffer(ReplayBuffer):
+            def __init__(self, *buffer_args, recency_tau: float = 48.0, **buffer_kwargs) -> None:
+                self.recency_tau = float(recency_tau)
+                super().__init__(*buffer_args, **buffer_kwargs)
+
+            def sample_indices(self, batch_size: int | None) -> np.ndarray:
+                if batch_size is None:
+                    batch_size = len(self)
+                if batch_size is None or batch_size <= 0 or len(self) == 0:
+                    return super().sample_indices(batch_size)
+                indices = np.arange(self._size)
+                ages = (int(self._insertion_idx) - 1 - indices) % max(1, int(self._size))
+                weights = np.exp(-ages / max(1e-6, self.recency_tau))
+                weights = weights / np.sum(weights)
+                return self._random_state.choice(indices, int(batch_size), replace=True, p=weights)
+
+            def shrink_to_recent_half(self) -> None:
+                if len(self) <= 1:
+                    return
+                keep = max(1, len(self) // 2)
+                indices = np.arange(self._size)
+                ages = (int(self._insertion_idx) - 1 - indices) % max(1, int(self._size))
+                recent = indices[np.argsort(ages)[:keep]]
+                batch = self[recent]
+                self.reset()
+                for idx in range(len(recent)):
+                    self.add(batch[idx])
+
+        return _RecencyWeightedReplayBuffer(*args, **kwargs)
+
+
 class BaseTianshouTrainer:
     algorithm_name = "base"
 
@@ -19,7 +56,14 @@ class BaseTianshouTrainer:
         from tianshou.data import ReplayBuffer
 
         self.config = config
-        self.replay = ReplayBuffer(size=config.replay_capacity)
+        if self.algorithm_name == "td3":
+            self.replay = RecencyWeightedReplayBuffer(
+                size=config.replay_capacity,
+                recency_tau=config.recency_tau,
+                random_seed=config.seed,
+            )
+        else:
+            self.replay = ReplayBuffer(size=config.replay_capacity, random_seed=config.seed)
         self.algorithm = None
         self.policy = None
         self.action_low: np.ndarray | None = None
@@ -38,9 +82,9 @@ class BaseTianshouTrainer:
             self.policy = self.algorithm.policy
 
     def _build_algorithm(self, obs_space, action_space):
-        from tianshou.algorithm import SAC, TD3
+        from tianshou.algorithm import PPO, TD3
         from tianshou.algorithm.modelfree.ddpg import ContinuousDeterministicPolicy
-        from tianshou.algorithm.modelfree.sac import SACPolicy
+        from tianshou.algorithm.modelfree.reinforce import ProbabilisticActorPolicy
         from tianshou.algorithm.optim import AdamOptimizerFactory
         from tianshou.utils.net.common import Net
         from tianshou.utils.net.continuous import (
@@ -52,30 +96,40 @@ class BaseTianshouTrainer:
         obs_shape = obs_space.shape
         action_shape = action_space.shape
         hidden_sizes = tuple(int(size) for size in self.config.hidden_sizes)
-        if self.algorithm_name == "sac":
+        if self.algorithm_name == "ppo":
             policy_preprocess = Net(state_shape=obs_shape, hidden_sizes=hidden_sizes)
             policy_actor = ContinuousActorProbabilistic(
                 preprocess_net=policy_preprocess,
                 action_shape=action_shape,
                 hidden_sizes=(),
                 max_action=1.0,
+                unbounded=True,
             )
-            policy = SACPolicy(
+            policy = ProbabilisticActorPolicy(
                 actor=policy_actor,
+                dist_fn=lambda logits: torch.distributions.Independent(
+                    torch.distributions.Normal(logits[0], torch.clamp(logits[1], min=1e-3, max=1.0)),
+                    1,
+                ),
                 action_space=action_space,
                 observation_space=obs_space,
                 deterministic_eval=True,
+                action_scaling=False,
+                action_bound_method=None,
             )
-            return SAC(
+            return PPO(
                 policy=policy,
-                policy_optim=AdamOptimizerFactory(lr=self.config.policy_lr),
-                critic=self._critic(Net, ContinuousCritic, obs_shape, action_shape, hidden_sizes),
-                critic_optim=AdamOptimizerFactory(lr=self.config.critic_lr),
-                critic2=self._critic(Net, ContinuousCritic, obs_shape, action_shape, hidden_sizes),
-                critic2_optim=AdamOptimizerFactory(lr=self.config.critic_lr),
-                tau=self.config.tau,
+                critic=self._value_critic(Net, ContinuousCritic, obs_shape, hidden_sizes),
+                optim=AdamOptimizerFactory(lr=self.config.policy_lr),
+                eps_clip=self.config.ppo_clip_ratio,
+                value_clip=True,
+                advantage_normalization=True,
+                recompute_advantage=True,
+                vf_coef=self.config.ppo_value_coef,
+                ent_coef=self.config.ppo_entropy_coef,
+                max_grad_norm=self.config.ppo_max_grad_norm,
+                gae_lambda=self.config.ppo_gae_lambda,
                 gamma=self.config.gamma,
-                alpha=0.2,
             )
 
         policy_preprocess = Net(state_shape=obs_shape, hidden_sizes=hidden_sizes)
@@ -112,6 +166,14 @@ class BaseTianshouTrainer:
                 action_shape=action_shape,
                 hidden_sizes=hidden_sizes,
                 concat=True,
+            )
+        )
+
+    def _value_critic(self, net_cls, critic_cls, obs_shape, hidden_sizes):
+        return critic_cls(
+            preprocess_net=net_cls(
+                state_shape=obs_shape,
+                hidden_sizes=hidden_sizes,
             )
         )
 
@@ -176,10 +238,20 @@ class BaseTianshouTrainer:
         for _ in range(steps):
             sample_size = min(self.config.batch_size, len(self.replay))
             with policy_within_training_step(self.policy):
-                stats = self.algorithm.update(self.replay, sample_size=sample_size)
+                if self.algorithm_name == "ppo":
+                    stats = self.algorithm.update(
+                        self.replay,
+                        batch_size=min(self.config.ppo_minibatch_size, len(self.replay)),
+                        repeat=self.config.ppo_epochs,
+                    )
+                else:
+                    stats = self.algorithm.update(self.replay, sample_size=sample_size)
             self.last_training_stats = self._stats_to_float_dict(stats)
             last_loss = self._loss_from_stats(self.last_training_stats)
             self.update_steps += 1
+            if self.algorithm_name == "ppo":
+                self.replay.reset()
+                break
         self.last_loss = float(last_loss)
         return UpdateStats(gradient_steps=steps, loss=self.last_loss)
 
@@ -197,7 +269,7 @@ class BaseTianshouTrainer:
 
     def diagnostics(self) -> dict[str, float]:
         return {
-            "trainer_algorithm_id": 1.0 if self.algorithm_name == "td3" else 0.0,
+            "trainer_algorithm_id": {"td3": 1.0, "ppo": 2.0}.get(self.algorithm_name, 0.0),
             "trainer_collect_steps": float(self.collect_steps),
             "trainer_update_steps": float(self.update_steps),
             "trainer_loss": float(self.last_loss),

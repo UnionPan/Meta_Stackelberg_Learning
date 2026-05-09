@@ -12,7 +12,7 @@ import torch.nn.functional as F
 
 from fl_sandbox.attacks.rl_attacker.action_decoder import decode_action
 from fl_sandbox.attacks.rl_attacker.config import RLAttackerConfig
-from fl_sandbox.attacks.rl_attacker.observation import build_observation_from_state
+from fl_sandbox.attacks.rl_attacker.observation import ProjectedObservationBuilder
 from fl_sandbox.attacks.rl_attacker.simulator.fl_dynamics import (
     build_model_from_template,
     capture_weights,
@@ -35,6 +35,8 @@ class SimulatedFLEnv:
         self.device = device
         self.reward_fn = DefaultRewardFn(config)
         self.current_weights = None
+        self.previous_weights = None
+        self.last_aggregate_update = None
         self.current_loss = 0.0
         self.current_acc = 0.0
         self.round_idx = 0
@@ -42,15 +44,22 @@ class SimulatedFLEnv:
         self.max_attackers_sampled = 1
         self.previous_action = np.zeros(config.action_dim(defender.defense_type), dtype=np.float32)
         self.previous_bypass_score = 0.0
+        self.observation_builder = ProjectedObservationBuilder(
+            config=config,
+            action_dim=config.action_dim(defender.defense_type),
+        )
 
     def reset(self, initial_weights):
         self.current_weights = [layer.copy() for layer in initial_weights]
+        self.previous_weights = [layer.copy() for layer in initial_weights]
+        self.last_aggregate_update = [np.zeros_like(layer) for layer in initial_weights]
         self.round_idx = 0
         self.current_num_attackers = self._sample_num_attackers(require_positive=True)
         self.max_attackers_sampled = max(1, self.current_num_attackers)
         self.current_loss, self.current_acc = self._evaluate_proxy_metrics(self.current_weights)
         self.previous_action = np.zeros(self.config.action_dim(self.defender.defense_type), dtype=np.float32)
         self.previous_bypass_score = 0.0
+        self.observation_builder.history.clear()
         return self._get_state()
 
     def step(self, action: np.ndarray):
@@ -58,6 +67,7 @@ class SimulatedFLEnv:
             raise RuntimeError("SimulatedFLEnv must be reset before stepping")
         action = np.asarray(action, dtype=np.float32)
         benign_count = max(0, max(1, int(self.fl_config.num_clients * self.fl_config.subsample_rate)) - self.current_num_attackers)
+        old_weights = [layer.copy() for layer in self.current_weights]
         benign_weights = [self._simulate_benign_update(self.current_weights) for _ in range(benign_count)]
         malicious_weights = [self._simulate_malicious_weight(self.current_weights, action) for _ in range(self.current_num_attackers)]
         benign_norm_mean = float(np.mean([update_norm(self.current_weights, w) for w in benign_weights])) if benign_weights else 0.0
@@ -65,6 +75,8 @@ class SimulatedFLEnv:
         updates = benign_weights + malicious_weights
         if updates:
             self.current_weights = self.defender.aggregate(self.current_weights, updates, trusted_weights=None)
+        self.previous_weights = old_weights
+        self.last_aggregate_update = [new - old for old, new in zip(old_weights, self.current_weights)]
         new_loss, new_acc = self._evaluate_proxy_metrics(self.current_weights)
         bypass = 1.0 if malicious_weights else 0.0
         norm_penalty = 0.0
@@ -106,16 +118,19 @@ class SimulatedFLEnv:
                 return selected_attackers
         return 1 if require_positive else 0
 
-    def _get_state_dict(self) -> dict[str, Any]:
+    def _get_state(self) -> np.ndarray:
         if self.current_weights is None:
             raise RuntimeError("State requested before reset")
-        model = build_model_from_template(self.model_template, self.current_weights, self.device)
-        from fl_sandbox.models import get_compressed_state
-        compressed, _ = get_compressed_state(model, num_tail_layers=self.config.state_tail_layers)
-        return {"pram": compressed.astype(np.float32), "num_attacker": int(self.current_num_attackers)}
-
-    def _get_state(self) -> np.ndarray:
-        return build_observation_from_state(self._get_state_dict(), self.max_attackers_sampled)
+        return self.observation_builder.build(
+            weights=self.current_weights,
+            previous_weights=self.previous_weights,
+            last_aggregate_update=self.last_aggregate_update,
+            last_action=self.previous_action,
+            last_bypass_score=self.previous_bypass_score,
+            round_idx=self.round_idx,
+            total_rounds=max(1, self.config.simulator_horizon),
+            defense_type=self.defender.defense_type,
+        )
 
     def _simulate_benign_update(self, old_weights):
         model = build_model_from_template(self.model_template, old_weights, self.device)

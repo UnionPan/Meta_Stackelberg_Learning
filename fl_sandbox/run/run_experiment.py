@@ -130,7 +130,7 @@ def _build_parser(
     )
     parser.add_argument(
         '--rl_algorithm',
-        choices=('sac', 'td3'),
+        choices=('td3', 'ppo'),
         **_default_kwargs(defaults.attacker.rl_algorithm, use_defaults),
     )
     parser.add_argument('--krum_attackers', type=int, **_default_kwargs(defaults.defender.krum_attackers, use_defaults))

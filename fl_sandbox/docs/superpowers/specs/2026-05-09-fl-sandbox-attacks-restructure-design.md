@@ -21,7 +21,7 @@ Goals:
 - Flatten fixed attackers into one file each under `fl_sandbox/attacks`.
 - Move the adaptive RL attacker into a self-contained `fl_sandbox/attacks/rl_attacker/` subpackage with clear RL-side abstractions.
 - Replace the hand-written TD3 implementation with **Tianshou** as the single RL backend. The hand-written `Actor` / `Critic` / `TD3Agent` / `ReplayBuffer` / target-update code is deleted, not wrapped.
-- Default the RL algorithm to SAC (Tianshou `SACPolicy`); keep TD3 (Tianshou `TD3Policy`) as an alternate. Both share the same Tianshou collector and replay buffer infrastructure.
+- Default the RL algorithm to TD3 as the validated continuous-action baseline; keep PPO as the hybrid-action extension. Both share observation, proxy learning, simulator, reward, diagnostics, and sim2real monitoring infrastructure.
 - Isolate Tianshou behind a small `Trainer` protocol so swapping algorithms (or, much later, swapping libraries) does not touch `attack.py`.
 - Make sim-to-real gap a first-class, monitored quantity from day one.
 - Keep each module small enough to read and test independently.
@@ -148,8 +148,8 @@ fl_sandbox/attacks/rl_attacker/
   tianshou_backend/
     __init__.py
     common.py            # Shared net builders, replay, collector setup
-    sac.py               # SAC trainer (default)
-    td3.py               # TD3 trainer (alternate)
+    td3.py               # TD3 trainer (default Path A)
+    ppo.py               # PPO trainer (hybrid-action Path B)
 ```
 
 ### 3.3 Dependency direction
@@ -163,7 +163,7 @@ attack.py
   → diagnostics.py
 
 tianshou_backend/* → trainer.py, simulator/env.py, Tianshou, torch
-tianshou_backend/{sac,td3}.py → tianshou_backend/common.py
+tianshou_backend/{td3,ppo}.py → tianshou_backend/common.py
 simulator/env.py → simulator/fl_dynamics.py, simulator/reward.py,
                    observation.py, action_decoder.py, Gymnasium
 simulator/fl_dynamics.py → aggregators (read-only), proxy/buffer.py
@@ -309,29 +309,27 @@ class Trainer(Protocol):
 ```
 
 `build_trainer(config) -> Trainer` selects a concrete trainer by
-`config.algorithm` (`"sac"` default, `"td3"` alternate).
+`config.algorithm` (`"td3"` default, `"ppo"` alternate).
 
 #### `tianshou_backend/`
 The single RL implementation path. No alternate library is supported and no
 hand-written RL primitives remain in the project.
 
-- `common.py` — shared MLP actor/critic builders, Tianshou
-  `VectorReplayBuffer` construction, `Collector` setup, action-bound
-  remapping, exploration noise schedules (TD3), entropy auto-tuning hooks
-  (SAC), gradient clipping, and the diagnostics-extraction helper.
-- `sac.py` — `TianshouSACTrainer`. Wraps `tianshou.policy.SACPolicy` with a
-  tanh-squashed Gaussian actor and twin critics. Default trainer.
-- `td3.py` — `TianshouTD3Trainer`. Wraps `tianshou.policy.TD3Policy` with a
-  deterministic tanh-squashed actor, twin critics, and target-policy
-  smoothing.
+- `common.py` — shared Tianshou network builders, TD3 recency-weighted replay,
+  PPO on-policy buffer reset, action-bound handling, exploration noise,
+  gradient clipping, and diagnostics extraction.
+- `td3.py` — `TianshouTD3Trainer`. Path A, 3-D continuous action baseline.
+- `ppo.py` — `TianshouPPOTrainer`. Path B, flattened hybrid action decoded as
+  template selector plus continuous parameters.
 
 Both trainers:
 
 - use tanh-squashed action heads with linear remap to action bounds (no
   post-hoc clipping or NaN sanitation in the runtime path),
 - enable gradient clipping (configurable, default 1.0),
-- expose Q-value mean/std, TD-error, entropy (SAC), exploration noise scale
-  (TD3), update step count, and replay-buffer fill via `diagnostics()`,
+- expose Q-value/critic stats where available, PPO policy/value stats,
+  exploration noise scale (TD3), entropy coefficient (PPO), update step count,
+  and buffer fill via `diagnostics()`,
 - support `save()` / `load()` of the full Tianshou policy state.
 
 If Tianshou or Gymnasium is missing when `build_trainer(...)` is called,
@@ -361,8 +359,8 @@ does **not** import Tianshou — Tianshou imports live behind the
 Single place that publishes:
 
 - RL training: episode return, running-mean return, critic Q stats,
-  TD-error, policy entropy (SAC), action saturation rate, exploration
-  noise scale, update-to-data ratio actual.
+  TD-error, PPO entropy/clip/value stats, action saturation rate,
+  exploration noise scale, update-to-data ratio actual.
 - Proxy: `reconstruction_accept_rate`, mean reconstruction quality,
   buffer size, sample age distribution.
 - Sim2real: per-round `reward_real - reward_sim`, rolling mean and
@@ -376,12 +374,13 @@ The FL attack environment is non-stationary: the global model evolves, the
 defense's geometry shifts, and benign client distributions can drift. This
 shapes three choices:
 
-1. **Default algorithm: SAC.** Adaptive entropy gives stable exploration
-   under a non-stationary target and is a better default than TD3 for this
-   continuous-control setting. TD3 remains available for ablations.
-2. **Recency-weighted replay.** Both trainers use exponential-recency
-   weighted sampling instead of uniform FIFO. Decay rate is configurable;
-   default targets a half-life of one episode-worth of transitions.
+1. **Default algorithm: TD3.** This is the validated baseline for the 3-D
+   continuous action path. PPO is added as Path B for hybrid template-selector
+   experiments and cross-defense generalization.
+2. **Recency-weighted replay.** TD3 uses exponential-recency weighted sampling
+   instead of uniform FIFO. Decay rate is configurable; default targets a
+   half-life of one episode-worth of transitions. PPO remains on-policy and
+   resets its buffer after each update.
 3. **Bounded buffer with high update-to-data ratio.** Default UTD = 4 with
    buffer size = 8 × episode length. This favors recent transitions over
    sheer volume.
@@ -499,7 +498,7 @@ Defense-specific meaning of action components is fully owned by
 New fields under the RL attacker config:
 
 ```text
-algorithm: "sac" | "td3"      # default "sac"
+algorithm: "td3" | "ppo"      # default "td3"
 simulator_horizon: int        # episode length in simulated rounds
 simulator_steps_per_round: int
 update_to_data_ratio: int     # default 4
@@ -576,8 +575,8 @@ three reviewable PRs, all still inside the "Phase 1" cleanup window.
   adaptive attacker into `attack.py`,
   `config.py`, `observation.py`, `action_decoder.py`, `proxy/*`,
   `simulator/*`, `trainer.py`, `tianshou_backend/*`, `diagnostics.py`.
-- Implement `TianshouSACTrainer` and `TianshouTD3Trainer`. Default
-  algorithm is SAC.
+- Implement `TianshouTD3Trainer` and `TianshouPPOTrainer`. Default
+  algorithm is TD3.
 - **Delete** the hand-written `Actor`, `Critic`, `TD3Agent`,
   `ReplayBuffer`, target-network update, and policy-noise update code in
   the same PR. There is no transitional wrapper — the project moves to
@@ -618,8 +617,8 @@ pytest tests/rl_attacker/test_observation.py \
        tests/rl_attacker/test_action_decoder.py \
        tests/rl_attacker/test_proxy_buffer.py \
        tests/rl_attacker/test_simulator_env.py \
-       tests/rl_attacker/test_tianshou_sac.py \
-       tests/rl_attacker/test_tianshou_td3.py
+       tests/rl_attacker/test_tianshou_td3.py \
+       tests/rl_attacker/test_tianshou_ppo.py
 python fl_sandbox/run/run_experiment.py \
   --attack_type rl --defense_type krum \
   --rounds 2 --num_clients 4 --num_attackers 1 \
@@ -642,12 +641,12 @@ New test coverage to add:
 - `inversion.reconstruct()` quality scoring on a synthetic gradient where
   ground truth is known.
 - `SimulatedFLEnv.reset()/step()` with a tiny fake proxy buffer.
-- `build_trainer({"algorithm": "sac"})` and `build_trainer({"algorithm":
-  "td3"})` both initialize on the env's spaces without crashing; `act()`
+- `build_trainer({"algorithm": "td3"})` and `build_trainer({"algorithm":
+  "ppo"})` both initialize on the env's spaces without crashing; `act()`
   returns in-bounds actions; `diagnostics()` exposes the documented keys
   for each algorithm.
 - A short `collect → update` cycle on a tiny env produces finite losses,
-  finite gradients, and updated diagnostic counters for both SAC and TD3.
+  finite gradients, and updated diagnostic counters for both TD3 and PPO.
 - `save()` then `load()` round-trips a Tianshou policy and reproduces the
   same `act()` output on a fixed observation.
 - Clear `RuntimeError` when Tianshou is missing and `build_trainer` is
@@ -665,8 +664,8 @@ New test coverage to add:
 Update `README.md`:
 
 - `attacks/` is the only public attacker API.
-- `attacks/rl_attacker/` is the adaptive RL attacker, with SAC default and
-  Tianshou backend.
+- `attacks/rl_attacker/` is the adaptive RL attacker, with TD3 default,
+  PPO hybrid extension, and Tianshou backend.
 - Remove references implying attackers live under `core/attacks`,
   `core/rl`, `attacks/vector`, `attacks/backdoor`, or `attacks/adaptive`.
 - Document the deploy-guard and sim2real-gap diagnostics so experimenters

@@ -65,14 +65,14 @@ class AttackerSection:
     dba_poison_frac: float = 0.5
     dba_num_sub_triggers: int = 4
     attacker_action: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    rl_algorithm: str = "sac"
+    rl_algorithm: str = "td3"
     rl_distribution_steps: int | None = 10
     rl_attack_start_round: int | None = 10
     rl_policy_train_end_round: int | None = 30
     rl_inversion_steps: int = 50
     rl_reconstruction_batch_size: int = 8
     rl_policy_train_episodes_per_round: int = 2
-    rl_simulator_horizon: int = 10
+    rl_simulator_horizon: int = 12
 
 
 @dataclass

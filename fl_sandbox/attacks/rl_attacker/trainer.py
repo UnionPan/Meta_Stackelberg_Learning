@@ -35,14 +35,14 @@ class Trainer(Protocol):
 def build_trainer(config: RLAttackerConfig) -> Trainer:
     algorithm = config.algorithm.lower()
     try:
-        if algorithm == "sac":
-            from fl_sandbox.attacks.rl_attacker.tianshou_backend.sac import TianshouSACTrainer
-
-            return TianshouSACTrainer(config)
         if algorithm == "td3":
             from fl_sandbox.attacks.rl_attacker.tianshou_backend.td3 import TianshouTD3Trainer
 
             return TianshouTD3Trainer(config)
+        if algorithm == "ppo":
+            from fl_sandbox.attacks.rl_attacker.tianshou_backend.ppo import TianshouPPOTrainer
+
+            return TianshouPPOTrainer(config)
     except ImportError as exc:
         raise RuntimeError(
             "Tianshou and Gymnasium are required for the RL attacker trainer. "

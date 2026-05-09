@@ -59,7 +59,7 @@ def _args(**overrides):
         "dba_poison_frac": 0.5,
         "dba_num_sub_triggers": 4,
         "attacker_action": (0.0, 0.0, 0.0),
-        "rl_algorithm": "sac",
+        "rl_algorithm": "td3",
         "defense_type": "fedavg",
         "krum_attackers": 1,
         "multi_krum_selected": None,

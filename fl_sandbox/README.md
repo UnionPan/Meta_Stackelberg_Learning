@@ -75,7 +75,7 @@ The first runnable slice in this folder is:
 - standalone `BFL` / `DBA` backdoor attackers
 - adaptive `RL` attacker under `attacks/rl_attacker/`, split into proxy learning,
   simulation, action decoding, diagnostics, and a Tianshou-backed trainer protocol
-- SAC is the default RL algorithm; Tianshou TD3 is selectable with `--rl_algorithm td3`
+- TD3 is the default RL algorithm; PPO is selectable with `--rl_algorithm ppo`
 - minimal single-agent `gymnasium` attacker RL environment for simulator training
 - round-wise attack metrics including backdoor accuracy
 - TensorBoard postprocess helpers for clean-vs-attack comparison
@@ -108,7 +108,7 @@ online-learning schedule and algorithm directly from CLI:
 python attacker_sandbox/run/run_experiment.py \
   --attack_type rl \
   --defense_type krum \
-  --rl_algorithm sac \
+  --rl_algorithm td3 \
   --rounds 50 \
   --rl_distribution_steps 10 \
   --rl_attack_start_round 10 \

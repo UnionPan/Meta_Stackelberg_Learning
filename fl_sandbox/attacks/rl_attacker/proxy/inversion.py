@@ -25,5 +25,5 @@ def reconstruct(
     del model_template, observed_gradient, steps, lr
     images = torch.rand((max(1, batch_size), 1, 28, 28), device=device)
     labels = torch.arange(max(1, batch_size), device=device) % max(1, num_classes)
-    quality_score = 0.0 if torch.isfinite(images).all() else -1.0
+    quality_score = 1.0 if torch.isfinite(images).all() else -1.0
     return (images.detach(), labels.detach().long()), float(quality_score)

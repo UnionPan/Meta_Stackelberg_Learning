@@ -11,14 +11,15 @@ import numpy as np
 class RLAttackerConfig:
     """Config for proxy learning, simulation, and Tianshou policy training."""
 
-    algorithm: str = "sac"
+    algorithm: str = "td3"
+    seed: int = 42
     distribution_steps: int = 10
     attack_start_round: int = 10
     policy_train_end_round: int = 30
     inversion_lr: float = 0.05
     inversion_steps: int = 50
     reconstruction_batch_size: int = 8
-    reconstruction_quality_threshold: float = -1.0
+    reconstruction_quality_threshold: float = 0.7
     tv_weight: float = 0.02
     denoiser_noise_std: float = 0.3
     denoiser_epochs: int = 2
@@ -26,14 +27,16 @@ class RLAttackerConfig:
     proxy_buffer_limit: int = 2048
     state_tail_layers: int = 2
     state_include_num_attacker: bool = True
+    projection_dim: int = 256
     history_window: int = 4
-    simulator_horizon: int = 10
+    simulator_horizon: int = 12
+    simulator_refresh_interval: int = 10
     episodes_per_observation: int = 2
     replay_capacity: int = 50_000
-    batch_size: int = 64
-    policy_lr: float = 1e-4
-    critic_lr: float = 1e-4
-    gamma: float = 1.0
+    batch_size: int = 256
+    policy_lr: float = 3e-4
+    critic_lr: float = 3e-4
+    gamma: float = 0.95
     tau: float = 0.005
     exploration_noise: float = 0.1
     policy_noise: float = 0.2
@@ -41,14 +44,28 @@ class RLAttackerConfig:
     update_actor_freq: int = 2
     train_freq_steps: int = 1
     gradient_clip_norm: float = 1.0
-    hidden_sizes: tuple[int, ...] = (64, 64)
+    hidden_sizes: tuple[int, ...] = (256, 256)
+    warmup_steps: int = 1000
+    update_to_data_ratio: int = 1
+    recency_tau: float = 48.0
+    ppo_epochs: int = 4
+    ppo_minibatch_size: int = 64
+    ppo_clip_ratio: float = 0.2
+    ppo_value_coef: float = 0.5
+    ppo_entropy_coef: float = 0.01
+    ppo_gae_lambda: float = 0.95
+    ppo_max_grad_norm: float = 0.5
+    hybrid_template_dim: int = 5
+    hybrid_continuous_dim: int = 7
     local_search_batch_size: int = 200
     attacker_local_lr: float = 0.05
-    reward_accuracy_weight: float = 6.0
-    reward_norm_penalty_weight: float = 0.75
+    reward_loss_weight: float = 1.0
+    reward_accuracy_weight: float = 1.0
+    reward_norm_penalty_weight: float = 0.0
     reward_bypass_weight: float = 0.5
-    reward_action_smoothness_weight: float = 0.02
-    reward_action_saturation_weight: float = 0.02
+    reward_action_smoothness_weight: float = 0.01
+    reward_action_saturation_weight: float = 0.1
+    reward_template_switch_weight: float = 0.1
     robust_gamma_center: float = 5.0
     robust_gamma_scale: float = 4.9
     robust_steps_center: float = 11.0
@@ -85,8 +102,12 @@ class RLAttackerConfig:
     fltrust_target_norm_ratio: float = 1.50
     deploy_guard_min_proxy_samples: int = 8
     deploy_guard_max_sim2real_gap: float = 5.0
+    deploy_guard_window: int = 20
 
     def action_dim(self, defense_type: str) -> int:
+        del defense_type
+        if self.algorithm.lower() == "ppo":
+            return 1 + int(self.hybrid_continuous_dim)
         return 3
 
     def action_bounds(self, defense_type: str) -> tuple[np.ndarray, np.ndarray]:

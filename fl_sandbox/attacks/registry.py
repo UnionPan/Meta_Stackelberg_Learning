@@ -73,14 +73,14 @@ def create_attack(attacker_config) -> Optional[SandboxAttack]:
         return RLAttack(
             default_action=tuple(attacker_config.attacker_action),
             config=RLAttackerConfig(
-                algorithm=getattr(attacker_config, "rl_algorithm", "sac"),
+                algorithm=getattr(attacker_config, "rl_algorithm", "td3"),
                 distribution_steps=attacker_config.rl_distribution_steps,
                 attack_start_round=attacker_config.rl_attack_start_round,
                 policy_train_end_round=attacker_config.rl_policy_train_end_round,
                 inversion_steps=attacker_config.rl_inversion_steps,
                 reconstruction_batch_size=attacker_config.rl_reconstruction_batch_size,
                 episodes_per_observation=max(2, attacker_config.rl_policy_train_episodes_per_round),
-                simulator_horizon=max(10, attacker_config.rl_simulator_horizon),
+                simulator_horizon=max(12, attacker_config.rl_simulator_horizon),
             ),
         )
     if attack_type == "krum_geometry_search":

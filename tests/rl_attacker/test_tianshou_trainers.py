@@ -39,9 +39,9 @@ def _small_config(algorithm: str) -> RLAttackerConfig:
     )
 
 
-def test_sac_trainer_collects_updates_and_round_trips_policy():
+def test_td3_trainer_collects_updates_and_round_trips_policy():
     env = ToyContinuousEnv()
-    trainer = build_trainer(_small_config("sac"))
+    trainer = build_trainer(_small_config("td3"))
     trainer.ensure_initialized(env.observation_space, env.action_space)
 
     before = trainer.act(np.zeros(4, dtype=np.float32), deterministic=True)
@@ -55,7 +55,7 @@ def test_sac_trainer_collects_updates_and_round_trips_policy():
 
     with tempfile.NamedTemporaryFile(suffix=".pt") as handle:
         trainer.save(handle.name)
-        restored = build_trainer(_small_config("sac"))
+        restored = build_trainer(_small_config("td3"))
         restored.ensure_initialized(env.observation_space, env.action_space)
         restored.load(handle.name)
         after = restored.act(np.zeros(4, dtype=np.float32), deterministic=True)
@@ -64,9 +64,10 @@ def test_sac_trainer_collects_updates_and_round_trips_policy():
     assert before.shape == after.shape
 
 
-def test_td3_trainer_collects_and_updates_with_bounded_actions():
+def test_ppo_trainer_collects_and_updates_with_bounded_actions():
     env = ToyContinuousEnv()
-    trainer = build_trainer(_small_config("td3"))
+    env.action_space = gym.spaces.Box(low=-1.0, high=1.0, shape=(8,), dtype=np.float32)
+    trainer = build_trainer(_small_config("ppo"))
     trainer.ensure_initialized(env.observation_space, env.action_space)
 
     action = trainer.act(np.zeros(4, dtype=np.float32), deterministic=False)
@@ -78,4 +79,4 @@ def test_td3_trainer_collects_and_updates_with_bounded_actions():
     assert collect_stats.steps == 4
     assert update_stats.gradient_steps == 1
     assert np.isfinite(update_stats.loss)
-    assert trainer.diagnostics()["trainer_algorithm_id"] == 1.0
+    assert trainer.diagnostics()["trainer_algorithm_id"] == 2.0
