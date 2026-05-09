@@ -25,11 +25,16 @@ without coupling them to the full Meta-SG experiment stack.
   Python run entry points. `run_experiment.py` is the unified single-run
   experiment entry.
 - `core/`
-  Shared orchestration, attacks, defenses, FL runner, metrics, builders, and postprocess entry points.
+  Shared runtime helpers, experiment builders, metrics, and postprocess entry points.
+  Attacker implementations do not live under `core/`.
   Visualization/export helpers now live under `core/postprocess/`, including plotting helpers
   (`visualization.py`), shared TensorBoard exporters (`tensorboard_utils.py`), the unified Python
   postprocess entry point (`postprocess.py`), and compatibility wrappers
   (`postprocess_clean.py`, `postprocess_sandbox.py`).
+- `attacks/`
+  Public attacker subsystem. External code should import attackers and the attack factory from
+  `fl_sandbox.attacks`. Fixed attackers live as direct files, and the adaptive RL attacker lives
+  under `attacks/rl_attacker/`.
 - `scripts/`
   Shell and preset helpers (`setup_env.sh`, `run_tensorboard.sh`,
   `postprocess_mnist_30r_all.sh`, `run_rlfl_benchmark.py`).
@@ -62,7 +67,7 @@ The first runnable slice in this folder is:
 - MNIST clean FL
 - standalone `IPM` / `LMP` untargeted attackers
 - standalone `BFL` / `DBA` backdoor attackers
-- paper-style `RL` attacker with online distribution learning, simulated FL world model, and TD3 policy learning
+- paper-style legacy TD3 `RL` attacker preserved under `attacks/rl_attacker/` for Phase 1a; the next phase replaces the hand-written TD3 backend with Tianshou SAC/TD3 trainers
 - minimal single-agent `gymnasium` attacker RL environment
 - round-wise attack metrics including backdoor accuracy
 - TensorBoard postprocess helpers for clean-vs-attack comparison
