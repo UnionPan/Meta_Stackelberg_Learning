@@ -50,7 +50,7 @@ def test_package_level_attacker_imports():
     )
 
     assert "rl" in ATTACK_CHOICES
-    assert tuple(ATTACK_CHOICES) == supported_attack_types()
+    assert ATTACK_CHOICES == supported_attack_types()
     assert issubclass(IPMAttack, SandboxAttack)
     assert issubclass(LMPAttack, SandboxAttack)
     assert issubclass(ALIEAttack, SandboxAttack)
