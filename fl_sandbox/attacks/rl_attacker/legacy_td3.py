@@ -659,6 +659,10 @@ class RLAttackerConfig:
     stealth_steps_scale: float = 9.0
     stealth_lambda_center: float = 0.5
     stealth_lambda_scale: float = 0.45
+    clipmed_gamma_center: float = 1.2
+    clipmed_gamma_scale: float = 1.1
+    clipmed_steps_center: float = 10.0
+    clipmed_steps_scale: float = 9.0
     clipmed_lambda_center: float = 0.20
     clipmed_lambda_scale: float = 0.20
     coord_gamma_center: float = 8.0
