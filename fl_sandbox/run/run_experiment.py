@@ -194,6 +194,11 @@ def _build_parser(
         type=int,
         **_default_kwargs(defaults.attacker.rl_simulator_horizon, use_defaults),
     )
+    parser.add_argument(
+        '--rl_ppo_real_rollout_steps',
+        type=int,
+        **_default_kwargs(defaults.attacker.rl_ppo_real_rollout_steps, use_defaults),
+    )
     parser.add_argument('--output_root', type=str, **_default_kwargs(defaults.output.output_root, use_defaults))
     parser.add_argument('--tb_root', type=str, **_default_kwargs(defaults.output.tb_root, use_defaults))
     return parser

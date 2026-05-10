@@ -80,3 +80,24 @@ def test_ppo_trainer_collects_and_updates_with_bounded_actions():
     assert update_stats.gradient_steps == 1
     assert np.isfinite(update_stats.loss)
     assert trainer.diagnostics()["trainer_algorithm_id"] == 2.0
+
+
+def test_ppo_trainer_accepts_real_transitions_without_simulator():
+    obs_space = gym.spaces.Box(low=-10.0, high=10.0, shape=(4,), dtype=np.float32)
+    act_space = gym.spaces.Box(low=-1.0, high=1.0, shape=(8,), dtype=np.float32)
+    trainer = build_trainer(_small_config("ppo"))
+    trainer.ensure_initialized(obs_space, act_space)
+
+    for idx in range(4):
+        obs = np.full(4, idx / 10.0, dtype=np.float32)
+        obs_next = np.full(4, (idx + 1) / 10.0, dtype=np.float32)
+        action = np.zeros(8, dtype=np.float32)
+        trainer.add_transition(obs, action, reward=1.0, obs_next=obs_next)
+
+    assert trainer.diagnostics()["trainer_replay_size"] == 4.0
+
+    update_stats = trainer.update(gradient_steps=1)
+
+    assert update_stats.gradient_steps == 1
+    assert np.isfinite(update_stats.loss)
+    assert trainer.diagnostics()["trainer_replay_size"] == 0.0

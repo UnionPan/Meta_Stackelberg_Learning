@@ -81,6 +81,7 @@ def create_attack(attacker_config) -> Optional[SandboxAttack]:
                 reconstruction_batch_size=attacker_config.rl_reconstruction_batch_size,
                 episodes_per_observation=max(2, attacker_config.rl_policy_train_episodes_per_round),
                 simulator_horizon=max(12, attacker_config.rl_simulator_horizon),
+                ppo_real_rollout_steps=getattr(attacker_config, "rl_ppo_real_rollout_steps", 64),
             ),
         )
     if attack_type == "krum_geometry_search":

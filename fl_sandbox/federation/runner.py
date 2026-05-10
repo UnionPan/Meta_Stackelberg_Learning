@@ -83,6 +83,7 @@ class SandboxConfig:
     rl_reconstruction_batch_size: int = 8
     rl_policy_train_episodes_per_round: int = 2
     rl_simulator_horizon: int = 10
+    rl_ppo_real_rollout_steps: int = 64
     init_mode: str = "seed"
     init_checkpoint_path: str = ""
 

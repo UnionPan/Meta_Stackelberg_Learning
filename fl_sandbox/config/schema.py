@@ -73,6 +73,7 @@ class AttackerSection:
     rl_reconstruction_batch_size: int = 8
     rl_policy_train_episodes_per_round: int = 2
     rl_simulator_horizon: int = 12
+    rl_ppo_real_rollout_steps: int = 64
 
 
 @dataclass
@@ -209,6 +210,7 @@ class RunConfig:
             "rl_reconstruction_batch_size": self.attacker.rl_reconstruction_batch_size,
             "rl_policy_train_episodes_per_round": self.attacker.rl_policy_train_episodes_per_round,
             "rl_simulator_horizon": self.attacker.rl_simulator_horizon,
+            "rl_ppo_real_rollout_steps": self.attacker.rl_ppo_real_rollout_steps,
             "output_root": self.output.output_root,
             "tb_root": self.output.tb_root,
         }
@@ -274,6 +276,7 @@ def _set_flat_value(config: RunConfig, key: str, value: Any) -> None:
         "rl_reconstruction_batch_size": (config.attacker, "rl_reconstruction_batch_size"),
         "rl_policy_train_episodes_per_round": (config.attacker, "rl_policy_train_episodes_per_round"),
         "rl_simulator_horizon": (config.attacker, "rl_simulator_horizon"),
+        "rl_ppo_real_rollout_steps": (config.attacker, "rl_ppo_real_rollout_steps"),
         "output_root": (config.output, "output_root"),
         "tb_root": (config.output, "tb_root"),
     }

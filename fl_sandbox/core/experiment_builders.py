@@ -92,4 +92,5 @@ def build_config(run_config: RunConfig):
         rl_reconstruction_batch_size=run_config.attacker.rl_reconstruction_batch_size,
         rl_policy_train_episodes_per_round=run_config.attacker.rl_policy_train_episodes_per_round,
         rl_simulator_horizon=run_config.attacker.rl_simulator_horizon,
+        rl_ppo_real_rollout_steps=run_config.attacker.rl_ppo_real_rollout_steps,
     )

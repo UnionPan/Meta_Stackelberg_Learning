@@ -333,6 +333,7 @@ def build_payload(
         "rl_reconstruction_batch_size": config.rl_reconstruction_batch_size,
         "rl_policy_train_episodes_per_round": config.rl_policy_train_episodes_per_round,
         "rl_simulator_horizon": config.rl_simulator_horizon,
+        "rl_ppo_real_rollout_steps": config.rl_ppo_real_rollout_steps,
         "rounds": args.rounds,
     }
     benchmark_protocol = run_config.benchmark_protocol_payload()
@@ -458,6 +459,7 @@ def execute_experiment(
         "rl_policy_train_end_round": config.rl_policy_train_end_round,
         "rl_policy_train_episodes_per_round": config.rl_policy_train_episodes_per_round,
         "rl_simulator_horizon": config.rl_simulator_horizon,
+        "rl_ppo_real_rollout_steps": config.rl_ppo_real_rollout_steps,
     }
     live_logger = LiveMetricsLogger(
         output_dir=output_dir,

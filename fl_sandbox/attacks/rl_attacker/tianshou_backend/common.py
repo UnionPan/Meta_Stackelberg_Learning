@@ -200,25 +200,19 @@ class BaseTianshouTrainer:
         return action.astype(np.float32)
 
     def collect(self, env, steps: int) -> CollectStats:
-        from tianshou.data import Batch
-
         self.ensure_initialized(env.observation_space, env.action_space)
         obs, _ = env.reset()
         rewards: list[float] = []
         for _ in range(max(1, int(steps))):
             act = self.act(obs, deterministic=False)
             obs_next, rew, terminated, truncated, _ = env.step(act)
-            self.replay.add(
-                Batch(
-                    obs=np.asarray(obs, dtype=np.float32),
-                    act=np.asarray(act, dtype=np.float32),
-                    rew=float(rew),
-                    terminated=bool(terminated),
-                    truncated=bool(truncated),
-                    done=bool(terminated or truncated),
-                    obs_next=np.asarray(obs_next, dtype=np.float32),
-                    info={},
-                )
+            self.add_transition(
+                obs,
+                act,
+                reward=float(rew),
+                obs_next=obs_next,
+                terminated=bool(terminated),
+                truncated=bool(truncated),
             )
             rewards.append(float(rew))
             obs = obs_next
@@ -227,6 +221,31 @@ class BaseTianshouTrainer:
         self.collect_steps += max(1, int(steps))
         self.last_reward_mean = float(np.mean(rewards)) if rewards else 0.0
         return CollectStats(steps=max(1, int(steps)), reward_mean=self.last_reward_mean)
+
+    def add_transition(
+        self,
+        obs: np.ndarray,
+        act: np.ndarray,
+        *,
+        reward: float,
+        obs_next: np.ndarray,
+        terminated: bool = False,
+        truncated: bool = False,
+    ) -> None:
+        from tianshou.data import Batch
+
+        self.replay.add(
+            Batch(
+                obs=np.asarray(obs, dtype=np.float32),
+                act=np.asarray(act, dtype=np.float32),
+                rew=float(reward),
+                terminated=bool(terminated),
+                truncated=bool(truncated),
+                done=bool(terminated or truncated),
+                obs_next=np.asarray(obs_next, dtype=np.float32),
+                info={},
+            )
+        )
 
     def update(self, gradient_steps: int) -> UpdateStats:
         if self.algorithm is None or self.policy is None or len(self.replay) == 0:

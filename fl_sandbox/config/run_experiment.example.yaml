@@ -47,6 +47,7 @@ attacker:
   rl_reconstruction_batch_size: 8
   rl_policy_train_episodes_per_round: 2
   rl_simulator_horizon: 12
+  rl_ppo_real_rollout_steps: 64
 
 defender:
   type: clipped_median

@@ -55,6 +55,7 @@ class RLAttackerConfig:
     ppo_entropy_coef: float = 0.01
     ppo_gae_lambda: float = 0.95
     ppo_max_grad_norm: float = 0.5
+    ppo_real_rollout_steps: int = 64
     hybrid_template_dim: int = 5
     hybrid_continuous_dim: int = 7
     local_search_batch_size: int = 200
