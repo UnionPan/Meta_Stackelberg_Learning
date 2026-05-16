@@ -147,6 +147,183 @@ class TestRLAttacker(unittest.TestCase):
 
         self.assertGreaterEqual(sim.current_num_attackers, 1)
 
+    def test_legacy_clipped_median_simulator_copies_one_malicious_update_for_all_attackers(self):
+        model = MNISTClassifier()
+        weights = _weights(model)
+        images = torch.randn(16, 1, 28, 28)
+        labels = torch.randint(0, 10, (16,))
+        learner = GradientDistributionLearner(
+            RLAttackerConfig(
+                attacker_semantics="legacy_clipped_median",
+                seed_samples=8,
+                reconstruction_batch_size=4,
+                simulator_horizon=1,
+                local_search_batch_size=4,
+            )
+        )
+        learner.initialize_from_loader(DataLoader(TensorDataset(images, labels), batch_size=4), torch.device("cpu"))
+        sim = SimulatedFLEnv(
+            model_template=model,
+            proxy_buffer=learner.buffer,
+            defender=AggregationDefender(defense_type="clipped_median"),
+            config=learner.config,
+            fl_config=SandboxConfig(num_clients=4, num_attackers=2, subsample_rate=0.5, batch_size=4),
+            device=torch.device("cpu"),
+        )
+        sim.reset(weights)
+        sim.current_num_attackers = 2
+        calls = 0
+
+        def fake_malicious(old_weights, action):
+            nonlocal calls
+            calls += 1
+            return [layer + calls for layer in old_weights]
+
+        sim._simulate_malicious_weight = fake_malicious
+        captured = {}
+
+        def fake_aggregate(old_weights, new_weights, trusted_weights=None):
+            captured["new_weights"] = new_weights
+            return old_weights
+
+        sim.defender.aggregate = fake_aggregate
+        sim.step(np.zeros(2, dtype=np.float32))
+
+        self.assertEqual(calls, 1)
+        self.assertEqual(len(captured["new_weights"]), 2)
+        self.assertTrue(
+            all(
+                np.allclose(captured["new_weights"][0][idx], captured["new_weights"][1][idx])
+                for idx in range(len(weights))
+            )
+        )
+
+    def test_legacy_clipped_median_live_observation_matches_tail_state_contract(self):
+        model = MNISTClassifier()
+        weights = _weights(model)
+        images = torch.randn(16, 1, 28, 28)
+        labels = torch.randint(0, 10, (16,))
+        loader = DataLoader(TensorDataset(images, labels), batch_size=4, shuffle=False)
+        fl_config = SandboxConfig(
+            num_clients=4,
+            num_attackers=1,
+            batch_size=4,
+            rl_attack_start_round=1,
+            rl_distribution_steps=1,
+            rl_policy_train_end_round=0,
+        )
+        attack = RLAttack(
+            config=RLAttackerConfig(
+                attacker_semantics="legacy_clipped_median",
+                attack_start_round=1,
+                distribution_steps=1,
+                policy_train_end_round=0,
+                reconstruction_batch_size=4,
+                local_search_batch_size=4,
+            ),
+        )
+        ctx = RoundContext(
+            round_idx=1,
+            old_weights=weights,
+            benign_weights=[],
+            selected_attacker_ids=[0],
+            model=copy.deepcopy(model),
+            device=torch.device("cpu"),
+            fl_config=fl_config,
+            defense_type="clipped_median",
+            lr=0.05,
+            server_lr=1.0,
+            local_epochs=1,
+            attacker_train_iter=loader,
+            all_attacker_train_iter=loader,
+        )
+
+        attack.observe_round(ctx)
+        obs = attack._current_observation(ctx)
+        expected_tail_dim = weights[-2].size + weights[-1].size + 1
+
+        self.assertEqual(obs.shape, (expected_tail_dim,))
+        self.assertEqual(obs[-1], 1.0)
+
+    def test_strict_legacy_clipped_median_reward_uses_eval_loader(self):
+        model = MNISTClassifier()
+        weights = _weights(model)
+        images = torch.randn(16, 1, 28, 28)
+        labels = torch.randint(0, 10, (16,))
+        learner = GradientDistributionLearner(
+            RLAttackerConfig(
+                attacker_semantics="legacy_clipped_median_strict",
+                seed_samples=8,
+                reconstruction_batch_size=4,
+                simulator_horizon=1,
+                local_search_batch_size=4,
+            )
+        )
+        learner.initialize_from_loader(DataLoader(TensorDataset(images, labels), batch_size=4), torch.device("cpu"))
+        eval_loader = DataLoader(TensorDataset(torch.randn(8, 1, 28, 28), torch.zeros(8, dtype=torch.long)), batch_size=4)
+        sim = SimulatedFLEnv(
+            model_template=model,
+            proxy_buffer=learner.buffer,
+            defender=AggregationDefender(defense_type="clipped_median"),
+            config=learner.config,
+            fl_config=SandboxConfig(num_clients=4, num_attackers=1, subsample_rate=0.25, batch_size=4),
+            device=torch.device("cpu"),
+            eval_loader=eval_loader,
+        )
+        eval_losses = iter([1.0, 3.5])
+        eval_calls = []
+
+        def fake_eval_metrics(_weights):
+            eval_calls.append("eval")
+            return next(eval_losses), 0.0
+
+        def fail_proxy_metrics(_weights):
+            raise AssertionError("strict reproduction reward must not use proxy metrics when eval_loader is available")
+
+        sim._evaluate_eval_metrics = fake_eval_metrics
+        sim._evaluate_proxy_metrics = fail_proxy_metrics
+        sim._simulate_benign_update = lambda old_weights: [layer.copy() for layer in old_weights]
+        sim._simulate_malicious_weight = lambda old_weights, action: [layer.copy() for layer in old_weights]
+        sim.defender.aggregate = lambda old_weights, new_weights, trusted_weights=None: [layer.copy() for layer in old_weights]
+
+        sim.reset(weights)
+        _, reward, _ = sim.step(np.zeros(2, dtype=np.float32))
+
+        self.assertEqual(eval_calls, ["eval", "eval"])
+        self.assertEqual(reward, 2.5)
+
+    def test_strict_legacy_clipped_median_proxy_view_expands_on_reset(self):
+        model = MNISTClassifier()
+        weights = _weights(model)
+        config = RLAttackerConfig(
+            attacker_semantics="legacy_clipped_median_strict",
+            strict_reproduction_initial_samples=3,
+            strict_reproduction_samples_per_epoch=2,
+            local_search_batch_size=16,
+        )
+        learner = GradientDistributionLearner(config)
+        images = torch.randn(8, 1, 28, 28)
+        labels = torch.arange(8, dtype=torch.long)
+        learner.initialize_from_loader(DataLoader(TensorDataset(images, labels), batch_size=8), torch.device("cpu"))
+        sim = SimulatedFLEnv(
+            model_template=model,
+            proxy_buffer=learner.buffer,
+            defender=AggregationDefender(defense_type="clipped_median"),
+            config=config,
+            fl_config=SandboxConfig(num_clients=4, num_attackers=1, batch_size=4),
+            device=torch.device("cpu"),
+        )
+
+        sim.reset(weights)
+        _, labels_epoch1 = sim.active_proxy_buffer().sample(16, torch.device("cpu"))
+        sim.reset(weights)
+        _, labels_epoch2 = sim.active_proxy_buffer().sample(16, torch.device("cpu"))
+
+        self.assertTrue(sim.active_proxy_buffer().uses_dataloader)
+        self.assertLessEqual(int(labels_epoch1.max().item()), 2)
+        self.assertLessEqual(int(labels_epoch2.max().item()), 4)
+        self.assertEqual(sim.strict_reproduction_sample_limit, 5)
+
     def test_gym_wrapper_exposes_flat_observation(self):
         model = MNISTClassifier()
         weights = _weights(model)

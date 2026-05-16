@@ -103,6 +103,11 @@ class FLSandboxCoordinatorAdapter(FLCoordinator):
             clean_loss=clean_loss,
             attack_name=summary.attack_name,
             defense_name=summary.defense_name,
+            benign_update_norms=list(getattr(summary, "benign_update_norms", [])),
+            malicious_update_norms=list(getattr(summary, "malicious_update_norms", [])),
+            malicious_cosines_to_benign=list(getattr(summary, "malicious_cosines_to_benign", [])),
+            selected_attackers=list(getattr(summary, "selected_attackers", [])),
+            sampled_clients=list(getattr(summary, "sampled_clients", [])),
         )
 
 

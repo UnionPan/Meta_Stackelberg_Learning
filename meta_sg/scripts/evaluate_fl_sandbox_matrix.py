@@ -49,10 +49,16 @@ class DefenderSpec:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--H", type=int, default=4)
+    parser.add_argument("--num-clients", type=int, default=4)
+    parser.add_argument("--num-attackers", type=int, default=1)
+    parser.add_argument("--subsample-rate", type=float, default=1.0)
     parser.add_argument("--client-samples", type=int, default=32)
     parser.add_argument("--eval-samples", type=int, default=256)
     parser.add_argument("--seeds", default="201,202,203")
     parser.add_argument("--include-rl", action="store_true")
+    parser.add_argument("--learned-defender-checkpoint", default=None)
+    parser.add_argument("--learned-hidden-dim", type=int, default=48)
+    parser.add_argument("--history-len", type=int, default=0)
     return parser.parse_args()
 
 
@@ -69,9 +75,9 @@ def main() -> None:
         data_dir="data",
         device="cpu",
         seed=42,
-        num_clients=4,
-        num_attackers=1,
-        subsample_rate=1.0,
+        num_clients=args.num_clients,
+        num_attackers=args.num_attackers,
+        subsample_rate=args.subsample_rate,
         local_epochs=1,
         lr=0.05,
         batch_size=32,
@@ -92,15 +98,16 @@ def main() -> None:
 
     scenarios = [
         Scenario("clean_no_attacker", ATTACK_DOMAIN["ipm"], {"num_attackers": 0, "ipm_scaling": 0.0}),
-        Scenario("weak_ipm", ATTACK_DOMAIN["ipm"], {"num_attackers": 1, "ipm_scaling": 0.5}),
-        Scenario("paper_ipm", ATTACK_DOMAIN["ipm"], {"num_attackers": 1, "ipm_scaling": 2.0}),
-        Scenario("strong_ipm", ATTACK_DOMAIN["ipm"], {"num_attackers": 1, "ipm_scaling": 4.0}),
-        Scenario("bfl_backdoor", ATTACK_DOMAIN["bfl"], {"num_attackers": 1, "bfl_poison_frac": 1.0}),
+        Scenario("weak_ipm", ATTACK_DOMAIN["ipm"], {"ipm_scaling": 0.5}),
+        Scenario("paper_ipm", ATTACK_DOMAIN["ipm"], {"ipm_scaling": 2.0}),
+        Scenario("strong_ipm", ATTACK_DOMAIN["ipm"], {"ipm_scaling": 4.0}),
+        Scenario("bfl_backdoor", ATTACK_DOMAIN["bfl"], {"bfl_poison_frac": 1.0}),
     ]
     if args.include_rl:
         scenarios.append(Scenario("rl_adaptive_smoke", ATTACK_DOMAIN["rl"], {"num_attackers": 1}, adaptive=True))
 
     defenders = [
+        DefenderSpec("no_robust_agg", lambda: ConstantActionPolicy([1.0, -1.0, 0.0])),
         DefenderSpec("mid_action", lambda: ConstantActionPolicy([0.0, 0.0, 0.0])),
         DefenderSpec("low_trim", lambda: ConstantActionPolicy([0.0, -1.0, 0.0])),
         DefenderSpec("strong_trim", lambda: ConstantActionPolicy([0.0, 1.0, 0.0])),
@@ -113,17 +120,32 @@ def main() -> None:
     for scenario in scenarios:
         config = _patched_config(base_config, scenario.config_patch)
         coordinator_factory = lambda cfg=config: FLSandboxCoordinatorAdapter(cfg)
-        obs_dim = obs_dim_for(coordinator_factory().spec.empty_weights())
+        obs_dim = obs_dim_for(coordinator_factory().spec.empty_weights(), history_len=args.history_len)
         evaluator = PolicyEvaluator(
             coordinator_factory=coordinator_factory,
             horizon=args.H,
             obs_dim=obs_dim,
             eval_every=1,
+            history_len=args.history_len,
         )
         attacker_agents = _attacker_agents(obs_dim) if scenario.adaptive else None
 
+        scenario_defenders = list(defenders)
+        if args.learned_defender_checkpoint:
+            scenario_defenders.insert(
+                0,
+                DefenderSpec(
+                    "learned_meta",
+                    lambda obs_dim=obs_dim: _learned_defender(
+                        obs_dim,
+                        args.learned_defender_checkpoint,
+                        args.learned_hidden_dim,
+                    ),
+                ),
+            )
+
         summaries: dict[str, PolicyEvalSummary] = {}
-        for defender in defenders:
+        for defender in scenario_defenders:
             summaries[defender.name] = evaluator.evaluate(
                 defender.name,
                 defender.factory(),
@@ -172,6 +194,16 @@ def _patched_config(base: SandboxConfig, patch: dict) -> SandboxConfig:
 def _attacker_agents(obs_dim: int) -> dict[str, TD3Agent]:
     cfg = TD3Config(hidden_dim=32, batch_size=4, buffer_capacity=256, warmup_steps=0)
     return {"rl": TD3Agent(obs_dim, 3, cfg)}
+
+
+def _learned_defender(obs_dim: int, checkpoint: str, hidden_dim: int) -> TD3Agent:
+    cfg = TD3Config(hidden_dim=hidden_dim, batch_size=8, buffer_capacity=1500, warmup_steps=0)
+    agent = TD3Agent(obs_dim, 3, cfg)
+    path = checkpoint
+    if os.path.isdir(path):
+        path = os.path.join(path, "defender_meta.pt")
+    agent.load(path)
+    return agent
 
 
 def _attack_damage(summary: PolicyEvalSummary, scenario: Scenario) -> float:

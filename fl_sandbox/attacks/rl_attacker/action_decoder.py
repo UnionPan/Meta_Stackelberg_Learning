@@ -88,10 +88,37 @@ def decode_hybrid_action(action: np.ndarray, defense_type: str, config: RLAttack
 
 
 def decode_action(action: np.ndarray, defense_type: str, config: RLAttackerConfig) -> AttackParameters:
+    config.validate_defense(defense_type)
     if config.algorithm.lower() == "ppo" or np.asarray(action).reshape(-1).shape[0] > 3:
         return decode_hybrid_action(action, defense_type, config)
     action_arr = normalized_action(action, config.action_dim(defense_type))
     defense = defense_type.lower()
+    if config.uses_legacy_clipped_median():
+        gamma_scale = float(action_arr[0]) * config.clipped_gamma_scale + config.clipped_gamma_center
+        local_steps = int(round(float(action_arr[1]) * config.clipped_steps_scale + config.clipped_steps_center))
+        return AttackParameters(
+            gamma_scale=max(0.1, float(gamma_scale)),
+            local_steps=max(1, local_steps),
+            lambda_stealth=0.0,
+            local_search_lr=max(1e-4, float(config.legacy_clipped_median_lr)),
+            template_index=3,
+            template_name="legacy_clipped_median",
+            scale=1.0,
+            parameters=action_arr.copy(),
+        )
+    if config.uses_legacy_krum():
+        gamma_scale = float(action_arr[0]) * config.legacy_krum_gamma_scale + config.legacy_krum_gamma_center
+        local_steps = int(float(action_arr[1]) * config.legacy_krum_steps_scale + config.legacy_krum_steps_center)
+        return AttackParameters(
+            gamma_scale=max(0.1, float(np.round(gamma_scale, 10))),
+            local_steps=max(1, local_steps),
+            lambda_stealth=0.0,
+            local_search_lr=max(1e-4, float(config.legacy_krum_lr)),
+            template_index=3,
+            template_name="legacy_krum",
+            scale=1.0,
+            parameters=action_arr.copy(),
+        )
     if defense in KRUM_DEFENSES:
         gamma_scale = float(action_arr[0]) * config.krum_gamma_scale + config.krum_gamma_center
         local_steps = int(round(float(action_arr[1]) * config.krum_steps_scale + config.krum_steps_center))

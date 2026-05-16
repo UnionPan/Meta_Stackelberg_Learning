@@ -17,6 +17,11 @@ class RoundSummary:
     clean_loss: float = 0.0
     attack_name: str = "unknown"
     defense_name: str = "unknown"
+    benign_update_norms: list[float] = field(default_factory=list)
+    malicious_update_norms: list[float] = field(default_factory=list)
+    malicious_cosines_to_benign: list[float] = field(default_factory=list)
+    selected_attackers: list[int] = field(default_factory=list)
+    sampled_clients: list[int] = field(default_factory=list)
 
 
 @dataclass

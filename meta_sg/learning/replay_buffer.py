@@ -1,29 +1,23 @@
-"""Circular replay buffer for TD3."""
+"""Replay buffer wrapper backed by Tianshou."""
 from __future__ import annotations
 
 from typing import Tuple
 
 import numpy as np
+from tianshou.data import Batch, ReplayBuffer as TianshouReplayBuffer
 
 
 class ReplayBuffer:
     """
-    Fixed-capacity circular replay buffer storing (s, a, r, s', done) tuples.
-    All tensors are stored as float32 numpy arrays for efficiency.
+    Fixed-capacity circular replay buffer storing (s, a, r, s', done) tuples,
+    while preserving the small project-local API used by the Meta-SG code.
     """
 
     def __init__(self, capacity: int, obs_dim: int, act_dim: int) -> None:
         self.capacity = capacity
         self.obs_dim = obs_dim
         self.act_dim = act_dim
-        self._ptr = 0
-        self._size = 0
-
-        self._obs = np.zeros((capacity, obs_dim), dtype=np.float32)
-        self._actions = np.zeros((capacity, act_dim), dtype=np.float32)
-        self._rewards = np.zeros((capacity, 1), dtype=np.float32)
-        self._next_obs = np.zeros((capacity, obs_dim), dtype=np.float32)
-        self._dones = np.zeros((capacity, 1), dtype=np.float32)
+        self._buffer = TianshouReplayBuffer(size=capacity)
 
     def add(
         self,
@@ -33,29 +27,37 @@ class ReplayBuffer:
         next_obs: np.ndarray,
         done: bool,
     ) -> None:
-        self._obs[self._ptr] = obs
-        self._actions[self._ptr] = action
-        self._rewards[self._ptr] = reward
-        self._next_obs[self._ptr] = next_obs
-        self._dones[self._ptr] = float(done)
-        self._ptr = (self._ptr + 1) % self.capacity
-        self._size = min(self._size + 1, self.capacity)
+        self._buffer.add(
+            Batch(
+                obs=np.asarray(obs, dtype=np.float32),
+                act=np.asarray(action, dtype=np.float32),
+                rew=float(reward),
+                terminated=bool(done),
+                truncated=False,
+                obs_next=np.asarray(next_obs, dtype=np.float32),
+                info={},
+            )
+        )
 
     def sample(
         self, batch_size: int
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        idx = np.random.randint(0, self._size, size=batch_size)
+        batch, _ = self._buffer.sample(batch_size)
         return (
-            self._obs[idx],
-            self._actions[idx],
-            self._rewards[idx],
-            self._next_obs[idx],
-            self._dones[idx],
+            np.asarray(batch.obs, dtype=np.float32),
+            np.asarray(batch.act, dtype=np.float32),
+            np.asarray(batch.rew, dtype=np.float32).reshape(-1, 1),
+            np.asarray(batch.obs_next, dtype=np.float32),
+            np.asarray(batch.done, dtype=np.float32).reshape(-1, 1),
         )
 
     def __len__(self) -> int:
-        return self._size
+        return len(self._buffer)
 
     @property
     def ready(self) -> bool:
-        return self._size > 0
+        return len(self) > 0
+
+    @property
+    def tianshou_buffer(self) -> TianshouReplayBuffer:
+        return self._buffer

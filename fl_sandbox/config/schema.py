@@ -66,6 +66,23 @@ class AttackerSection:
     dba_num_sub_triggers: int = 4
     attacker_action: tuple[float, float, float] = (0.0, 0.0, 0.0)
     rl_algorithm: str = "td3"
+    rl_attacker_semantics: str = "canonical"
+    rl_policy_lr: float = 3e-4
+    rl_critic_lr: float = 3e-4
+    rl_gamma: float = 0.95
+    rl_replay_capacity: int = 50_000
+    rl_batch_size: int = 256
+    rl_hidden_sizes: tuple[int, ...] = (256, 256)
+    rl_exploration_noise: float = 0.1
+    rl_train_freq_steps: int = 1
+    rl_policy_train_steps_per_round: int = 0
+    rl_policy_checkpoint_path: str = ""
+    rl_policy_checkpoint_dir: str = ""
+    rl_freeze_policy: bool = False
+    rl_checkpoint_interval: int = 0
+    rl_save_final_checkpoint: bool = True
+    rl_strict_reproduction_initial_samples: int = 200
+    rl_strict_reproduction_samples_per_epoch: int = 80
     rl_distribution_steps: int | None = 10
     rl_attack_start_round: int | None = 10
     rl_policy_train_end_round: int | None = 30
@@ -197,6 +214,23 @@ class RunConfig:
             "dba_num_sub_triggers": self.attacker.dba_num_sub_triggers,
             "attacker_action": list(self.attacker.attacker_action),
             "rl_algorithm": self.attacker.rl_algorithm,
+            "rl_attacker_semantics": self.attacker.rl_attacker_semantics,
+            "rl_policy_lr": self.attacker.rl_policy_lr,
+            "rl_critic_lr": self.attacker.rl_critic_lr,
+            "rl_gamma": self.attacker.rl_gamma,
+            "rl_replay_capacity": self.attacker.rl_replay_capacity,
+            "rl_batch_size": self.attacker.rl_batch_size,
+            "rl_hidden_sizes": list(self.attacker.rl_hidden_sizes),
+            "rl_exploration_noise": self.attacker.rl_exploration_noise,
+            "rl_train_freq_steps": self.attacker.rl_train_freq_steps,
+            "rl_policy_train_steps_per_round": self.attacker.rl_policy_train_steps_per_round,
+            "rl_policy_checkpoint_path": self.attacker.rl_policy_checkpoint_path,
+            "rl_policy_checkpoint_dir": self.attacker.rl_policy_checkpoint_dir,
+            "rl_freeze_policy": self.attacker.rl_freeze_policy,
+            "rl_checkpoint_interval": self.attacker.rl_checkpoint_interval,
+            "rl_save_final_checkpoint": self.attacker.rl_save_final_checkpoint,
+            "rl_strict_reproduction_initial_samples": self.attacker.rl_strict_reproduction_initial_samples,
+            "rl_strict_reproduction_samples_per_epoch": self.attacker.rl_strict_reproduction_samples_per_epoch,
             "krum_attackers": self.defender.krum_attackers,
             "multi_krum_selected": self.defender.multi_krum_selected,
             "clipped_median_norm": self.defender.clipped_median_norm,
@@ -220,7 +254,7 @@ def _apply_section(section: Any, values: Mapping[str, Any]) -> None:
     for key, value in values.items():
         if not hasattr(section, key):
             raise ValueError(f"Unknown config field: {type(section).__name__}.{key}")
-        if key == "attacker_action":
+        if key in {"attacker_action", "rl_hidden_sizes"}:
             value = tuple(value)
         setattr(section, key, value)
 
@@ -263,6 +297,23 @@ def _set_flat_value(config: RunConfig, key: str, value: Any) -> None:
         "dba_num_sub_triggers": (config.attacker, "dba_num_sub_triggers"),
         "attacker_action": (config.attacker, "attacker_action"),
         "rl_algorithm": (config.attacker, "rl_algorithm"),
+        "rl_attacker_semantics": (config.attacker, "rl_attacker_semantics"),
+        "rl_policy_lr": (config.attacker, "rl_policy_lr"),
+        "rl_critic_lr": (config.attacker, "rl_critic_lr"),
+        "rl_gamma": (config.attacker, "rl_gamma"),
+        "rl_replay_capacity": (config.attacker, "rl_replay_capacity"),
+        "rl_batch_size": (config.attacker, "rl_batch_size"),
+        "rl_hidden_sizes": (config.attacker, "rl_hidden_sizes"),
+        "rl_exploration_noise": (config.attacker, "rl_exploration_noise"),
+        "rl_train_freq_steps": (config.attacker, "rl_train_freq_steps"),
+        "rl_policy_train_steps_per_round": (config.attacker, "rl_policy_train_steps_per_round"),
+        "rl_policy_checkpoint_path": (config.attacker, "rl_policy_checkpoint_path"),
+        "rl_policy_checkpoint_dir": (config.attacker, "rl_policy_checkpoint_dir"),
+        "rl_freeze_policy": (config.attacker, "rl_freeze_policy"),
+        "rl_checkpoint_interval": (config.attacker, "rl_checkpoint_interval"),
+        "rl_save_final_checkpoint": (config.attacker, "rl_save_final_checkpoint"),
+        "rl_strict_reproduction_initial_samples": (config.attacker, "rl_strict_reproduction_initial_samples"),
+        "rl_strict_reproduction_samples_per_epoch": (config.attacker, "rl_strict_reproduction_samples_per_epoch"),
         "krum_attackers": (config.defender, "krum_attackers"),
         "multi_krum_selected": (config.defender, "multi_krum_selected"),
         "clipped_median_norm": (config.defender, "clipped_median_norm"),
@@ -283,6 +334,6 @@ def _set_flat_value(config: RunConfig, key: str, value: Any) -> None:
     if key not in mapping:
         raise ValueError(f"Unknown flat config key: {key}")
     target, field_name = mapping[key]
-    if field_name == "attacker_action":
+    if field_name in {"attacker_action", "rl_hidden_sizes"}:
         value = tuple(value)
     setattr(target, field_name, value)

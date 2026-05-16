@@ -46,6 +46,7 @@ class MetaSGConfig:
     gamma: float = 0.99            # discount factor for returns
     eval_every: int = 1            # full evaluation cadence inside env rollouts
     warmup_steps: int | None = 0     # optional random rollout before task adaptation
+    history_len: int = 0           # append last-k action/reward/metric features to obs
 
     # Online adaptation
     online_T: int = 10

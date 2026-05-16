@@ -14,7 +14,7 @@ from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 
-from meta_sg.games.observations import compress_weights, normalise_obs, obs_dim_for
+from meta_sg.games.observations import HISTORY_FEATURE_DIM, compress_weights, normalise_obs, obs_dim_for
 from meta_sg.games.rewards import attacker_reward, defender_reward
 from meta_sg.simulation.interface import FLCoordinator
 from meta_sg.simulation.types import Weights
@@ -34,6 +34,7 @@ class BSMGConfig:
     lambda_bd: float = 1.0            # backdoor penalty in defender reward
     normalise_obs: bool = True        # z-score normalise observations
     eval_every: int = 1               # run expensive full eval every N FL rounds
+    history_len: int = 0              # append last-k round feedback/action features
 
 
 class BSMGEnv:
@@ -64,6 +65,7 @@ class BSMGEnv:
         self._round = 0
         self._obs: Optional[np.ndarray] = None
         self._obs_dim: Optional[int] = None
+        self._history: list[np.ndarray] = []
 
     # ------------------------------------------------------------------
     # Gym-like interface
@@ -73,6 +75,7 @@ class BSMGEnv:
         """Reset coordinator and return initial observation."""
         init = self.coordinator.reset(seed=seed)
         self._round = 0
+        self._history = []
         obs = self._make_obs(init.weights)
         self._obs = obs
         self._obs_dim = obs.shape[0]
@@ -130,6 +133,14 @@ class BSMGEnv:
 
         r_D = defender_reward(eval_summary, lambda_bd=self.config.lambda_bd)
         r_A = attacker_reward(eval_summary, self.attack_type)
+        self._append_history(
+            defender_action=defender_action,
+            attacker_action=attacker_action,
+            defender_reward=r_D,
+            attacker_reward=r_A,
+            summary=summary,
+            defense_decision=defense_decision,
+        )
 
         self._round += 1
         done = self._round >= self.config.horizon
@@ -156,7 +167,11 @@ class BSMGEnv:
     def obs_dim(self) -> int:
         if self._obs_dim is not None:
             return self._obs_dim
-        return obs_dim_for(self.coordinator.spec.empty_weights(), self.config.num_tail_layers)
+        return obs_dim_for(
+            self.coordinator.spec.empty_weights(),
+            self.config.num_tail_layers,
+            self.config.history_len,
+        )
 
     @property
     def act_dim(self) -> int:
@@ -170,7 +185,69 @@ class BSMGEnv:
         obs = compress_weights(weights, self.config.num_tail_layers)
         if self.config.normalise_obs:
             obs = normalise_obs(obs)
-        return obs
+        if self.config.history_len <= 0:
+            return obs
+        return np.concatenate([obs, self._history_obs()], axis=0).astype(np.float32)
+
+    def _history_obs(self) -> np.ndarray:
+        k = max(0, int(self.config.history_len))
+        if k == 0:
+            return np.zeros(0, dtype=np.float32)
+        padded = [np.zeros(HISTORY_FEATURE_DIM, dtype=np.float32) for _ in range(max(0, k - len(self._history)))]
+        recent = self._history[-k:]
+        return np.concatenate([*padded, *recent], axis=0).astype(np.float32)
+
+    def _append_history(
+        self,
+        *,
+        defender_action: np.ndarray,
+        attacker_action: np.ndarray,
+        defender_reward: float,
+        attacker_reward: float,
+        summary,
+        defense_decision: DefenseDecision,
+    ) -> None:
+        if self.config.history_len <= 0:
+            return
+        d_raw = _fixed_len(defender_action, 3)
+        a_raw = _fixed_len(attacker_action, 3)
+        benign_norms = np.asarray(getattr(summary, "benign_update_norms", []), dtype=np.float32)
+        malicious_norms = np.asarray(getattr(summary, "malicious_update_norms", []), dtype=np.float32)
+        malicious_cos = np.asarray(getattr(summary, "malicious_cosines_to_benign", []), dtype=np.float32)
+        sampled_clients = getattr(summary, "sampled_clients", [])
+        selected_attackers = getattr(summary, "selected_attackers", [])
+        selected_frac = len(selected_attackers) / max(1, len(sampled_clients))
+        post_param = (
+            defense_decision.neuroclip_epsilon
+            if defense_decision.neuroclip_epsilon is not None
+            else defense_decision.prun_mask_rate or 0.0
+        )
+        features = np.asarray(
+            [
+                *d_raw,
+                *a_raw,
+                defender_reward,
+                attacker_reward,
+                _finite(summary.clean_acc),
+                _finite(summary.backdoor_acc),
+                _finite(summary.clean_loss),
+                defense_decision.norm_bound_alpha / max(self.config.alpha_max, 1e-8),
+                defense_decision.trimmed_mean_beta / max(self.config.beta_max, 1e-8),
+                post_param / max(self.config.eps_max, 1e-8),
+                _safe_mean_log1p(benign_norms),
+                _safe_std_log1p(benign_norms),
+                _safe_mean_log1p(malicious_norms),
+                _safe_std_log1p(malicious_norms),
+                _safe_mean(malicious_cos),
+                selected_frac,
+            ],
+            dtype=np.float32,
+        )
+        if features.shape[0] != HISTORY_FEATURE_DIM:
+            raise RuntimeError(f"history feature dim mismatch: {features.shape[0]}")
+        self._history.append(features)
+        if len(self._history) > self.config.history_len:
+            self._history = self._history[-self.config.history_len:]
 
 
 def _patch_summary_with_eval(summary, w_eval):
@@ -179,3 +256,30 @@ def _patch_summary_with_eval(summary, w_eval):
     For stub: return same summary (post-training barely changes stub metrics).
     """
     return summary
+
+
+def _fixed_len(value: np.ndarray, length: int) -> np.ndarray:
+    arr = np.asarray(value, dtype=np.float32).ravel()
+    if arr.shape[0] < length:
+        arr = np.pad(arr, (0, length - arr.shape[0]))
+    return arr[:length]
+
+
+def _finite(value: float, default: float = 0.0) -> float:
+    try:
+        value = float(value)
+    except Exception:
+        return default
+    return value if np.isfinite(value) else default
+
+
+def _safe_mean(values: np.ndarray) -> float:
+    return float(np.mean(values)) if values.size else 0.0
+
+
+def _safe_mean_log1p(values: np.ndarray) -> float:
+    return float(np.mean(np.log1p(np.maximum(values, 0.0)))) if values.size else 0.0
+
+
+def _safe_std_log1p(values: np.ndarray) -> float:
+    return float(np.std(np.log1p(np.maximum(values, 0.0)))) if values.size else 0.0

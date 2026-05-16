@@ -1,0 +1,62 @@
+data:
+  dataset: mnist
+  split_mode: paper_q
+  noniid_q: 0.1
+
+fl:
+  num_clients: 100
+  num_attackers: 20
+  subsample_rate: 0.1
+  local_epochs: 1
+
+protocol:
+  name: rlfl
+  warmup_rounds: 100
+
+init:
+  init_mode: seed
+  init_checkpoint_path: ""
+
+runtime:
+  rounds: 1000
+  device: auto
+  lr: 0.01
+  batch_size: 128
+  eval_batch_size: 10000
+  num_workers: 0
+  parallel_clients: 1
+  eval_every: 1
+  seed: 150
+
+attacker:
+  type: rl
+  rl_algorithm: td3
+  rl_attacker_semantics: legacy_clipped_median_strict
+  rl_distribution_steps: 100
+  rl_attack_start_round: 101
+  rl_policy_train_end_round: 400
+  rl_inversion_steps: 10000
+  rl_reconstruction_batch_size: 32
+  rl_policy_train_episodes_per_round: 1
+  rl_simulator_horizon: 1000
+  rl_policy_train_steps_per_round: 200
+  rl_policy_lr: 1.0e-7
+  rl_critic_lr: 1.0e-7
+  rl_gamma: 1.0
+  rl_replay_capacity: 100000
+  rl_batch_size: 256
+  rl_hidden_sizes: [256, 128]
+  rl_exploration_noise: 0.1
+  rl_train_freq_steps: 5
+  rl_checkpoint_interval: 25
+  rl_save_final_checkpoint: true
+  rl_strict_reproduction_initial_samples: 200
+  rl_strict_reproduction_samples_per_epoch: 80
+
+defender:
+  type: clipped_median
+  clipped_median_norm: 2.0
+
+output:
+  output_root: fl_sandbox/outputs/paper_clipped_median
+  tb_root: fl_sandbox/runs/paper_clipped_median

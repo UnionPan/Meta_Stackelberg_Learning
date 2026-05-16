@@ -243,7 +243,7 @@ def run_all(
             persist_experiment_artifacts(
                 result,
                 write_client_metrics=True,
-                write_tensorboard=True,
+                write_tensorboard=False,
                 write_round_metrics=True,
             )
             elapsed = time.perf_counter() - t0

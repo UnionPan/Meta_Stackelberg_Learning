@@ -84,6 +84,7 @@ class SandboxConfig:
     rl_policy_train_episodes_per_round: int = 2
     rl_simulator_horizon: int = 10
     rl_ppo_real_rollout_steps: int = 64
+    rl_attacker_semantics: str = "canonical"
     init_mode: str = "seed"
     init_checkpoint_path: str = ""
 
@@ -210,6 +211,7 @@ class MinimalFLRunner:
                 local_epochs=self.config.local_epochs,
                 attacker_train_iter=selected_attacker_loader,
                 all_attacker_train_iter=all_attacker_loader,
+                eval_loader=self.test_loader,
                 selected_attacker_train_loaders=selected_attacker_train_loaders,
                 global_poisoned_train_loader=self.poisoned_train_loaders.get("global"),
                 sub_trigger_train_loaders=self.poisoned_train_loaders.get("sub_triggers"),

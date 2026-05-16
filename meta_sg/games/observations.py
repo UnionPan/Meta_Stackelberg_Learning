@@ -7,6 +7,8 @@ import numpy as np
 
 from meta_sg.simulation.types import Weights
 
+HISTORY_FEATURE_DIM = 20
+
 
 def compress_weights(weights: Weights, num_tail_layers: int = 2) -> np.ndarray:
     """
@@ -19,9 +21,10 @@ def compress_weights(weights: Weights, num_tail_layers: int = 2) -> np.ndarray:
     return np.concatenate([w.ravel().astype(np.float32) for w in tail])
 
 
-def obs_dim_for(weights: Weights, num_tail_layers: int = 2) -> int:
+def obs_dim_for(weights: Weights, num_tail_layers: int = 2, history_len: int = 0) -> int:
     """Return the observation dimension for given model weights."""
-    return int(compress_weights(weights, num_tail_layers).shape[0])
+    base_dim = int(compress_weights(weights, num_tail_layers).shape[0])
+    return base_dim + max(0, int(history_len)) * HISTORY_FEATURE_DIM
 
 
 def normalise_obs(obs: np.ndarray, eps: float = 1e-8) -> np.ndarray:

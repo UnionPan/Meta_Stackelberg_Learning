@@ -101,6 +101,49 @@ def local_search_update(
     return [old + float(gamma_scale) * (adv - old) for old, adv in zip(old_weights, adv_weights)]
 
 
+def legacy_craft_att(old_weights: Weights, trained_weights: Weights, *, gamma_scale: float) -> Weights:
+    """Original clipped-median attacker craft: old + gamma * (old - trained)."""
+
+    return [
+        old + float(gamma_scale) * (old - trained)
+        for old, trained in zip(old_weights, trained_weights)
+    ]
+
+
+def legacy_reversal_update(
+    *,
+    model_template: nn.Module,
+    old_weights: Weights,
+    proxy_buffer,
+    device: torch.device,
+    fl_lr: float,
+    steps: int,
+    gamma_scale: float,
+    search_batch_size: int,
+) -> Weights:
+    if steps <= 0:
+        return [layer.copy() for layer in old_weights]
+    model = build_model_from_template(model_template, old_weights, device)
+    model.train()
+    optimizer = torch.optim.SGD(model.parameters(), lr=max(1e-5, float(fl_lr)))
+    for _ in range(max(1, int(steps))):
+        images, labels = proxy_buffer.sample(search_batch_size, device)
+        loss = F.cross_entropy(model(images), labels)
+        if not torch.isfinite(loss):
+            break
+        optimizer.zero_grad(set_to_none=True)
+        loss.backward()
+        optimizer.step()
+        with torch.no_grad():
+            for param in model.parameters():
+                param.data.nan_to_num_(nan=0.0, posinf=1e3, neginf=-1e3)
+    return legacy_craft_att(old_weights, capture_weights(model), gamma_scale=gamma_scale)
+
+
+def legacy_clipped_median_update(**kwargs) -> Weights:
+    return legacy_reversal_update(**kwargs)
+
+
 def train_proxy_model(*, model_template, old_weights, proxy_buffer, device, lr: float, steps: int, batch_size: int) -> Weights:
     params = AttackParameters(gamma_scale=1.0, local_steps=steps, lambda_stealth=0.0, local_search_lr=lr)
     return craft_malicious_update(
@@ -124,6 +167,17 @@ def craft_malicious_update(
     search_batch_size: int,
     state_tail_layers: int,
 ) -> Weights:
+    if params.template_name in {"legacy_clipped_median", "legacy_krum"}:
+        return legacy_reversal_update(
+            model_template=model_template,
+            old_weights=old_weights,
+            proxy_buffer=proxy_buffer,
+            device=device,
+            fl_lr=params.local_search_lr,
+            steps=params.local_steps,
+            gamma_scale=params.gamma_scale,
+            search_batch_size=search_batch_size,
+        )
     return local_search_update(
         model_template=model_template,
         old_weights=old_weights,

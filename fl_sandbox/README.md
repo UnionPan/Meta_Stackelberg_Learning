@@ -85,6 +85,12 @@ The first runnable slice in this folder is:
 
 If you want a step-by-step run guide for MNIST, see [MNIST_RUN_GUIDE.md](./docs/MNIST_RUN_GUIDE.md).
 
+For the RL attacker architecture and paper-reproduction comparison, see
+[rl_attacker_paper_comparison_zh.md](./docs/rl_attacker_paper_comparison_zh.md).
+
+For the clipped-median strict reproduction and scale-aware TD3 run result, see
+[rl_attacker_scaleaware_result_2026_05_12.md](./docs/rl_attacker_scaleaware_result_2026_05_12.md).
+
 ## GPU Support
 
 The sandbox now accepts an explicit runtime device:

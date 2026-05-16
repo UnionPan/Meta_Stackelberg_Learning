@@ -229,5 +229,7 @@ docs/
 outputs/
 fl_sandbox/outputs/
 fl_sandbox/logs/
+fl_sandbox/archive/
+fl_sandbox/data/**/__pycache__/
 .venv312
 .obsidian/

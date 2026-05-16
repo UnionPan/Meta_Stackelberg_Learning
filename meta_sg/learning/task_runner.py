@@ -80,6 +80,7 @@ class AttackTaskRunner:
             config=BSMGConfig(
                 horizon=self.meta_config.H,
                 eval_every=self.meta_config.eval_every,
+                history_len=self.meta_config.history_len,
             ),
         )
 

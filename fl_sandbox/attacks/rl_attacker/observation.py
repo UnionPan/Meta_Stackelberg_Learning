@@ -30,6 +30,62 @@ def _weights_to_vector(weights) -> np.ndarray:
     return np.concatenate([np.asarray(layer, dtype=np.float32).reshape(-1) for layer in weights]).astype(np.float32)
 
 
+def build_legacy_clipped_median_observation(weights, *, num_attackers: int, tail_layers: int = 2) -> np.ndarray:
+    tail = list(weights)[-max(1, int(tail_layers)) :]
+    tail_vec = _weights_to_vector(tail)
+    state_min = float(np.min(tail_vec)) if tail_vec.size else 0.0
+    state_max = float(np.max(tail_vec)) if tail_vec.size else 0.0
+    if state_max > state_min:
+        norm_state = 2.0 * ((tail_vec - state_min) / (state_max - state_min)) - 1.0
+    else:
+        norm_state = np.zeros_like(tail_vec, dtype=np.float32)
+    return np.concatenate(
+        [
+            norm_state.astype(np.float32),
+            np.asarray([float(num_attackers)], dtype=np.float32),
+        ],
+        axis=0,
+    ).astype(np.float32)
+
+
+def build_legacy_scaleaware_observation(
+    weights,
+    *,
+    num_attackers: int,
+    round_idx: int,
+    total_rounds: int,
+    tail_layers: int = 2,
+) -> np.ndarray:
+    """Legacy tail observation that keeps absolute scale information.
+
+    The original repo normalizes each frame with its own min/max, which keeps
+    relative coordinate shape but erases whether the model is early, late, or
+    badly perturbed. This deterministic transform avoids checkpointing normalizer
+    state while still keeping values in a compact numeric range.
+    """
+
+    tail = list(weights)[-max(1, int(tail_layers)) :]
+    tail_vec = _weights_to_vector(tail)
+    signed_log_tail = np.sign(tail_vec) * np.log1p(np.abs(tail_vec))
+    signed_log_tail = np.clip(signed_log_tail, -10.0, 10.0).astype(np.float32)
+    abs_mean = float(np.mean(np.abs(tail_vec))) if tail_vec.size else 0.0
+    std = float(np.std(tail_vec)) if tail_vec.size else 0.0
+    l2 = float(np.linalg.norm(tail_vec)) if tail_vec.size else 0.0
+    value_range = float(np.max(tail_vec) - np.min(tail_vec)) if tail_vec.size else 0.0
+    scale_features = np.asarray(
+        [
+            np.log1p(abs_mean),
+            np.log1p(std),
+            np.log1p(l2),
+            np.log1p(value_range),
+            float(num_attackers),
+            float(round_idx) / max(1.0, float(total_rounds)),
+        ],
+        dtype=np.float32,
+    )
+    return np.concatenate([signed_log_tail, scale_features], axis=0).astype(np.float32)
+
+
 @dataclass
 class FixedRandomProjector:
     """Seeded random projection that is fixed after first input dimension."""

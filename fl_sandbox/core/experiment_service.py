@@ -39,6 +39,83 @@ ROUND_METRICS_FIELDNAMES = [
 ]
 
 
+RL_TRAINING_TENSORBOARD_TAGS = {
+    "rl_trainer_actor_loss": "rl_training/actor_loss",
+    "rl_trainer_critic1_loss": "rl_training/critic1_loss",
+    "rl_trainer_critic2_loss": "rl_training/critic2_loss",
+    "rl_trainer_loss": "rl_training/total_loss",
+    "rl_trainer_last_update_loss": "rl_training/last_update_loss",
+    "rl_trainer_reward_mean": "rl_training/reward_mean",
+    "rl_real_reward": "rl_training/real_reward",
+    "rl_simulated_reward": "rl_training/simulated_reward",
+    "rl_sim2real_gap": "rl_training/sim2real_gap",
+    "rl_trainer_replay_size": "rl_training/replay_size",
+    "rl_trainer_update_steps": "rl_training/update_steps",
+    "rl_trainer_collect_steps": "rl_training/collect_steps",
+    "rl_trainer_train_time": "rl_training/train_time_seconds",
+    "rl_action_gamma_scale": "rl_action/gamma_scale",
+    "rl_action_local_steps": "rl_action/local_steps",
+    "rl_action_lambda_stealth": "rl_action/lambda_stealth",
+    "rl_action_template_index": "rl_action/template_index",
+    "rl_action_raw_0": "rl_action/raw_0",
+    "rl_action_raw_1": "rl_action/raw_1",
+    "rl_action_raw_2": "rl_action/raw_2",
+    "rl_observation_dim": "rl_observation/dim",
+    "rl_observation_norm": "rl_observation/norm",
+    "rl_observation_mean": "rl_observation/mean",
+    "rl_observation_std": "rl_observation/std",
+    "rl_observation_min": "rl_observation/min",
+    "rl_observation_max": "rl_observation/max",
+    "rl_observation_absmax": "rl_observation/absmax",
+    "rl_gap_loss_mean": "rl_reward/loss_delta_mean",
+    "rl_gap_acc_mean": "rl_reward/acc_delta_mean",
+    "rl_gap_bypass_mean": "rl_reward/bypass_mean",
+    "rl_gap_smoothness_mean": "rl_reward/smoothness_mean",
+    "rl_gap_oob_mean": "rl_reward/action_saturation_mean",
+    "rl_bypass_score": "rl_krum/bypass_score",
+    "rl_krum_projection_applied": "rl_krum/projection_applied",
+    "rl_krum_raw_selected": "rl_krum/raw_selected",
+    "rl_krum_raw_rank": "rl_krum/raw_rank",
+    "rl_krum_raw_score_ratio": "rl_krum/raw_score_ratio",
+    "rl_krum_projected_selected": "rl_krum/projected_selected",
+    "rl_krum_projected_rank": "rl_krum/projected_rank",
+    "rl_krum_projected_score_ratio": "rl_krum/projected_score_ratio",
+    "rl_krum_projection_alpha": "rl_krum/projection_alpha",
+    "rl_krum_projection_max_alpha": "rl_krum/projection_max_alpha",
+    "rl_krum_raw_delta_norm": "rl_krum/raw_delta_norm",
+    "rl_krum_projected_delta_norm": "rl_krum/projected_delta_norm",
+    "rl_krum_mean_benign_norm": "rl_krum/mean_benign_norm",
+    "rl_krum_selected_attackers": "rl_krum/selected_attackers",
+    "rl_krum_num_byzantine": "rl_krum/num_byzantine",
+    "rl_krum_feasible_byzantine": "rl_krum/feasible_byzantine",
+    "rl_krum_neighbor_count": "rl_krum/neighbor_count",
+    "rl_krum_actual_selected": "rl_krum/actual_selected",
+    "rl_krum_actual_best_rank": "rl_krum/actual_best_rank",
+    "rl_krum_actual_score_ratio": "rl_krum/actual_score_ratio",
+    "rl_krum_actual_feasible_byzantine": "rl_krum/actual_feasible_byzantine",
+    "rl_krum_actual_neighbor_count": "rl_krum/actual_neighbor_count",
+}
+
+
+def rl_training_tensorboard_scalars(metrics: dict[str, object]) -> list[tuple[str, float]]:
+    scalars: list[tuple[str, float]] = []
+    for metric_key, tag in RL_TRAINING_TENSORBOARD_TAGS.items():
+        value = metrics.get(metric_key)
+        if isinstance(value, (int, float)) and math.isfinite(float(value)):
+            scalars.append((tag, float(value)))
+
+    critic1 = metrics.get("rl_trainer_critic1_loss")
+    critic2 = metrics.get("rl_trainer_critic2_loss")
+    if (
+        isinstance(critic1, (int, float))
+        and isinstance(critic2, (int, float))
+        and math.isfinite(float(critic1))
+        and math.isfinite(float(critic2))
+    ):
+        scalars.append(("rl_training/critic_loss", float(critic1) + float(critic2)))
+    return scalars
+
+
 class LiveMetricsLogger:
     """Append per-round metrics to disk and TensorBoard during execution."""
 
@@ -171,6 +248,8 @@ class LiveMetricsLogger:
             for key, value in summary.attack_metrics.items():
                 if isinstance(value, (int, float)) and math.isfinite(float(value)):
                     self._writer.add_scalar(f"attack_only/{key}", float(value), step)
+            for tag, value in rl_training_tensorboard_scalars(summary.attack_metrics):
+                self._writer.add_scalar(tag, value, step)
         self._writer.flush()
         self._write_partial_summary()
 
@@ -203,6 +282,96 @@ class LiveMetricsLogger:
         self._csv_file.close()
         self._round_metrics_file.close()
         self._client_metrics_file.close()
+
+
+class ExperimentCheckpointManager:
+    """Persist lightweight per-round checkpoints for RL attacker runs."""
+
+    def __init__(
+        self,
+        *,
+        output_dir: Path,
+        run_config: RunConfig,
+        config_payload: dict[str, object],
+        attack: Any,
+        model: Any,
+    ) -> None:
+        self.output_dir = output_dir
+        self.run_config = run_config
+        self.config_payload = dict(config_payload)
+        self.attack = attack
+        self.model = model
+        self.checkpoint_dir = output_dir / "checkpoints"
+
+    def maybe_save(self, *, round_idx: int) -> list[Path]:
+        if self.run_config.attacker.type != "rl":
+            return []
+        if not self._should_save(round_idx):
+            return []
+
+        self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        paths: list[Path] = []
+        policy_paths = self._save_rl_policy(round_idx)
+        paths.extend(policy_paths)
+        model_paths = self._save_global_model(round_idx)
+        paths.extend(model_paths)
+        return paths
+
+    def _should_save(self, round_idx: int) -> bool:
+        interval = max(0, int(self.run_config.attacker.rl_checkpoint_interval or 0))
+        is_interval_round = interval > 0 and int(round_idx) % interval == 0
+        is_final_round = int(round_idx) == int(self.run_config.runtime.rounds)
+        return is_interval_round or (bool(self.run_config.attacker.rl_save_final_checkpoint) and is_final_round)
+
+    def _save_rl_policy(self, round_idx: int) -> list[Path]:
+        trainer = getattr(self.attack, "trainer", None)
+        if trainer is None or not hasattr(trainer, "save"):
+            return []
+
+        latest_path = self.checkpoint_dir / "rl_policy_latest.pt"
+        round_path = self.checkpoint_dir / f"rl_policy_round_{int(round_idx):06d}.pt"
+        paths = [latest_path, round_path]
+        for path in paths:
+            trainer.save(str(path))
+            self._annotate_rl_policy_checkpoint(path, round_idx)
+        return paths
+
+    def _annotate_rl_policy_checkpoint(self, path: Path, round_idx: int) -> None:
+        try:
+            import torch
+
+            payload = torch.load(path, map_location="cpu")
+            if not isinstance(payload, dict):
+                payload = {"payload": payload}
+            payload.update(
+                {
+                    "kind": "rl_policy",
+                    "round_idx": int(round_idx),
+                    "config": self.config_payload,
+                }
+            )
+            torch.save(payload, path)
+        except Exception:
+            # The trainer checkpoint itself has already been written; metadata is
+            # helpful but should not make a long FL run fail.
+            return
+
+    def _save_global_model(self, round_idx: int) -> list[Path]:
+        if self.model is None or not hasattr(self.model, "state_dict"):
+            return []
+        import torch
+
+        payload = {
+            "kind": "global_model",
+            "round_idx": int(round_idx),
+            "config": self.config_payload,
+            "state_dict": self.model.state_dict(),
+        }
+        latest_path = self.checkpoint_dir / "global_model_latest.pt"
+        round_path = self.checkpoint_dir / f"global_model_round_{int(round_idx):06d}.pt"
+        for path in (latest_path, round_path):
+            torch.save(payload, path)
+        return [latest_path, round_path]
 
 
 @dataclass
@@ -254,6 +423,12 @@ def write_tensorboard_logs(
             writer.add_scalar("attack_only/mean_malicious_norm", value, round_idx)
         for round_idx, value in enumerate(series["mean_malicious_cosine"], start=1):
             writer.add_scalar("attack_only/mean_malicious_cosine", value, round_idx)
+        for summary in summaries:
+            for key, value in summary.attack_metrics.items():
+                if isinstance(value, (int, float)) and math.isfinite(float(value)):
+                    writer.add_scalar(f"attack_only/{key}", float(value), summary.round_idx)
+            for tag, value in rl_training_tensorboard_scalars(summary.attack_metrics):
+                writer.add_scalar(tag, value, summary.round_idx)
 
     writer.add_scalar("metrics/total_seconds", total_seconds, 0)
     writer.flush()
@@ -317,6 +492,21 @@ def build_payload(
         "dba_num_sub_triggers": args.dba_num_sub_triggers,
         "attacker_action": list(args.attacker_action),
         "rl_algorithm": args.rl_algorithm,
+        "rl_attacker_semantics": args.rl_attacker_semantics,
+        "rl_policy_lr": args.rl_policy_lr,
+        "rl_critic_lr": args.rl_critic_lr,
+        "rl_gamma": args.rl_gamma,
+        "rl_replay_capacity": args.rl_replay_capacity,
+        "rl_batch_size": args.rl_batch_size,
+        "rl_hidden_sizes": list(args.rl_hidden_sizes),
+        "rl_exploration_noise": args.rl_exploration_noise,
+        "rl_train_freq_steps": args.rl_train_freq_steps,
+        "rl_policy_train_steps_per_round": args.rl_policy_train_steps_per_round,
+        "rl_policy_checkpoint_path": args.rl_policy_checkpoint_path,
+        "rl_policy_checkpoint_dir": args.rl_policy_checkpoint_dir,
+        "rl_freeze_policy": args.rl_freeze_policy,
+        "rl_strict_reproduction_initial_samples": args.rl_strict_reproduction_initial_samples,
+        "rl_strict_reproduction_samples_per_epoch": args.rl_strict_reproduction_samples_per_epoch,
         "defense_type": config.defense_type,
         "krum_attackers": config.krum_attackers,
         "multi_krum_selected": config.multi_krum_selected,
@@ -334,6 +524,8 @@ def build_payload(
         "rl_policy_train_episodes_per_round": config.rl_policy_train_episodes_per_round,
         "rl_simulator_horizon": config.rl_simulator_horizon,
         "rl_ppo_real_rollout_steps": config.rl_ppo_real_rollout_steps,
+        "rl_checkpoint_interval": args.rl_checkpoint_interval,
+        "rl_save_final_checkpoint": args.rl_save_final_checkpoint,
         "rounds": args.rounds,
     }
     benchmark_protocol = run_config.benchmark_protocol_payload()
@@ -460,6 +652,12 @@ def execute_experiment(
         "rl_policy_train_episodes_per_round": config.rl_policy_train_episodes_per_round,
         "rl_simulator_horizon": config.rl_simulator_horizon,
         "rl_ppo_real_rollout_steps": config.rl_ppo_real_rollout_steps,
+        "rl_attacker_semantics": config.rl_attacker_semantics,
+        "rl_policy_checkpoint_path": args.rl_policy_checkpoint_path,
+        "rl_policy_checkpoint_dir": args.rl_policy_checkpoint_dir,
+        "rl_freeze_policy": args.rl_freeze_policy,
+        "rl_checkpoint_interval": args.rl_checkpoint_interval,
+        "rl_save_final_checkpoint": args.rl_save_final_checkpoint,
     }
     live_logger = LiveMetricsLogger(
         output_dir=output_dir,
@@ -478,6 +676,24 @@ def execute_experiment(
     )
 
     runner = MinimalFLRunner(config)
+    checkpoint_manager = ExperimentCheckpointManager(
+        output_dir=output_dir,
+        run_config=run_config,
+        config_payload=live_config_payload,
+        attack=attack,
+        model=runner.model,
+    )
+
+    def _after_round(summary) -> None:
+        live_logger.log_round(summary)
+        checkpoint_paths = checkpoint_manager.maybe_save(round_idx=int(summary.round_idx))
+        if checkpoint_paths:
+            print(
+                f"Saved checkpoint(s) for round {summary.round_idx}: "
+                f"{', '.join(str(path) for path in checkpoint_paths)}",
+                flush=True,
+            )
+
     timer = ExperimentTimer.start()
     from fl_sandbox.attacks import RLAttack
     # For RL attacks let the internal policy pick the action (pass None).  For all other
@@ -495,7 +711,7 @@ def execute_experiment(
             progress_desc=progress_desc or f"{run_config.attacker.type} ({config.dataset})",
             eval_every=run_config.runtime.eval_every,
             attacker_action=attacker_action_arg,
-            per_round_callback=live_logger.log_round,
+            per_round_callback=_after_round,
         )
         completed = True
         live_logger.mark_completed(timer.elapsed_seconds())

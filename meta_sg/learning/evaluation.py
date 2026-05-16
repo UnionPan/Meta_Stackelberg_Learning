@@ -110,12 +110,14 @@ class PolicyEvaluator:
         obs_dim: int,
         act_dim: int = 3,
         eval_every: int = 1,
+        history_len: int = 0,
     ) -> None:
         self.coordinator_factory = coordinator_factory
         self.horizon = horizon
         self.obs_dim = obs_dim
         self.act_dim = act_dim
         self.eval_every = eval_every
+        self.history_len = history_len
 
     def evaluate(
         self,
@@ -155,8 +157,10 @@ class PolicyEvaluator:
         attacker_agents: dict[str, TD3Agent] | None = None,
         seeds: Sequence[int] = (0,),
         adaptation_horizon: int | None = None,
+        adaptation_episodes: int = 1,
         adaptation_updates: int = 10,
         exploration_noise: float = 0.1,
+        adaptation_lr_scale: float = 1.0,
     ) -> PolicyEvalSummary:
         """
         Evaluate a meta-policy after task-specific TD3 adaptation.
@@ -167,23 +171,34 @@ class PolicyEvaluator:
         """
         metrics: list[PolicyEvalMetrics] = []
         adapt_h = adaptation_horizon or self.horizon
+        adapt_eps = max(1, adaptation_episodes)
         for attack_type in attack_types:
             for seed in seeds:
                 adapted = defender_agent.clone()
-                env = self._build_env(attack_type, attacker_agents=attacker_agents)
+                if adaptation_lr_scale != 1.0:
+                    adapted.set_learning_rates(
+                        policy_lr=adapted.cfg.policy_lr * adaptation_lr_scale,
+                        critic_lr=adapted.cfg.critic_lr * adaptation_lr_scale,
+                    )
                 attacker_policy = self._attacker_policy(attack_type, attacker_agents=attacker_agents)
-                def_buffer = ReplayBuffer(max(adapt_h, 1), self.obs_dim, self.act_dim)
-                atk_buffer = ReplayBuffer(max(adapt_h, 1), self.obs_dim, self.act_dim)
-                collector = TrajectoryCollector(
-                    env=env,
-                    defender=adapted,
-                    attacker=attacker_policy,
-                    defender_buffer=def_buffer,
-                    attacker_buffer=atk_buffer,
-                    exploration_noise=exploration_noise,
-                    store_attacker=attack_type.adaptive,
-                )
-                collector.collect(adapt_h, seed=seed)
+                def_buffer = ReplayBuffer(max(adapt_h * adapt_eps, 1), self.obs_dim, self.act_dim)
+                atk_buffer = ReplayBuffer(max(adapt_h * adapt_eps, 1), self.obs_dim, self.act_dim)
+                for episode in range(adapt_eps):
+                    env = self._build_env(
+                        attack_type,
+                        attacker_agents=attacker_agents,
+                        horizon=adapt_h,
+                    )
+                    collector = TrajectoryCollector(
+                        env=env,
+                        defender=adapted,
+                        attacker=attacker_policy,
+                        defender_buffer=def_buffer,
+                        attacker_buffer=atk_buffer,
+                        exploration_noise=exploration_noise,
+                        store_attacker=attack_type.adaptive,
+                    )
+                    collector.collect(adapt_h, seed=seed + episode * 10_000)
                 for _ in range(adaptation_updates):
                     adapted.update(def_buffer)
 
@@ -208,6 +223,7 @@ class PolicyEvaluator:
         attack_type: AttackType,
         *,
         attacker_agents: dict[str, TD3Agent] | None,
+        horizon: int | None = None,
     ) -> BSMGEnv:
         if attack_type.adaptive:
             if attacker_agents is None or attack_type.name not in attacker_agents:
@@ -220,7 +236,11 @@ class PolicyEvaluator:
             attack_type=attack_type,
             attack_strategy=attack_strategy,
             defense_strategy=PaperDefenseStrategy(),
-            config=BSMGConfig(horizon=self.horizon, eval_every=self.eval_every),
+            config=BSMGConfig(
+                horizon=horizon or self.horizon,
+                eval_every=self.eval_every,
+                history_len=self.history_len,
+            ),
         )
 
     def _attacker_policy(

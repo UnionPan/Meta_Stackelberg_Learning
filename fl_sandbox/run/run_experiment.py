@@ -133,6 +133,83 @@ def _build_parser(
         choices=('td3', 'ppo'),
         **_default_kwargs(defaults.attacker.rl_algorithm, use_defaults),
     )
+    parser.add_argument(
+        '--rl_attacker_semantics',
+        choices=(
+            'canonical',
+            'legacy_clipped_median',
+            'legacy_clipped_median_strict',
+            'legacy_clipped_median_scaleaware',
+            'legacy_krum_strict',
+            'legacy_krum_geometry',
+        ),
+        **_default_kwargs(defaults.attacker.rl_attacker_semantics, use_defaults),
+    )
+    parser.add_argument('--rl_policy_lr', type=float, **_default_kwargs(defaults.attacker.rl_policy_lr, use_defaults))
+    parser.add_argument('--rl_critic_lr', type=float, **_default_kwargs(defaults.attacker.rl_critic_lr, use_defaults))
+    parser.add_argument('--rl_gamma', type=float, **_default_kwargs(defaults.attacker.rl_gamma, use_defaults))
+    parser.add_argument(
+        '--rl_replay_capacity',
+        type=int,
+        **_default_kwargs(defaults.attacker.rl_replay_capacity, use_defaults),
+    )
+    parser.add_argument('--rl_batch_size', type=int, **_default_kwargs(defaults.attacker.rl_batch_size, use_defaults))
+    parser.add_argument(
+        '--rl_hidden_sizes',
+        type=int,
+        nargs='+',
+        **_default_kwargs(defaults.attacker.rl_hidden_sizes, use_defaults),
+    )
+    parser.add_argument(
+        '--rl_exploration_noise',
+        type=float,
+        **_default_kwargs(defaults.attacker.rl_exploration_noise, use_defaults),
+    )
+    parser.add_argument(
+        '--rl_train_freq_steps',
+        type=int,
+        **_default_kwargs(defaults.attacker.rl_train_freq_steps, use_defaults),
+    )
+    parser.add_argument(
+        '--rl_policy_train_steps_per_round',
+        type=int,
+        **_default_kwargs(defaults.attacker.rl_policy_train_steps_per_round, use_defaults),
+    )
+    parser.add_argument(
+        '--rl_policy_checkpoint_path',
+        type=str,
+        **_default_kwargs(defaults.attacker.rl_policy_checkpoint_path, use_defaults),
+    )
+    parser.add_argument(
+        '--rl_policy_checkpoint_dir',
+        type=str,
+        **_default_kwargs(defaults.attacker.rl_policy_checkpoint_dir, use_defaults),
+    )
+    parser.add_argument(
+        '--rl_freeze_policy',
+        action=argparse.BooleanOptionalAction,
+        **_default_kwargs(defaults.attacker.rl_freeze_policy, use_defaults),
+    )
+    parser.add_argument(
+        '--rl_checkpoint_interval',
+        type=int,
+        **_default_kwargs(defaults.attacker.rl_checkpoint_interval, use_defaults),
+    )
+    parser.add_argument(
+        '--rl_save_final_checkpoint',
+        action=argparse.BooleanOptionalAction,
+        **_default_kwargs(defaults.attacker.rl_save_final_checkpoint, use_defaults),
+    )
+    parser.add_argument(
+        '--rl_strict_reproduction_initial_samples',
+        type=int,
+        **_default_kwargs(defaults.attacker.rl_strict_reproduction_initial_samples, use_defaults),
+    )
+    parser.add_argument(
+        '--rl_strict_reproduction_samples_per_epoch',
+        type=int,
+        **_default_kwargs(defaults.attacker.rl_strict_reproduction_samples_per_epoch, use_defaults),
+    )
     parser.add_argument('--krum_attackers', type=int, **_default_kwargs(defaults.defender.krum_attackers, use_defaults))
     parser.add_argument(
         '--multi_krum_selected',
@@ -247,7 +324,7 @@ def main(
     persist_experiment_artifacts(
         result,
         write_client_metrics=True,
-        write_tensorboard=True,
+        write_tensorboard=False,
         write_round_metrics=True,
     )
 

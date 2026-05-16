@@ -56,6 +56,7 @@ class RoundContext:
     local_epochs: int = 1
     attacker_train_iter: Optional[DataLoader] = None
     all_attacker_train_iter: Optional[DataLoader] = None
+    eval_loader: Optional[DataLoader] = None
     selected_attacker_train_loaders: Optional[Dict[int, DataLoader]] = None
     global_poisoned_train_loader: Optional[DataLoader] = None
     sub_trigger_train_loaders: Optional[List[DataLoader]] = None
@@ -177,6 +178,7 @@ def build_round_context(
     local_epochs: int,
     attacker_train_iter: Optional[DataLoader],
     all_attacker_train_iter: Optional[DataLoader],
+    eval_loader: Optional[DataLoader],
     selected_attacker_train_loaders: Optional[Dict[int, DataLoader]],
     global_poisoned_train_loader: Optional[DataLoader],
     sub_trigger_train_loaders: Optional[List[DataLoader]],
@@ -201,6 +203,7 @@ def build_round_context(
         local_epochs=local_epochs,
         attacker_train_iter=attacker_train_iter,
         all_attacker_train_iter=all_attacker_train_iter,
+        eval_loader=eval_loader,
         selected_attacker_train_loaders=selected_attacker_train_loaders,
         global_poisoned_train_loader=global_poisoned_train_loader,
         sub_trigger_train_loaders=sub_trigger_train_loaders,

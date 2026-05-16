@@ -52,6 +52,17 @@ class DefaultRewardFn:
         self.last_components: dict[str, float] = {}
 
     def __call__(self, inputs: RewardInputs) -> float:
+        if self.config.uses_raw_loss_delta_reward():
+            self.last_components = {
+                "loss": float(inputs.loss_delta),
+                "acc": float(inputs.acc_delta),
+                "bypass": float(inputs.bypass_score),
+                "norm": float(inputs.norm_penalty),
+                "smoothness": float(np.sum((inputs.action - inputs.previous_action) ** 2)),
+                "oob": float(np.mean(np.isclose(np.abs(inputs.action), 1.0))),
+            }
+            return float(inputs.loss_delta)
+
         smoothness = float(np.sum((inputs.action - inputs.previous_action) ** 2))
         saturation = float(np.mean(np.isclose(np.abs(inputs.action), 1.0)))
         components = {

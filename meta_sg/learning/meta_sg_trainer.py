@@ -66,6 +66,10 @@ class MetaSGTrainer:
         device: Optional[torch.device] = None,
         log_interval: int = 10,
         writer=None,
+        checkpoint_dir: Optional[str] = None,
+        checkpoint_interval: int = 0,
+        start_iteration: int = 0,
+        total_iterations: Optional[int] = None,
     ) -> None:
         self.coordinator_factory = coordinator_factory
         self.attack_domain = list(attack_domain)
@@ -76,6 +80,10 @@ class MetaSGTrainer:
         self.device = device or torch.device("cpu")
         self.log_interval = log_interval
         self.writer = writer
+        self.checkpoint_dir = checkpoint_dir
+        self.checkpoint_interval = max(0, int(checkpoint_interval))
+        self.start_iteration = max(0, int(start_iteration))
+        self.total_iterations = int(total_iterations or (self.start_iteration + meta_config.T))
 
         self.defender = TD3Agent(obs_dim, act_dim, td3_config, device)
 
@@ -108,9 +116,18 @@ class MetaSGTrainer:
 
     def train(self) -> MetaSGResult:
         cfg = self.meta_cfg
-        print(f"[MetaSG] Pre-training: T={cfg.T}, K={cfg.K}, H={cfg.H}, l={cfg.l}")
+        if self.start_iteration:
+            print(
+                "[MetaSG] Pre-training: "
+                f"start={self.start_iteration + 1}, "
+                f"end={self.start_iteration + cfg.T}, "
+                f"total={self.total_iterations}, K={cfg.K}, H={cfg.H}, l={cfg.l}"
+            )
+        else:
+            print(f"[MetaSG] Pre-training: T={cfg.T}, K={cfg.K}, H={cfg.H}, l={cfg.l}")
 
-        for t in range(cfg.T):
+        for local_t in range(cfg.T):
+            t = self.start_iteration + local_t
             batch_types = self._sample_attack_types(cfg.K)
             adapted_params: List[Dict] = []
             task_results: List[TaskResult] = []
@@ -137,7 +154,7 @@ class MetaSGTrainer:
 
             if (t + 1) % self.log_interval == 0:
                 print(
-                    f"[MetaSG] iter {t + 1}/{cfg.T}  "
+                    f"[MetaSG] iter {t + 1}/{self.total_iterations}  "
                     f"r_D={mean_d_rew:.4f}  "
                     f"reptile_δ={reptile_norms['actor']:.5f}  "
                     f"batch={[xi.name for xi in batch_types]}"
@@ -145,6 +162,13 @@ class MetaSGTrainer:
 
             if self.writer is not None:
                 self._log_all(t, batch_types, task_results, d_rewards, reptile_norms)
+
+            if (
+                self.checkpoint_dir
+                and self.checkpoint_interval > 0
+                and (t + 1) % self.checkpoint_interval == 0
+            ):
+                self.save(os.path.join(self.checkpoint_dir, f"iter_{t + 1:04d}"))
 
         return self._result
 
@@ -272,7 +296,7 @@ class MetaSGTrainer:
             full_sq += sq
             if key.startswith("actor."):
                 actor_sq += sq
-            elif key.startswith("critic."):
+            elif key.startswith(("critic.", "critic1.", "critic2.")):
                 critic_sq += sq
 
         self.defender.set_params(updated)

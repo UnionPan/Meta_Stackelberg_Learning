@@ -123,6 +123,42 @@ def test_reward_components_are_running_normalized():
     assert reward.last_components["loss"] != 10.0
 
 
+def test_legacy_reward_is_raw_loss_delta():
+    reward = DefaultRewardFn(RLAttackerConfig(attacker_semantics="legacy_clipped_median"))
+
+    value = reward(
+        RewardInputs(
+            loss_delta=3.5,
+            acc_delta=-0.2,
+            bypass_score=0.0,
+            action=np.zeros(2, dtype=np.float32),
+            previous_action=np.zeros(2, dtype=np.float32),
+            norm_penalty=99.0,
+        )
+    )
+
+    assert value == 3.5
+    assert reward.last_components["loss"] == 3.5
+
+
+def test_legacy_krum_reward_is_raw_loss_delta():
+    reward = DefaultRewardFn(RLAttackerConfig(attacker_semantics="legacy_krum_strict"))
+
+    value = reward(
+        RewardInputs(
+            loss_delta=2.25,
+            acc_delta=100.0,
+            bypass_score=100.0,
+            action=np.zeros(2, dtype=np.float32),
+            previous_action=np.zeros(2, dtype=np.float32),
+            norm_penalty=100.0,
+        )
+    )
+
+    assert value == 2.25
+    assert reward.last_components["loss"] == 2.25
+
+
 def test_sim2real_diagnostics_rolls_window_and_counts_guard_blocks():
     diagnostics = RLSim2RealDiagnostics(window=3, max_gap=0.5)
     diagnostics.record_gap(real_reward=0.0, simulated_reward=1.0, components={"loss": -1.0})

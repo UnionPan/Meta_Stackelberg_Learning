@@ -18,7 +18,15 @@ from fl_sandbox.attacks.base import SandboxAttack
 from fl_sandbox.attacks.rl_attacker.action_decoder import decode_action
 from fl_sandbox.attacks.rl_attacker.config import RLAttackerConfig
 from fl_sandbox.attacks.rl_attacker.diagnostics import RLSim2RealDiagnostics, deploy_guard_allows
-from fl_sandbox.attacks.rl_attacker.observation import ProjectedObservationBuilder
+from fl_sandbox.attacks.rl_attacker.krum_projection import (
+    krum_geometry_from_updates,
+    project_krum_malicious_update,
+)
+from fl_sandbox.attacks.rl_attacker.observation import (
+    ProjectedObservationBuilder,
+    build_legacy_clipped_median_observation,
+    build_legacy_scaleaware_observation,
+)
 from fl_sandbox.attacks.rl_attacker.proxy import GradientDistributionLearner
 from fl_sandbox.attacks.rl_attacker.simulator import AttackerPolicyGymEnv, SimulatedFLEnv
 from fl_sandbox.attacks.rl_attacker.simulator.fl_dynamics import (
@@ -58,6 +66,7 @@ class RLAttack(SandboxAttack):
         self.model_template = None
         self.device = torch.device("cpu") if torch is not None else None
         self.fl_config = None
+        self.eval_loader = None
         self.defender: AggregationDefender | None = None
         self.prev_weights: Weights | None = None
         self.prev_round_idx: int | None = None
@@ -75,10 +84,13 @@ class RLAttack(SandboxAttack):
         self._real_ppo_transition_count = 0
         self._real_ppo_buffered_steps = 0
         self._real_ppo_update_count = 0
+        self._loaded_policy_checkpoint_path: str | None = None
         self._diagnostics = RLSim2RealDiagnostics(
             window=self.config.deploy_guard_window,
             max_gap=self.config.deploy_guard_max_sim2real_gap,
         )
+        self._last_action_metrics: dict[str, float] = {}
+        self._last_observation_metrics: dict[str, float] = {}
 
     def observe_round(self, ctx) -> None:
         if torch is None or ctx.model is None or ctx.device is None:
@@ -87,6 +99,8 @@ class RLAttack(SandboxAttack):
             self.model_template = copy.deepcopy(ctx.model).cpu()
         self.device = ctx.device
         self.fl_config = ctx.fl_config
+        self.eval_loader = getattr(ctx, "eval_loader", None)
+        self.config.validate_defense(ctx.defense_type)
         self.defender = self._build_defender(ctx)
         if self.observation_builder.action_dim != self.config.action_dim(ctx.defense_type):
             self.observation_builder = ProjectedObservationBuilder(
@@ -120,10 +134,16 @@ class RLAttack(SandboxAttack):
             and self.model_template is not None
             and self.defender is not None
         )
-        if self.ready and not self._is_ppo() and ctx.round_idx <= self.config.policy_train_end_round:
+        if (
+            self.ready
+            and not self.config.freeze_policy
+            and not self._is_ppo()
+            and ctx.round_idx <= self.config.policy_train_end_round
+        ):
             self._train_policy()
 
     def execute(self, ctx, attacker_action=None):
+        self._last_action_metrics = {}
         num_attackers = self.selected_attacker_count(ctx)
         if num_attackers == 0:
             return []
@@ -163,6 +183,7 @@ class RLAttack(SandboxAttack):
                 defense_type=str(ctx.defense_type),
             )
         decoded = decode_action(action, ctx.defense_type, self.config)
+        self._last_action_metrics = self._action_metrics(action, decoded)
         crafted = craft_malicious_update(
             model_template=self.model_template,
             old_weights=ctx.old_weights,
@@ -172,12 +193,23 @@ class RLAttack(SandboxAttack):
             search_batch_size=self.config.local_search_batch_size,
             state_tail_layers=self.config.state_tail_layers,
         )
+        if self.config.uses_legacy_krum_geometry() and str(ctx.defense_type).lower() in {"krum", "multi_krum"}:
+            projection = project_krum_malicious_update(
+                old_weights=ctx.old_weights,
+                raw_malicious_weights=crafted,
+                benign_weights=ctx.benign_weights,
+                num_attackers=num_attackers,
+                num_byzantine=int(getattr(ctx.fl_config, "krum_attackers", num_attackers)),
+                max_alpha=float(decoded.gamma_scale),
+            )
+            crafted = projection.weights
+            self._last_action_metrics.update(projection.metrics)
         benign_norm_mean = (
             float(np.mean([update_norm(ctx.old_weights, weights) for weights in ctx.benign_weights]))
             if ctx.benign_weights
             else 0.0
         )
-        if benign_norm_mean > 0:
+        if benign_norm_mean > 0 and not self.config.uses_legacy_reversal_attack():
             crafted = match_update_norm(
                 ctx.old_weights,
                 crafted,
@@ -201,6 +233,9 @@ class RLAttack(SandboxAttack):
         payload["rl_real_ppo_transitions"] = float(self._real_ppo_transition_count)
         payload["rl_real_ppo_buffered_steps"] = float(self._real_ppo_buffered_steps)
         payload["rl_real_ppo_updates"] = float(self._real_ppo_update_count)
+        payload.update(self._last_action_metrics)
+        payload.update(self._last_observation_metrics)
+        payload.update(self._real_defense_metrics(**kwargs))
         return payload
 
     def _fallback_benign_weights(self, ctx) -> list[Weights]:
@@ -219,17 +254,18 @@ class RLAttack(SandboxAttack):
         self._last_policy_obs = None
         if attacker_action is not None:
             return np.asarray(attacker_action, dtype=np.float32)
-        if self.trainer is not None:
+        if self.trainer is not None or self.config.has_policy_checkpoint_source():
             obs = self._current_observation(ctx)
-            if self._is_ppo():
-                self._ensure_real_trainer(ctx, obs)
-            deterministic = not (self._is_ppo() and ctx.round_idx <= self.config.policy_train_end_round)
+            self._ensure_policy_trainer(ctx, obs)
+            deterministic = self.config.freeze_policy or not (
+                self._is_ppo() and ctx.round_idx <= self.config.policy_train_end_round
+            )
             action = np.asarray(self.trainer.act(obs, deterministic=deterministic), dtype=np.float32)
             self._last_policy_obs = obs.copy()
             return action
         if self._is_ppo():
             obs = self._current_observation(ctx)
-            self._ensure_real_trainer(ctx, obs)
+            self._ensure_policy_trainer(ctx, obs)
             deterministic = ctx.round_idx > self.config.policy_train_end_round
             action = np.asarray(self.trainer.act(obs, deterministic=deterministic), dtype=np.float32)
             self._last_policy_obs = obs.copy()
@@ -240,8 +276,23 @@ class RLAttack(SandboxAttack):
     def _current_observation(self, ctx) -> np.ndarray:
         if self.model_template is None or self.device is None:
             raise RuntimeError("RL attacker observation requested before initialization")
+        if self.config.uses_legacy_reversal_attack():
+            if self.config.uses_scaleaware_legacy_observation():
+                obs = build_legacy_scaleaware_observation(
+                    ctx.old_weights,
+                    num_attackers=self.selected_attacker_count(ctx),
+                    round_idx=ctx.round_idx,
+                    total_rounds=int(getattr(ctx.fl_config, "rounds", max(self.config.policy_train_end_round, ctx.round_idx, 1)) or 1),
+                )
+            else:
+                obs = build_legacy_clipped_median_observation(
+                    ctx.old_weights,
+                    num_attackers=self.selected_attacker_count(ctx),
+                )
+            self._last_observation_metrics = self._observation_metrics(obs)
+            return obs
         total_rounds = int(getattr(ctx.fl_config, "rounds", max(self.config.policy_train_end_round, ctx.round_idx, 1)) or 1)
-        return self.observation_builder.build(
+        obs = self.observation_builder.build(
             weights=ctx.old_weights,
             previous_weights=self.observation_previous_weights or ctx.old_weights,
             last_aggregate_update=self.last_aggregate_update or [np.zeros_like(layer) for layer in ctx.old_weights],
@@ -251,6 +302,44 @@ class RLAttack(SandboxAttack):
             total_rounds=total_rounds,
             defense_type=ctx.defense_type,
         )
+        self._last_observation_metrics = self._observation_metrics(obs)
+        return obs
+
+    @staticmethod
+    def _observation_metrics(obs: np.ndarray) -> dict[str, float]:
+        values = np.asarray(obs, dtype=np.float32).reshape(-1)
+        if values.size == 0:
+            return {
+                "rl_observation_dim": 0.0,
+                "rl_observation_norm": 0.0,
+                "rl_observation_mean": 0.0,
+                "rl_observation_std": 0.0,
+                "rl_observation_min": 0.0,
+                "rl_observation_max": 0.0,
+                "rl_observation_absmax": 0.0,
+            }
+        return {
+            "rl_observation_dim": float(values.size),
+            "rl_observation_norm": float(np.linalg.norm(values)),
+            "rl_observation_mean": float(np.mean(values)),
+            "rl_observation_std": float(np.std(values)),
+            "rl_observation_min": float(np.min(values)),
+            "rl_observation_max": float(np.max(values)),
+            "rl_observation_absmax": float(np.max(np.abs(values))),
+        }
+
+    @staticmethod
+    def _action_metrics(action: np.ndarray, decoded) -> dict[str, float]:
+        values = np.asarray(action, dtype=np.float32).reshape(-1)
+        payload = {
+            "rl_action_gamma_scale": float(decoded.gamma_scale),
+            "rl_action_local_steps": float(decoded.local_steps),
+            "rl_action_lambda_stealth": float(decoded.lambda_stealth),
+            "rl_action_template_index": float(decoded.template_index),
+        }
+        for idx, value in enumerate(values[:8]):
+            payload[f"rl_action_raw_{idx}"] = float(value)
+        return payload
 
     def _max_attackers(self, ctx) -> int:
         fl_config = ctx.fl_config or self.fl_config
@@ -273,6 +362,20 @@ class RLAttack(SandboxAttack):
 
     def _is_ppo(self) -> bool:
         return self.config.algorithm.lower() == "ppo"
+
+    def _ensure_policy_trainer(self, ctx, obs: np.ndarray) -> None:
+        if self.trainer is None:
+            self.trainer = build_trainer(self.config)
+        self._ensure_real_trainer(ctx, obs)
+        checkpoint_path = str(self.config.policy_checkpoint_for_round(ctx.round_idx) or "")
+        if self.config.policy_checkpoint_dir and not checkpoint_path:
+            raise FileNotFoundError(
+                "No rolling RL policy checkpoint is available for "
+                f"round {ctx.round_idx} in {self.config.policy_checkpoint_dir!r}"
+            )
+        if checkpoint_path and self._loaded_policy_checkpoint_path != checkpoint_path:
+            self.trainer.load(checkpoint_path)
+            self._loaded_policy_checkpoint_path = checkpoint_path
 
     def _ensure_real_trainer(self, ctx, obs: np.ndarray) -> None:
         if self.trainer is None:
@@ -301,13 +404,16 @@ class RLAttack(SandboxAttack):
             smoothness, saturation = self._real_action_penalties()
             components["smoothness"] = smoothness
             components["oob"] = saturation
-            real_reward = (
-                self.config.reward_loss_weight * components["loss"]
-                + self.config.reward_accuracy_weight * components["acc"]
-                + self.config.reward_bypass_weight * components["bypass"]
-                - self.config.reward_action_smoothness_weight * components["smoothness"]
-                - self.config.reward_action_saturation_weight * components["oob"]
-            )
+            if self.config.uses_raw_loss_delta_reward():
+                real_reward = components["loss"]
+            else:
+                real_reward = (
+                    self.config.reward_loss_weight * components["loss"]
+                    + self.config.reward_accuracy_weight * components["acc"]
+                    + self.config.reward_bypass_weight * components["bypass"]
+                    - self.config.reward_action_smoothness_weight * components["smoothness"]
+                    - self.config.reward_action_saturation_weight * components["oob"]
+                )
         elif real_reward is None:
             real_reward = kwargs.get("backdoor_acc", self._diagnostics.real_reward)
         return float(real_reward or 0.0), components
@@ -322,9 +428,15 @@ class RLAttack(SandboxAttack):
 
     def _estimate_bypass_score(self, **kwargs) -> float:
         pending = self._pending_real_transition
-        if pending is None:
+        ctx = kwargs.get("ctx")
+        if pending is not None:
+            defense = pending.defense_type.lower()
+        elif ctx is not None:
+            defense = str(getattr(ctx, "defense_type", "")).lower()
+        elif self.defender is not None:
+            defense = str(self.defender.defense_type).lower()
+        else:
             return 0.0
-        defense = pending.defense_type.lower()
         if defense == "fedavg":
             return 0.0
         all_weights = kwargs.get("all_weights") or []
@@ -346,6 +458,39 @@ class RLAttack(SandboxAttack):
         scale = max(1e-8, float(np.linalg.norm(aggregated_vec)))
         return float(np.clip(1.0 - float(np.min(distances)) / scale, 0.0, 1.0))
 
+    def _real_defense_metrics(self, **kwargs) -> dict[str, float]:
+        ctx = kwargs.get("ctx")
+        if ctx is not None:
+            defense = str(getattr(ctx, "defense_type", "")).lower()
+        elif self.defender is not None:
+            defense = str(self.defender.defense_type).lower()
+        else:
+            defense = ""
+        payload = {"rl_bypass_score": float(self._estimate_bypass_score(**kwargs))}
+        if defense not in {"krum", "multi_krum"} or ctx is None:
+            return payload
+        all_weights = kwargs.get("all_weights") or []
+        malicious_indices = kwargs.get("malicious_indices") or []
+        if not all_weights or not malicious_indices:
+            return payload
+        old_vec = self._weights_to_vector(ctx.old_weights)
+        update_vectors = np.stack([self._weights_to_vector(weights) - old_vec for weights in all_weights], axis=0)
+        stats = krum_geometry_from_updates(
+            update_vectors,
+            malicious_indices,
+            num_byzantine=int(kwargs.get("num_byzantine", len(malicious_indices))),
+        )
+        payload.update(
+            {
+                "rl_krum_actual_selected": float(stats.selected),
+                "rl_krum_actual_best_rank": float(stats.rank),
+                "rl_krum_actual_score_ratio": float(stats.score_ratio),
+                "rl_krum_actual_feasible_byzantine": float(stats.feasible_byzantine),
+                "rl_krum_actual_neighbor_count": float(stats.neighbor_count),
+            }
+        )
+        return payload
+
     @staticmethod
     def _weights_to_vector(weights) -> np.ndarray:
         return np.concatenate([np.asarray(layer, dtype=np.float32).reshape(-1) for layer in weights]).astype(np.float32)
@@ -353,7 +498,7 @@ class RLAttack(SandboxAttack):
     def _record_real_ppo_transition(self, *, real_reward: float, components: dict[str, float], **kwargs) -> None:
         del components
         pending = self._pending_real_transition
-        if not self._is_ppo() or pending is None or self.trainer is None:
+        if self.config.freeze_policy or not self._is_ppo() or pending is None or self.trainer is None:
             return
         if pending.round_idx > self.config.policy_train_end_round:
             self._pending_real_transition = None
@@ -415,6 +560,7 @@ class RLAttack(SandboxAttack):
             config=self.config,
             fl_config=self.fl_config,
             device=self.device,
+            eval_loader=self.eval_loader,
         )
         env = AttackerPolicyGymEnv(
             simulator=simulator,
@@ -424,7 +570,7 @@ class RLAttack(SandboxAttack):
         )
         if self.trainer is None:
             self.trainer = build_trainer(self.config)
-        steps = max(1, self.config.episodes_per_observation) * max(1, self.config.simulator_horizon)
+        steps = self.config.policy_train_steps()
         collect_stats = self.trainer.collect(env, steps=steps)
         update_stats = self.trainer.update(gradient_steps=max(1, steps // max(1, self.config.train_freq_steps)))
         self._diagnostics.simulated_reward = collect_stats.reward_mean

@@ -21,6 +21,7 @@ __all__ = [
     "decode_hybrid_action",
     "deploy_guard_allows",
     "local_search_update",
+    "project_krum_malicious_update",
 ]
 
 _EXPORTS = {
@@ -42,6 +43,10 @@ _EXPORTS = {
     "decode_hybrid_action": ("fl_sandbox.attacks.rl_attacker.action_decoder", "decode_hybrid_action"),
     "deploy_guard_allows": ("fl_sandbox.attacks.rl_attacker.diagnostics", "deploy_guard_allows"),
     "local_search_update": ("fl_sandbox.attacks.rl_attacker.simulator", "local_search_update"),
+    "project_krum_malicious_update": (
+        "fl_sandbox.attacks.rl_attacker.krum_projection",
+        "project_krum_malicious_update",
+    ),
 }
 
 

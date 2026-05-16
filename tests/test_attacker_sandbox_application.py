@@ -60,6 +60,23 @@ def _args(**overrides):
         "dba_num_sub_triggers": 4,
         "attacker_action": (0.0, 0.0, 0.0),
         "rl_algorithm": "td3",
+        "rl_attacker_semantics": "canonical",
+        "rl_policy_lr": 3e-4,
+        "rl_critic_lr": 3e-4,
+        "rl_gamma": 0.95,
+        "rl_replay_capacity": 50_000,
+        "rl_batch_size": 256,
+        "rl_hidden_sizes": (256, 256),
+        "rl_exploration_noise": 0.1,
+        "rl_train_freq_steps": 1,
+        "rl_policy_train_steps_per_round": 0,
+        "rl_policy_checkpoint_path": "",
+        "rl_policy_checkpoint_dir": "",
+        "rl_freeze_policy": False,
+        "rl_checkpoint_interval": 0,
+        "rl_save_final_checkpoint": True,
+        "rl_strict_reproduction_initial_samples": 200,
+        "rl_strict_reproduction_samples_per_epoch": 80,
         "defense_type": "fedavg",
         "krum_attackers": 1,
         "multi_krum_selected": None,
@@ -76,6 +93,7 @@ def _args(**overrides):
         "rl_reconstruction_batch_size": 8,
         "rl_policy_train_episodes_per_round": 1,
         "rl_simulator_horizon": 8,
+        "rl_ppo_real_rollout_steps": 64,
         "output_dir": "",
         "tb_dir": "",
     }
@@ -121,6 +139,33 @@ class TestAttackerSandboxApplication(unittest.TestCase):
         self.assertIsNone(config.fl.num_attackers)
         self.assertEqual(resolve_num_attackers(config.attacker, config.fl), 0)
         self.assertEqual(config.attacker.lmp_scale, 5.0)
+
+    def test_paper_clipped_median_preset_matches_paper_defaults(self):
+        config = load_run_config("fl_sandbox/config/rl_attacker_paper_clipped_median.yaml")
+
+        self.assertEqual(config.fl.num_clients, 100)
+        self.assertEqual(config.fl.num_attackers, 20)
+        self.assertEqual(config.fl.subsample_rate, 0.1)
+        self.assertEqual(config.runtime.rounds, 1000)
+        self.assertEqual(config.runtime.lr, 0.01)
+        self.assertEqual(config.runtime.batch_size, 128)
+        self.assertEqual(config.attacker.rl_distribution_steps, 100)
+        self.assertEqual(config.attacker.rl_attack_start_round, 101)
+        self.assertEqual(config.attacker.rl_policy_train_end_round, 400)
+        self.assertEqual(config.attacker.rl_attacker_semantics, "legacy_clipped_median_strict")
+        self.assertEqual(config.attacker.rl_policy_lr, 1e-7)
+        self.assertEqual(config.attacker.rl_critic_lr, 1e-7)
+        self.assertEqual(config.attacker.rl_gamma, 1.0)
+        self.assertEqual(config.attacker.rl_replay_capacity, 100000)
+        self.assertEqual(config.attacker.rl_hidden_sizes, (256, 128))
+        self.assertEqual(config.attacker.rl_train_freq_steps, 5)
+        self.assertEqual(config.attacker.rl_policy_train_steps_per_round, 200)
+        self.assertEqual(config.attacker.rl_policy_checkpoint_path, "")
+        self.assertFalse(config.attacker.rl_freeze_policy)
+        self.assertEqual(config.attacker.rl_checkpoint_interval, 25)
+        self.assertTrue(config.attacker.rl_save_final_checkpoint)
+        self.assertEqual(config.defender.type, "clipped_median")
+        self.assertEqual(config.defender.clipped_median_norm, 2.0)
 
     def test_craft_lmp_uses_repo_aligned_median_direction(self):
         random.seed(0)
@@ -217,6 +262,24 @@ class TestAttackerSandboxApplication(unittest.TestCase):
 
         self.assertEqual(restored.attacker.alie_tau, 2.25)
         self.assertEqual(restored.attacker.gaussian_sigma, 0.2)
+
+    def test_schema_round_trip_includes_rl_checkpoint_options(self):
+        run_config = _run_config(
+            attack_type="rl",
+            rl_policy_checkpoint_path="checkpoints/rl_policy_latest.pt",
+            rl_policy_checkpoint_dir="checkpoints/rolling",
+            rl_freeze_policy=True,
+            rl_checkpoint_interval=25,
+            rl_save_final_checkpoint=False,
+        )
+        flat = run_config.to_flat_dict()
+        restored = RunConfig.from_flat_dict(flat)
+
+        self.assertEqual(restored.attacker.rl_policy_checkpoint_path, "checkpoints/rl_policy_latest.pt")
+        self.assertEqual(restored.attacker.rl_policy_checkpoint_dir, "checkpoints/rolling")
+        self.assertTrue(restored.attacker.rl_freeze_policy)
+        self.assertEqual(restored.attacker.rl_checkpoint_interval, 25)
+        self.assertFalse(restored.attacker.rl_save_final_checkpoint)
 
     def test_rlfl_protocol_adjusts_rl_schedule(self):
         run_config = _run_config(
@@ -319,6 +382,21 @@ runtime:
             attack_type="rl",
             attacker_action=(0.2, 0.4, 0.6),
             rl_algorithm="td3",
+            rl_attacker_semantics="legacy_clipped_median",
+            rl_policy_lr=1e-7,
+            rl_critic_lr=1e-7,
+            rl_gamma=1.0,
+            rl_replay_capacity=100000,
+            rl_batch_size=256,
+            rl_hidden_sizes=(256, 128),
+            rl_exploration_noise=0.1,
+            rl_train_freq_steps=5,
+            rl_policy_train_steps_per_round=200,
+            rl_policy_checkpoint_path="checkpoints/policy.pt",
+            rl_policy_checkpoint_dir="checkpoints/rolling",
+            rl_freeze_policy=True,
+            rl_strict_reproduction_initial_samples=200,
+            rl_strict_reproduction_samples_per_epoch=80,
             rl_distribution_steps=13,
             rl_attack_start_round=14,
             rl_policy_train_end_round=15,
@@ -333,6 +411,21 @@ runtime:
         self.assertEqual(attack.name, "RL")
         self.assertEqual(tuple(attack.default_action), (0.2, 0.4, 0.6))
         self.assertEqual(attack.config.algorithm, "td3")
+        self.assertEqual(attack.config.attacker_semantics, "legacy_clipped_median")
+        self.assertEqual(attack.config.policy_lr, 1e-7)
+        self.assertEqual(attack.config.critic_lr, 1e-7)
+        self.assertEqual(attack.config.gamma, 1.0)
+        self.assertEqual(attack.config.replay_capacity, 100000)
+        self.assertEqual(attack.config.batch_size, 256)
+        self.assertEqual(attack.config.hidden_sizes, (256, 128))
+        self.assertEqual(attack.config.exploration_noise, 0.1)
+        self.assertEqual(attack.config.train_freq_steps, 5)
+        self.assertEqual(attack.config.policy_train_steps_per_round, 200)
+        self.assertEqual(attack.config.policy_checkpoint_path, "checkpoints/policy.pt")
+        self.assertEqual(attack.config.policy_checkpoint_dir, "checkpoints/rolling")
+        self.assertTrue(attack.config.freeze_policy)
+        self.assertEqual(attack.config.strict_reproduction_initial_samples, 200)
+        self.assertEqual(attack.config.strict_reproduction_samples_per_epoch, 80)
         self.assertEqual(attack.config.distribution_steps, 13)
         self.assertEqual(attack.config.attack_start_round, 14)
         self.assertEqual(attack.config.policy_train_end_round, 15)
