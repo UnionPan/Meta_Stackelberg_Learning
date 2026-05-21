@@ -19,7 +19,8 @@ if str(ROOT) not in sys.path:
 from torch.utils.tensorboard import SummaryWriter
 
 from fl_sandbox.attacks.clipped_median_geometry_search import ClippedMedianGeometrySearchAttack, ClippedMedianGeometrySearchConfig
-from fl_sandbox.federation.runner import MinimalFLRunner, SandboxConfig
+from fl_sandbox.config import RunConfig
+from fl_sandbox.federation.runner import MinimalFLRunner
 
 
 def _finite(value: object) -> bool:
@@ -84,25 +85,27 @@ def parse_args() -> argparse.Namespace:
 
 
 def make_runner(args: argparse.Namespace) -> MinimalFLRunner:
-    cfg = SandboxConfig(
-        dataset=args.dataset,
-        device=args.device,
-        seed=args.seed,
-        num_clients=args.num_clients,
-        num_attackers=args.num_attackers,
-        subsample_rate=args.subsample_rate,
-        local_epochs=args.local_epochs,
-        lr=args.lr,
-        batch_size=args.batch_size,
-        eval_batch_size=args.eval_batch_size,
-        max_client_samples_per_client=args.max_client_samples,
-        max_eval_samples=args.max_eval_samples,
-        num_workers=0,
-        parallel_clients=args.parallel_clients,
-        split_mode=args.split_mode,
-        noniid_q=args.noniid_q,
-        defense_type="clipped_median",
-        clipped_median_norm=args.clipped_median_norm,
+    cfg = RunConfig.from_flat_dict(
+        {
+            "dataset": args.dataset,
+            "device": args.device,
+            "seed": args.seed,
+            "num_clients": args.num_clients,
+            "num_attackers": args.num_attackers,
+            "subsample_rate": args.subsample_rate,
+            "local_epochs": args.local_epochs,
+            "lr": args.lr,
+            "batch_size": args.batch_size,
+            "eval_batch_size": args.eval_batch_size,
+            "max_client_samples_per_client": args.max_client_samples,
+            "max_eval_samples": args.max_eval_samples,
+            "num_workers": 0,
+            "parallel_clients": args.parallel_clients,
+            "split_mode": args.split_mode,
+            "noniid_q": args.noniid_q,
+            "defense_type": "clipped_median",
+            "clipped_median_norm": args.clipped_median_norm,
+        }
     )
     return MinimalFLRunner(cfg)
 

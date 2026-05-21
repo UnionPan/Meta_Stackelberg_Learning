@@ -1,8 +1,7 @@
 """Run attack benchmarks against Clipped Median and Krum.
 
-The matrix keeps defense-specific RL semantics separated by output directory,
-so strict paper reproductions, optimized RL variants, and fixed attack
-benchmarks can be compared without run-name collisions.
+The matrix keeps each attack plan separated by output directory so canonical
+RL and fixed attack benchmarks can be compared without run-name collisions.
 """
 
 from __future__ import annotations
@@ -24,7 +23,7 @@ if str(ROOT) not in sys.path:
 from fl_sandbox.core.postprocess.tensorboard_utils import build_summary_writer
 
 
-DEFAULT_CONFIG = Path("fl_sandbox/config/rl_attacker_paper_clipped_median.yaml")
+DEFAULT_CONFIG = Path("fl_sandbox/config/presets/rlfl_paper.yaml")
 DEFAULT_DEFENSES = ("clipped_median", "krum")
 SPLIT_SUFFIX = "paper_q_q0.1"
 BENCHMARK_ATTACK_NAMES = (
@@ -34,13 +33,8 @@ BENCHMARK_ATTACK_NAMES = (
     "dba",
     "bfl",
 )
-OPTIMIZED_RL_ATTACK_NAMES = (
-    "rl_clipped_median_scaleaware",
-    "rl_krum_geometry",
-)
-PAPER_RL_ATTACK_NAMES = ("rl_clipped_median_strict", "rl_krum_strict")
-HEURISTIC_ATTACK_NAMES = ("clipped_median_geometry_search", "krum_geometry_search")
-DEFAULT_ATTACK_NAMES = BENCHMARK_ATTACK_NAMES + OPTIMIZED_RL_ATTACK_NAMES
+RL_ATTACK_NAMES = ("rl",)
+DEFAULT_ATTACK_NAMES = BENCHMARK_ATTACK_NAMES + RL_ATTACK_NAMES
 
 
 @dataclass(frozen=True)
@@ -62,41 +56,7 @@ ALL_ATTACK_PLANS = (
     AttackPlan("alie", "alie", "benchmark"),
     AttackPlan("signflip", "signflip", "benchmark"),
     AttackPlan("gaussian", "gaussian", "benchmark"),
-    AttackPlan(
-        "clipped_median_geometry_search",
-        "clipped_median_geometry_search",
-        "heuristic",
-        defenses=("clipped_median",),
-    ),
-    AttackPlan("krum_geometry_search", "krum_geometry_search", "heuristic", defenses=("krum",)),
-    AttackPlan(
-        "rl_clipped_median_strict",
-        "rl",
-        "rl",
-        defenses=("clipped_median",),
-        rl_semantics="legacy_clipped_median_strict",
-    ),
-    AttackPlan(
-        "rl_clipped_median_scaleaware",
-        "rl",
-        "rl",
-        defenses=("clipped_median",),
-        rl_semantics="legacy_clipped_median_scaleaware",
-    ),
-    AttackPlan(
-        "rl_krum_strict",
-        "rl",
-        "rl",
-        defenses=("krum",),
-        rl_semantics="legacy_krum_strict",
-    ),
-    AttackPlan(
-        "rl_krum_geometry",
-        "rl",
-        "rl",
-        defenses=("krum",),
-        rl_semantics="legacy_krum_geometry",
-    ),
+    AttackPlan("rl", "rl", "rl"),
 )
 
 
@@ -239,11 +199,9 @@ def build_attack_command(
         cmd.extend(["--max_client_samples_per_client", str(max_client_samples_per_client)])
     if max_eval_samples is not None:
         cmd.extend(["--max_eval_samples", str(max_eval_samples)])
-    if plan.rl_semantics:
+    if plan.benchmark == "rl":
         cmd.extend(
             [
-                "--rl_attacker_semantics",
-                plan.rl_semantics,
                 "--rl_policy_train_steps_per_round",
                 str(policy_train_steps_per_round),
                 "--rl_simulator_horizon",

@@ -6,10 +6,7 @@ The script runs, per defense:
   3. fixed-policy FL evaluation from the saved RL checkpoint
   4. clean-vs-fixed TensorBoard comparison
 
-It intentionally keeps the paper-specific strict reproductions separate from
-the canonical multi-defense RL path: clipped-median and Krum use the original
-repo formulas, while Median/Trimmed-Mean/FLTrust use the generic defense-aware
-TD3 attacker already present in fl_sandbox.
+All defenses use the canonical defense-aware TD3 attacker.
 """
 
 from __future__ import annotations
@@ -30,7 +27,7 @@ if str(ROOT) not in sys.path:
 from fl_sandbox.core.postprocess.tensorboard_utils import build_summary_writer
 
 
-DEFAULT_CONFIG = Path("fl_sandbox/config/rl_attacker_paper_clipped_median.yaml")
+DEFAULT_CONFIG = Path("fl_sandbox/config/presets/rlfl_paper.yaml")
 ALL_DEFENSES = (
     "fedavg",
     "krum",
@@ -53,13 +50,7 @@ class DefensePlan:
 
 
 def defense_plan_for(defense: str) -> DefensePlan:
-    if defense == "clipped_median":
-        semantics = "legacy_clipped_median_strict"
-    elif defense == "krum":
-        semantics = "legacy_krum_strict"
-    else:
-        semantics = "canonical"
-    return DefensePlan(name=defense, semantics=semantics)
+    return DefensePlan(name=defense, semantics="canonical")
 
 
 def run_name_for(attack_type: str, defense_type: str, *, rounds: int) -> str:
@@ -154,8 +145,6 @@ def build_train_command(
     )
     cmd.extend(
         [
-            "--rl_attacker_semantics",
-            plan.semantics,
             "--rl_policy_train_steps_per_round",
             str(policy_train_steps_per_round),
             "--rl_simulator_horizon",
@@ -194,8 +183,6 @@ def build_fixed_eval_command(
     )
     cmd.extend(
         [
-            "--rl_attacker_semantics",
-            plan.semantics,
             "--rl_policy_train_steps_per_round",
             str(policy_train_steps_per_round),
             "--rl_simulator_horizon",

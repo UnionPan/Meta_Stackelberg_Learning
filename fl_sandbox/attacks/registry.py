@@ -7,14 +7,12 @@ from typing import Optional
 from fl_sandbox.attacks.alie import ALIEAttack
 from fl_sandbox.attacks.base import SandboxAttack
 from fl_sandbox.attacks.bfl import BFLAttack
-from fl_sandbox.attacks.brl import BRLAttack, SelfGuidedBRLAttack
-from fl_sandbox.attacks.clipped_median_geometry_search import ClippedMedianGeometrySearchAttack
 from fl_sandbox.attacks.dba import DBAAttack
 from fl_sandbox.attacks.gaussian import GaussianAttack
 from fl_sandbox.attacks.ipm import IPMAttack
-from fl_sandbox.attacks.krum_geometry_search import KrumGeometrySearchAttack
 from fl_sandbox.attacks.lmp import LMPAttack
 from fl_sandbox.attacks.rl_attacker import RLAttack
+from fl_sandbox.attacks.rl_backdoor import RLBackdoorAttack
 from fl_sandbox.attacks.signflip import SignFlipAttack
 
 
@@ -28,10 +26,7 @@ ATTACK_CHOICES = (
     "bfl",
     "dba",
     "rl",
-    "krum_geometry_search",
-    "clipped_median_geometry_search",
-    "brl",
-    "sgbrl",
+    "rl_backdoor",
 )
 
 
@@ -107,18 +102,10 @@ def create_attack(attacker_config) -> Optional[SandboxAttack]:
                 ppo_real_rollout_steps=getattr(attacker_config, "rl_ppo_real_rollout_steps", 64),
             ),
         )
-    if attack_type == "krum_geometry_search":
-        from fl_sandbox.attacks.krum_geometry_search import KrumGeometrySearchConfig
-
-        return KrumGeometrySearchAttack(config=KrumGeometrySearchConfig())
-    if attack_type == "clipped_median_geometry_search":
-        from fl_sandbox.attacks.clipped_median_geometry_search import ClippedMedianGeometrySearchConfig
-
-        return ClippedMedianGeometrySearchAttack(config=ClippedMedianGeometrySearchConfig())
-    if attack_type == "brl":
-        return BRLAttack(default_action=tuple(attacker_config.attacker_action))
-    if attack_type == "sgbrl":
-        return SelfGuidedBRLAttack()
+    if attack_type == "rl_backdoor":
+        return RLBackdoorAttack(
+            default_action=tuple(getattr(attacker_config, "rl_backdoor_default_action", (1.0, 0.0, -1.0, 0.0))),
+        )
     raise AssertionError(f"Unreachable attack type branch: {attack_type}")
 
 

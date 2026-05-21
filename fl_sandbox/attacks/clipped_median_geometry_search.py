@@ -15,6 +15,11 @@ from fl_sandbox.utils.weights import vector_to_weights, weights_to_vector
 EPS = 1e-12
 
 
+def _fl_value(fl_config, section: str, name: str, fallback):
+    nested = getattr(fl_config, section, None)
+    return getattr(nested, name, getattr(fl_config, name, fallback))
+
+
 def _normalize(vector: np.ndarray) -> np.ndarray:
     norm = float(np.linalg.norm(vector))
     if norm <= EPS:
@@ -132,7 +137,7 @@ def _benign_matrix(ctx) -> tuple[np.ndarray, np.ndarray]:
 def _clip_norm_from_context(ctx, benign_deltas: np.ndarray, configured: Optional[float] = None) -> float:
     if configured is not None:
         return float(configured)
-    configured_value = float(getattr(getattr(ctx, "fl_config", None), "clipped_median_norm", 0.0))
+    configured_value = float(_fl_value(getattr(ctx, "fl_config", None), "defender", "clipped_median_norm", 0.0))
     if configured_value > 0:
         return configured_value
     norms = np.linalg.norm(benign_deltas, axis=1)
@@ -362,7 +367,7 @@ def _median_state_from_context(
     damage_direction = _normalize(-benign_center)
     selected_count = float(len(ctx.selected_attacker_ids))
     sampled_count = float(len(ctx.selected_attacker_ids) + len(ctx.benign_weights))
-    total_clients = float(max(1, getattr(getattr(ctx, "fl_config", None), "num_clients", 1)))
+    total_clients = float(max(1, _fl_value(getattr(ctx, "fl_config", None), "fl", "num_clients", 1)))
     state = np.asarray(
         [
             float(getattr(ctx, "round_idx", 0)) / 1000.0,

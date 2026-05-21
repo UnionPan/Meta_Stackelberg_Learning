@@ -14,4 +14,4 @@ class SandboxDefender(ABC):
 
     @abstractmethod
     def build_config_kwargs(self) -> dict[str, Any]:
-        """Translate the defender into ``SandboxConfig`` keyword arguments."""
+        """Translate the defender into runtime aggregation keyword arguments."""

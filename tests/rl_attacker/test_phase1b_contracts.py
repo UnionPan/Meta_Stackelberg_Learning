@@ -27,12 +27,16 @@ from fl_sandbox.attacks.rl_attacker.simulator.fl_dynamics import legacy_craft_at
 from fl_sandbox.attacks.rl_attacker.simulator import SimulatedFLEnv
 from fl_sandbox.attacks.rl_attacker.trainer import build_trainer
 from fl_sandbox.defenders import AggregationDefender
-from fl_sandbox.core.fl_runner import SandboxConfig
+from fl_sandbox.config import RunConfig
 from src.models.cnn import MNISTClassifier
 
 
 def _weights(model):
     return [value.detach().cpu().numpy().copy() for value in model.state_dict().values()]
+
+
+def _run_config(**kwargs):
+    return RunConfig.from_flat_dict(kwargs)
 
 
 def _proxy_buffer(config=None):
@@ -405,7 +409,7 @@ def test_simulator_env_reset_and_step_return_flat_state():
         proxy_buffer=_proxy_buffer(config),
         defender=AggregationDefender(defense_type="krum"),
         config=config,
-        fl_config=SandboxConfig(num_clients=4, num_attackers=1, batch_size=4),
+        fl_config=_run_config(num_clients=4, num_attackers=1, batch_size=4),
         device=torch.device("cpu"),
     )
 
@@ -430,7 +434,7 @@ def test_legacy_krum_geometry_simulator_uses_vector_benign_surrogate():
         proxy_buffer=_proxy_buffer(config),
         defender=AggregationDefender(defense_type="krum", krum_attackers=3),
         config=config,
-        fl_config=SandboxConfig(num_clients=10, num_attackers=3, subsample_rate=1.0, batch_size=4, krum_attackers=3),
+        fl_config=_run_config(num_clients=10, num_attackers=3, subsample_rate=1.0, batch_size=4, krum_attackers=3),
         device=torch.device("cpu"),
     )
     weights = _weights(model)
@@ -467,7 +471,7 @@ def test_legacy_krum_geometry_simulator_malicious_path_skips_proxy_craft(monkeyp
         proxy_buffer=_proxy_buffer(config),
         defender=AggregationDefender(defense_type="krum", krum_attackers=3),
         config=config,
-        fl_config=SandboxConfig(num_clients=10, num_attackers=3, subsample_rate=1.0, batch_size=4, krum_attackers=3),
+        fl_config=_run_config(num_clients=10, num_attackers=3, subsample_rate=1.0, batch_size=4, krum_attackers=3),
         device=torch.device("cpu"),
     )
     weights = _weights(model)
@@ -501,7 +505,7 @@ def test_legacy_krum_geometry_simulator_malicious_path_skips_full_projection():
         proxy_buffer=_proxy_buffer(config),
         defender=AggregationDefender(defense_type="krum", krum_attackers=3),
         config=config,
-        fl_config=SandboxConfig(num_clients=10, num_attackers=3, subsample_rate=1.0, batch_size=4, krum_attackers=3),
+        fl_config=_run_config(num_clients=10, num_attackers=3, subsample_rate=1.0, batch_size=4, krum_attackers=3),
         device=torch.device("cpu"),
     )
     weights = _weights(model)
@@ -530,7 +534,7 @@ def test_legacy_krum_geometry_simulator_step_skips_full_krum_aggregate():
         proxy_buffer=_proxy_buffer(config),
         defender=AggregationDefender(defense_type="krum", krum_attackers=3),
         config=config,
-        fl_config=SandboxConfig(num_clients=10, num_attackers=3, subsample_rate=1.0, batch_size=4, krum_attackers=3),
+        fl_config=_run_config(num_clients=10, num_attackers=3, subsample_rate=1.0, batch_size=4, krum_attackers=3),
         device=torch.device("cpu"),
     )
     weights = _weights(model)
@@ -563,7 +567,7 @@ def test_legacy_krum_geometry_simulator_uses_fast_surrogate_metrics():
         proxy_buffer=_proxy_buffer(config),
         defender=AggregationDefender(defense_type="krum", krum_attackers=3),
         config=config,
-        fl_config=SandboxConfig(num_clients=10, num_attackers=3, subsample_rate=1.0, batch_size=4, krum_attackers=3),
+        fl_config=_run_config(num_clients=10, num_attackers=3, subsample_rate=1.0, batch_size=4, krum_attackers=3),
         device=torch.device("cpu"),
         eval_loader=eval_loader,
     )

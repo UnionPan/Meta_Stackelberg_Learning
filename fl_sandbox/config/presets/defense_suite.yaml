@@ -1,0 +1,43 @@
+data:
+  dataset: mnist
+  split_mode: iid
+  noniid_q: 0.5
+
+fl:
+  num_clients: 20
+  num_attackers: 4
+  subsample_rate: 0.5
+  local_epochs: 1
+
+runtime:
+  rounds: 30
+  device: auto
+  lr: 0.05
+  batch_size: 128
+  eval_batch_size: 1024
+  num_workers: 0
+  parallel_clients: 1
+  seed: 42
+
+attacker:
+  type: clean
+  ipm_scaling: 2.0
+  lmp_scale: 5.0
+
+defender:
+  type: fedavg
+
+output:
+  output_root: fl_sandbox/outputs/defense_suite
+  tb_root: fl_sandbox/runs/defense_suite
+
+benchmark:
+  matrix:
+    - attacks: [clean]
+      defenses: [fedavg]
+    - attacks: [ipm, lmp]
+      defenses: [krum, median, trimmed_mean]
+    - attacks: [bfl, dba]
+      defenses: [fltrust, clipped_median]
+    - attacks: [rl]
+      defenses: [clipped_median, krum]

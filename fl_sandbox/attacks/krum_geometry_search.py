@@ -19,6 +19,11 @@ from fl_sandbox.utils.weights import vector_to_weights, weights_to_vector
 EPS = 1e-12
 
 
+def _fl_value(fl_config, section: str, name: str, fallback):
+    nested = getattr(fl_config, section, None)
+    return getattr(nested, name, getattr(fl_config, name, fallback))
+
+
 def _normalize(vector: np.ndarray) -> np.ndarray:
     norm = float(np.linalg.norm(vector))
     if norm <= EPS:
@@ -169,7 +174,7 @@ def _state_from_context(
     stats = _benign_stats(benign_deltas)
     model_norm = float(np.linalg.norm(old_vec)) / max(1.0, float(np.sqrt(len(old_vec))))
     selected_count = float(len(ctx.selected_attacker_ids))
-    total_clients = float(max(1, getattr(getattr(ctx, "fl_config", None), "num_clients", 1)))
+    total_clients = float(max(1, _fl_value(getattr(ctx, "fl_config", None), "fl", "num_clients", 1)))
     round_idx = float(getattr(ctx, "round_idx", 0))
     state = np.asarray(
         [
@@ -279,7 +284,7 @@ class KrumGeometrySearchAttack(SandboxAttack):
         benign_center = np.mean(benign_deltas, axis=0)
         benign_sq_dists = _pairwise_sq_dists(benign_deltas)
         mean_norm = max(float(np.mean(np.linalg.norm(benign_deltas, axis=1))), EPS)
-        num_byzantine = int(getattr(getattr(ctx, "fl_config", None), "krum_attackers", num_attackers))
+        num_byzantine = int(_fl_value(getattr(ctx, "fl_config", None), "defender", "krum_attackers", num_attackers))
 
         def candidate_delta(alpha: float) -> np.ndarray:
             return benign_center + float(alpha) * mean_norm * damage_direction

@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from fl_sandbox.config import RunConfig, config_to_namespace
+from fl_sandbox.config import RunConfig
 from fl_sandbox.attacks import ATTACK_CHOICES
 from fl_sandbox.core.experiment_builders import build_run_name
 from fl_sandbox.core.experiment_service import (
@@ -74,8 +74,6 @@ def _attack_overrides(scale: float, rounds: int) -> dict[str, dict]:
         "gaussian":  {},   # sigma uses default 0.01
         "bfl":       dict(bfl_poison_frac=1.0),
         "dba":   dict(dba_poison_frac=0.5, dba_num_sub_triggers=4),
-        "brl":   dict(attacker_action=[0.0, 0.0, 0.0]),
-        "sgbrl": {},
         "rl": dict(
             protocol="rlfl",
             warmup_rounds=warmup,
@@ -151,12 +149,9 @@ def _prepare(args: argparse.Namespace):
         noniid_q=run_config.data.noniid_q,
         rounds=run_config.runtime.rounds,
     )
-    run_args = config_to_namespace(run_config)
-    run_args.output_dir = str(Path(args.output_root) / run_name)
-    run_args.tb_dir = str(Path(args.tb_root) / run_name)
-    for field in ("output_root", "tb_root", "config"):
-        setattr(run_args, field, getattr(args, field))
-    return run_args, run_name, run_config
+    output_dir = str(Path(args.output_root) / run_name)
+    tb_dir = str(Path(args.tb_root) / run_name)
+    return run_config, run_name, output_dir, tb_dir
 
 
 def _detailed_metrics(series: dict, rounds: int) -> dict:
@@ -234,12 +229,12 @@ def run_all(
             rl_horizon=rl_horizon,
             rl_inversion_steps=rl_inversion_steps,
         )
-        run_args, run_name, run_config = _prepare(args)
+        run_config, run_name, output_dir, tb_dir = _prepare(args)
 
         print(f"[{idx}/{total}] {run_name}")
         t0 = time.perf_counter()
         try:
-            result = execute_experiment(run_args, progress_desc=run_name, run_config=run_config)
+            result = execute_experiment(run_config, progress_desc=run_name, output_dir=output_dir, tb_dir=tb_dir)
             persist_experiment_artifacts(
                 result,
                 write_client_metrics=True,
@@ -273,7 +268,7 @@ def run_all(
                 f"converge={conv}  "
                 f"l10asr={detail['last10_mean_asr']:.4f}  "
                 f"({elapsed:.1f}s)\n"
-                f"    TB: {run_args.tb_dir}"
+                f"    TB: {tb_dir}"
             )
         except Exception as exc:
             elapsed = time.perf_counter() - t0

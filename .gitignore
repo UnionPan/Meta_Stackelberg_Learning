@@ -212,6 +212,7 @@ __marimo__/
 .DS_Store
 runs/
 fl_sandbox/runs/
+fl_sandbox/reports/
 notebooks/demo_*
 data/
 !fl_sandbox/data/

@@ -9,7 +9,6 @@ from fl_sandbox.defenders import (
     build_defender_config_kwargs,
     create_defender,
 )
-from fl_sandbox.core.experiment_builders import build_config
 
 
 class TestAttackerSandboxCoreDefender(unittest.TestCase):
@@ -81,18 +80,16 @@ class TestAttackerSandboxCoreDefender(unittest.TestCase):
             },
         )
 
-        config = build_config(
-            RunConfig.from_flat_dict(
-                {
-                    "defense_type": "paper_norm_trimmed_mean",
-                    "clipped_median_norm": 1.25,
-                    "trimmed_mean_ratio": 0.15,
-                }
-            )
+        config = RunConfig.from_flat_dict(
+            {
+                "defense_type": "paper_norm_trimmed_mean",
+                "clipped_median_norm": 1.25,
+                "trimmed_mean_ratio": 0.15,
+            }
         )
-        self.assertEqual(config.defense_type, "paper_norm_trimmed_mean")
-        self.assertEqual(config.clipped_median_norm, 1.25)
-        self.assertEqual(config.trimmed_mean_ratio, 0.15)
+        self.assertEqual(config.defender.type, "paper_norm_trimmed_mean")
+        self.assertEqual(config.defender.clipped_median_norm, 1.25)
+        self.assertEqual(config.defender.trimmed_mean_ratio, 0.15)
 
 
 if __name__ == "__main__":

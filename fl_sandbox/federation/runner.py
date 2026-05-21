@@ -7,7 +7,6 @@ import os
 import random
 import sys
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
@@ -15,6 +14,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
+from fl_sandbox.config.schema import RunConfig
 from fl_sandbox.data import DatasetSplit, get_datasets, poison_dataset
 from fl_sandbox.evaluation import test_model
 from fl_sandbox.federation.client import ClientTrainer
@@ -40,84 +40,36 @@ except ImportError:  # pragma: no cover
     tqdm = None
 
 
-@dataclass
-class SandboxConfig:
-    dataset: str = "mnist"
-    data_dir: str = "data"
-    device: str = "auto"
-    seed: int = 42
-    num_clients: int = 10
-    num_attackers: int = 2
-    subsample_rate: float = 0.5
-    local_epochs: int = 1
-    lr: float = 0.05
-    batch_size: int = 64
-    eval_batch_size: int = 2048
-    max_client_samples_per_client: Optional[int] = None
-    max_eval_samples: Optional[int] = None
-    num_workers: Optional[int] = None
-    prefetch_factor: int = 4
-    parallel_clients: int = 1
-    base_class: int = 1
-    target_class: int = 7
-    pattern_type: str = "square"
-    ipm_scaling: float = 2.0
-    lmp_scale: float = 2.0
-    bfl_poison_frac: float = 1.0
-    dba_poison_frac: float = 0.5
-    dba_num_sub_triggers: int = 4
-    attacker_action: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    defense_type: str = "fedavg"
-    krum_attackers: int = 1
-    multi_krum_selected: Optional[int] = None
-    clipped_median_norm: float = 2.0
-    trimmed_mean_ratio: float = 0.2
-    geometric_median_iters: int = 10
-    fltrust_root_size: int = 100
-    split_mode: str = "iid"
-    noniid_q: float = 0.5
-    rl_distribution_steps: int = 10
-    rl_attack_start_round: int = 10
-    rl_policy_train_end_round: int = 30
-    rl_inversion_steps: int = 50
-    rl_reconstruction_batch_size: int = 8
-    rl_policy_train_episodes_per_round: int = 2
-    rl_simulator_horizon: int = 10
-    rl_ppo_real_rollout_steps: int = 64
-    rl_attacker_semantics: str = "canonical"
-    init_mode: str = "seed"
-    init_checkpoint_path: str = ""
-
 
 class MinimalFLRunner:
     """Compact FL runner for attacker-side validation."""
 
-    def __init__(self, config: Optional[SandboxConfig] = None):
-        self.config = config or SandboxConfig()
-        self.device = resolve_device(self.config.device)
-        self.num_workers = self._resolve_num_workers(self.config.num_workers)
+    def __init__(self, config: RunConfig | None = None):
+        self.config = (config or RunConfig()).normalize()
+        self.device = resolve_device(self.config.runtime.device)
+        self.num_workers = self._resolve_num_workers(self.config.runtime.num_workers)
         self.loader_kwargs = self._make_loader_kwargs(shuffle=True)
         self.eval_loader_kwargs = self._make_loader_kwargs(shuffle=False)
         self.use_amp = self.device.type == "cuda"
         self.scaler = torch.amp.GradScaler("cuda", enabled=self.use_amp)
         self.defender = AggregationDefender(
-            defense_type=self.config.defense_type,
-            krum_attackers=self.config.krum_attackers,
-            multi_krum_selected=self.config.multi_krum_selected,
-            clipped_median_norm=self.config.clipped_median_norm,
-            trimmed_mean_ratio=self.config.trimmed_mean_ratio,
-            geometric_median_iters=self.config.geometric_median_iters,
+            defense_type=self.config.defender.type,
+            krum_attackers=self.config.defender.krum_attackers,
+            multi_krum_selected=self.config.defender.multi_krum_selected,
+            clipped_median_norm=self.config.defender.clipped_median_norm,
+            trimmed_mean_ratio=self.config.defender.trimmed_mean_ratio,
+            geometric_median_iters=self.config.defender.geometric_median_iters,
         )
-        self._set_seed(self.config.seed)
+        self._set_seed(self.config.runtime.seed)
         if self.device.type == "cuda":
             torch.backends.cudnn.benchmark = True
             torch.set_float32_matmul_precision("high")
 
-        self.train_dataset, self.test_dataset = get_datasets(self.config.dataset, data_dir=self.config.data_dir)
+        self.train_dataset, self.test_dataset = get_datasets(self.config.data.dataset, data_dir="data")
         self.eval_indices = self._eval_indices()
         self.test_loader = DataLoader(
             DatasetSplit(self.test_dataset, self.eval_indices),
-            batch_size=self.config.eval_batch_size,
+            batch_size=self.config.runtime.eval_batch_size,
             **self.eval_loader_kwargs,
         )
         self.client_groups = self._assign_client_groups()
@@ -127,22 +79,22 @@ class MinimalFLRunner:
         self.client_loaders = [
             DataLoader(
                 DatasetSplit(self.train_dataset, list(self.client_data_idxs[client_id])),
-                batch_size=self.config.batch_size,
+                batch_size=self.config.runtime.batch_size,
                 **self.loader_kwargs,
             )
-            for client_id in range(self.config.num_clients)
+            for client_id in range(self.config.fl.num_clients)
         ]
         self.model, self.client_model = self._initialize_model_pair()
         self.criterion = torch.nn.CrossEntropyLoss()
-        self.client_optimizer = torch.optim.SGD(self.client_model.parameters(), lr=self.config.lr)
+        self.client_optimizer = torch.optim.SGD(self.client_model.parameters(), lr=self.config.runtime.lr)
         self.current_weights = self._capture_weights(self.model)
         self.poisoned_train_loaders = self._prepare_poisoned_train_loaders()
         self.poisoned_eval_loader = self._prepare_poisoned_eval_loader()
 
     def reset_model(self) -> None:
-        self._set_seed(self.config.seed)
+        self._set_seed(self.config.runtime.seed)
         self.model, self.client_model = self._initialize_model_pair()
-        self.client_optimizer = torch.optim.SGD(self.client_model.parameters(), lr=self.config.lr)
+        self.client_optimizer = torch.optim.SGD(self.client_model.parameters(), lr=self.config.runtime.lr)
         self.current_weights = self._capture_weights(self.model)
         self.poisoned_train_loaders = self._prepare_poisoned_train_loaders()
         self.poisoned_eval_loader = self._prepare_poisoned_eval_loader()
@@ -163,7 +115,7 @@ class MinimalFLRunner:
             round_idx=round_idx,
             sampled_clients=sampled_clients,
             attacker_ids=self.attacker_ids,
-            num_clients=self.config.num_clients,
+            num_clients=self.config.fl.num_clients,
         )
         all_attacker_loader = self._build_attacker_loader(self.attacker_ids)
         selected_attacker_loader = self._build_attacker_loader(round_state.selected_attackers)
@@ -175,7 +127,7 @@ class MinimalFLRunner:
 
         benign_weights = []
         if round_state.benign_clients:
-            if self.config.parallel_clients > 1:
+            if self.config.runtime.parallel_clients > 1:
                 for cid, weights, train_loss, train_acc in self._train_clients_parallel(
                     old_weights, round_state.benign_clients
                 ):
@@ -207,8 +159,8 @@ class MinimalFLRunner:
                 device=self.device,
                 fl_config=self.config,
                 defense_type=round_defender.defense_type,
-                lr=self.config.lr,
-                local_epochs=self.config.local_epochs,
+                lr=self.config.runtime.lr,
+                local_epochs=self.config.fl.local_epochs,
                 attacker_train_iter=selected_attacker_loader,
                 all_attacker_train_iter=all_attacker_loader,
                 eval_loader=self.test_loader,
@@ -217,7 +169,7 @@ class MinimalFLRunner:
                 sub_trigger_train_loaders=self.poisoned_train_loaders.get("sub_triggers"),
                 poisoned_train_iters=self.poisoned_train_loaders,
                 attacker_action=np.asarray(
-                    attacker_action if attacker_action is not None else self.config.attacker_action,
+                    attacker_action if attacker_action is not None else self.config.attacker.attacker_action,
                     dtype=float,
                 ),
                 trusted_reference_weights=trusted_weights,
@@ -355,7 +307,7 @@ class MinimalFLRunner:
         return self._capture_weights(self.client_model), train_loss, train_acc
 
     def _train_clients_parallel(self, old_weights, client_ids: List[int]):
-        max_workers = min(self.config.parallel_clients, len(client_ids))
+        max_workers = min(self.config.runtime.parallel_clients, len(client_ids))
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = [executor.submit(self._train_client_isolated, old_weights, cid) for cid in client_ids]
             results = [f.result() for f in futures]
@@ -366,7 +318,7 @@ class MinimalFLRunner:
         model = self._build_model().to(self.device)
         if self.device.type == "cuda":
             model = model.to(memory_format=torch.channels_last)
-        optimizer = torch.optim.SGD(model.parameters(), lr=self.config.lr)
+        optimizer = torch.optim.SGD(model.parameters(), lr=self.config.runtime.lr)
         scaler = torch.amp.GradScaler("cuda", enabled=self.use_amp)
         self._load_numpy_weights(model, old_weights)
         train_loss, train_acc = self._local_train(model, self.client_loaders[client_id], optimizer=optimizer, scaler=scaler)
@@ -376,23 +328,23 @@ class MinimalFLRunner:
         trainer = ClientTrainer(
             criterion=self.criterion,
             device=self.device,
-            lr=self.config.lr,
-            local_epochs=self.config.local_epochs,
+            lr=self.config.runtime.lr,
+            local_epochs=self.config.fl.local_epochs,
             use_amp=self.use_amp,
         )
         return trainer.train(model, loader, optimizer=optimizer or self.client_optimizer, scaler=scaler or self.scaler)
 
     def _prepare_root_loader(self) -> Optional[DataLoader]:
-        if self.config.fltrust_root_size <= 0:
+        if self.config.defender.fltrust_root_size <= 0:
             return None
-        root_size = min(self.config.fltrust_root_size, len(self.train_dataset))
+        root_size = min(self.config.defender.fltrust_root_size, len(self.train_dataset))
         if root_size <= 0:
             return None
-        rng = random.Random(self.config.seed + 2024)
+        rng = random.Random(self.config.runtime.seed + 2024)
         root_indices = rng.sample(range(len(self.train_dataset)), root_size)
         return DataLoader(
             DatasetSplit(self.train_dataset, root_indices),
-            batch_size=min(self.config.batch_size, root_size),
+            batch_size=min(self.config.runtime.batch_size, root_size),
             **self.loader_kwargs,
         )
 
@@ -402,14 +354,14 @@ class MinimalFLRunner:
         model = self._build_model().to(self.device)
         if self.device.type == "cuda":
             model = model.to(memory_format=torch.channels_last)
-        optimizer = torch.optim.SGD(model.parameters(), lr=self.config.lr)
+        optimizer = torch.optim.SGD(model.parameters(), lr=self.config.runtime.lr)
         scaler = torch.amp.GradScaler("cuda", enabled=self.use_amp)
         self._load_numpy_weights(model, old_weights)
         self._local_train(model, self.root_loader, optimizer=optimizer, scaler=scaler)
         return self._capture_weights(model)
 
     def _prepare_poisoned_train_loaders(self) -> Dict[str, object]:
-        if self.config.num_attackers <= 0:
+        if self.config.resolved_num_attackers() <= 0:
             return {}
         loaders: Dict[str, object] = {"global_by_attacker": {}, "sub_triggers_by_attacker": {}}
         attacker_union_indices = sorted(
@@ -418,25 +370,25 @@ class MinimalFLRunner:
         if attacker_union_indices:
             global_poisoned_dataset = copy.deepcopy(self.train_dataset)
             poison_dataset(
-                global_poisoned_dataset, self.config.dataset, self.config.base_class, self.config.target_class,
-                poison_frac=self.config.bfl_poison_frac, pattern_type=self.config.pattern_type,
-                data_idxs=attacker_union_indices, poison_all=self.config.bfl_poison_frac >= 1.0,
+                global_poisoned_dataset, self.config.data.dataset, self.config.attacker.base_class, self.config.attacker.target_class,
+                poison_frac=self.config.attacker.bfl_poison_frac, pattern_type=self.config.attacker.pattern_type,
+                data_idxs=attacker_union_indices, poison_all=self.config.attacker.bfl_poison_frac >= 1.0,
             )
             loaders["global"] = DataLoader(
                 DatasetSplit(global_poisoned_dataset, attacker_union_indices),
-                batch_size=self.config.batch_size, **self.loader_kwargs,
+                batch_size=self.config.runtime.batch_size, **self.loader_kwargs,
             )
             sub_trigger_loaders = []
-            for sub_idx in range(max(1, self.config.dba_num_sub_triggers)):
+            for sub_idx in range(max(1, self.config.attacker.dba_num_sub_triggers)):
                 sub_poisoned_dataset = copy.deepcopy(self.train_dataset)
                 poison_dataset(
-                    sub_poisoned_dataset, self.config.dataset, self.config.base_class, self.config.target_class,
-                    poison_frac=self.config.dba_poison_frac, pattern_type=self.config.pattern_type,
+                    sub_poisoned_dataset, self.config.data.dataset, self.config.attacker.base_class, self.config.attacker.target_class,
+                    poison_frac=self.config.attacker.dba_poison_frac, pattern_type=self.config.attacker.pattern_type,
                     data_idxs=attacker_union_indices, agent_idx=sub_idx,
                 )
                 sub_trigger_loaders.append(DataLoader(
                     DatasetSplit(sub_poisoned_dataset, attacker_union_indices),
-                    batch_size=self.config.batch_size, **self.loader_kwargs,
+                    batch_size=self.config.runtime.batch_size, **self.loader_kwargs,
                 ))
             loaders["sub_triggers"] = sub_trigger_loaders
 
@@ -446,25 +398,25 @@ class MinimalFLRunner:
                 continue
             local_global_dataset = copy.deepcopy(self.train_dataset)
             poison_dataset(
-                local_global_dataset, self.config.dataset, self.config.base_class, self.config.target_class,
-                poison_frac=self.config.bfl_poison_frac, pattern_type=self.config.pattern_type,
-                data_idxs=local_indices, poison_all=self.config.bfl_poison_frac >= 1.0,
+                local_global_dataset, self.config.data.dataset, self.config.attacker.base_class, self.config.attacker.target_class,
+                poison_frac=self.config.attacker.bfl_poison_frac, pattern_type=self.config.attacker.pattern_type,
+                data_idxs=local_indices, poison_all=self.config.attacker.bfl_poison_frac >= 1.0,
             )
             loaders["global_by_attacker"][attacker_id] = DataLoader(
                 DatasetSplit(local_global_dataset, local_indices),
-                batch_size=self.config.batch_size, **self.loader_kwargs,
+                batch_size=self.config.runtime.batch_size, **self.loader_kwargs,
             )
             local_sub_trigger_loaders = []
-            for sub_idx in range(max(1, self.config.dba_num_sub_triggers)):
+            for sub_idx in range(max(1, self.config.attacker.dba_num_sub_triggers)):
                 local_sub_dataset = copy.deepcopy(self.train_dataset)
                 poison_dataset(
-                    local_sub_dataset, self.config.dataset, self.config.base_class, self.config.target_class,
-                    poison_frac=self.config.dba_poison_frac, pattern_type=self.config.pattern_type,
+                    local_sub_dataset, self.config.data.dataset, self.config.attacker.base_class, self.config.attacker.target_class,
+                    poison_frac=self.config.attacker.dba_poison_frac, pattern_type=self.config.attacker.pattern_type,
                     data_idxs=local_indices, agent_idx=sub_idx,
                 )
                 local_sub_trigger_loaders.append(DataLoader(
                     DatasetSplit(local_sub_dataset, local_indices),
-                    batch_size=self.config.batch_size, **self.loader_kwargs,
+                    batch_size=self.config.runtime.batch_size, **self.loader_kwargs,
                 ))
             loaders["sub_triggers_by_attacker"][attacker_id] = local_sub_trigger_loaders
         return loaders
@@ -472,21 +424,21 @@ class MinimalFLRunner:
     def _prepare_poisoned_eval_loader(self) -> Optional[DataLoader]:
         targets = self.test_dataset.targets
         if isinstance(targets, torch.Tensor):
-            base_idxs = targets.eq(self.config.base_class).nonzero(as_tuple=True)[0].tolist()
+            base_idxs = targets.eq(self.config.attacker.base_class).nonzero(as_tuple=True)[0].tolist()
         else:
-            base_idxs = [idx for idx, t in enumerate(targets) if int(t) == self.config.base_class]
+            base_idxs = [idx for idx, t in enumerate(targets) if int(t) == self.config.attacker.base_class]
         if not base_idxs:
             return None
-        if self.config.max_eval_samples is not None and self.config.max_eval_samples > 0:
-            base_idxs = base_idxs[: min(len(base_idxs), self.config.max_eval_samples)]
+        if self.config.runtime.max_eval_samples is not None and self.config.runtime.max_eval_samples > 0:
+            base_idxs = base_idxs[: min(len(base_idxs), self.config.runtime.max_eval_samples)]
         poisoned_eval_dataset = copy.deepcopy(self.test_dataset)
         poison_dataset(
-            poisoned_eval_dataset, self.config.dataset, self.config.base_class, self.config.target_class,
-            poison_frac=1.0, pattern_type=self.config.pattern_type, poison_all=True,
+            poisoned_eval_dataset, self.config.data.dataset, self.config.attacker.base_class, self.config.attacker.target_class,
+            poison_frac=1.0, pattern_type=self.config.attacker.pattern_type, poison_all=True,
         )
         return DataLoader(
             DatasetSplit(poisoned_eval_dataset, base_idxs),
-            batch_size=self.config.eval_batch_size, **self.eval_loader_kwargs,
+            batch_size=self.config.runtime.eval_batch_size, **self.eval_loader_kwargs,
         )
 
     def _build_attacker_loader(self, selected_attackers: List[int]) -> Optional[DataLoader]:
@@ -497,11 +449,11 @@ class MinimalFLRunner:
             return None
         return DataLoader(
             DatasetSplit(self.train_dataset, attacker_indices),
-            batch_size=self.config.batch_size, **self.loader_kwargs,
+            batch_size=self.config.runtime.batch_size, **self.loader_kwargs,
         )
 
     def _build_model(self) -> torch.nn.Module:
-        return build_model(self.config.dataset)
+        return build_model(self.config.data.dataset)
 
     def _initialize_model_pair(self):
         model = self._build_model().to(self.device)
@@ -509,11 +461,11 @@ class MinimalFLRunner:
         if self.device.type == "cuda":
             model = model.to(memory_format=torch.channels_last)
             client_model = client_model.to(memory_format=torch.channels_last)
-        if self.config.init_mode == "checkpoint":
-            self._load_checkpoint_into_model(model, self.config.init_checkpoint_path)
-            self._load_checkpoint_into_model(client_model, self.config.init_checkpoint_path)
-        elif self.config.init_mode != "seed":
-            raise ValueError(f"Unsupported init_mode: {self.config.init_mode}")
+        if self.config.init.init_mode == "checkpoint":
+            self._load_checkpoint_into_model(model, self.config.init.init_checkpoint_path)
+            self._load_checkpoint_into_model(client_model, self.config.init.init_checkpoint_path)
+        elif self.config.init.init_mode != "seed":
+            raise ValueError(f"Unsupported init_mode: {self.config.init.init_mode}")
         return model, client_model
 
     def _load_checkpoint_into_model(self, model, checkpoint_path: str) -> None:
@@ -579,31 +531,31 @@ class MinimalFLRunner:
                 target.copy_(source_tensor.reshape_as(target))
 
     def _split_data(self) -> List[set]:
-        mode = self.config.split_mode.lower()
+        mode = self.config.data.split_mode.lower()
         if mode == "iid":
             return self._split_data_iid()
         if mode == "noniid":
             return self._split_data_noniid()
         if mode == "paper_q":
             return self._split_data_paper_q()
-        raise ValueError(f"Unsupported split_mode: {self.config.split_mode}")
+        raise ValueError(f"Unsupported split_mode: {self.config.data.split_mode}")
 
     def _split_data_iid(self) -> List[set]:
-        num_items = len(self.train_dataset) // self.config.num_clients
+        num_items = len(self.train_dataset) // self.config.fl.num_clients
         all_indices = list(range(len(self.train_dataset)))
         client_data_idxs = []
-        rng = random.Random(self.config.seed)
-        for _ in range(self.config.num_clients):
+        rng = random.Random(self.config.runtime.seed)
+        for _ in range(self.config.fl.num_clients):
             chosen = set(rng.sample(all_indices, min(num_items, len(all_indices))))
             client_data_idxs.append(chosen)
             all_indices = list(set(all_indices) - chosen)
         return client_data_idxs
 
     def _limit_client_data_idxs(self, client_data_idxs: List[set]) -> List[set]:
-        max_samples = self.config.max_client_samples_per_client
+        max_samples = self.config.runtime.max_client_samples_per_client
         if max_samples is None or max_samples <= 0:
             return client_data_idxs
-        rng = random.Random(self.config.seed + 3030)
+        rng = random.Random(self.config.runtime.seed + 3030)
         limited = []
         for indices in client_data_idxs:
             ordered = sorted(indices)
@@ -614,26 +566,26 @@ class MinimalFLRunner:
 
     def _eval_indices(self) -> List[int]:
         indices = list(range(len(self.test_dataset)))
-        max_samples = self.config.max_eval_samples
+        max_samples = self.config.runtime.max_eval_samples
         if max_samples is None or max_samples <= 0 or max_samples >= len(indices):
             return indices
-        rng = random.Random(self.config.seed + 4040)
+        rng = random.Random(self.config.runtime.seed + 4040)
         return sorted(rng.sample(indices, max_samples))
 
     def _split_data_noniid(self) -> List[set]:
         targets = self._dataset_targets()
         classes = sorted({int(label) for label in targets})
         num_groups = len(classes)
-        if self.config.num_clients < num_groups:
+        if self.config.fl.num_clients < num_groups:
             raise ValueError("split_mode='noniid' requires num_clients >= number of classes")
         class_to_group = {label: idx for idx, label in enumerate(classes)}
         group_to_clients = {group_id: [] for group_id in range(num_groups)}
         for client_id, group_id in enumerate(self.client_groups):
             group_to_clients[group_id].append(client_id)
-        rng = random.Random(self.config.seed)
-        client_data_idxs = [set() for _ in range(self.config.num_clients)]
+        rng = random.Random(self.config.runtime.seed)
+        client_data_idxs = [set() for _ in range(self.config.fl.num_clients)]
         grouped_indices = {group_id: [] for group_id in range(num_groups)}
-        q = max(1.0 / num_groups, min(1.0, float(self.config.noniid_q)))
+        q = max(1.0 / num_groups, min(1.0, float(self.config.data.noniid_q)))
         for idx, label in enumerate(targets):
             preferred_group = class_to_group[int(label)]
             if rng.random() < q:
@@ -655,17 +607,17 @@ class MinimalFLRunner:
         targets = self._dataset_targets()
         classes = sorted({int(label) for label in targets})
         num_groups = len(classes)
-        if self.config.num_clients < num_groups:
+        if self.config.fl.num_clients < num_groups:
             raise ValueError("split_mode='paper_q' requires num_clients >= number of classes")
         class_to_group = {label: idx for idx, label in enumerate(classes)}
         group_to_clients = {group_id: [] for group_id in range(num_groups)}
         for client_id, group_id in enumerate(self.client_groups):
             group_to_clients[group_id].append(client_id)
-        rng = random.Random(self.config.seed)
-        client_data_idxs = [set() for _ in range(self.config.num_clients)]
+        rng = random.Random(self.config.runtime.seed)
+        client_data_idxs = [set() for _ in range(self.config.fl.num_clients)]
         grouped_indices = {group_id: [] for group_id in range(num_groups)}
         base_iid = 1.0 / max(1, num_groups)
-        q = max(base_iid, min(1.0, float(self.config.noniid_q)))
+        q = max(base_iid, min(1.0, float(self.config.data.noniid_q)))
         keep_label_prob = (q - base_iid) * num_groups / max(1, num_groups - 1)
         for idx, label in enumerate(targets):
             label_group = class_to_group[int(label)]
@@ -683,10 +635,10 @@ class MinimalFLRunner:
         targets = self._dataset_targets()
         classes = sorted({int(label) for label in targets})
         num_groups = max(1, len(classes))
-        return [client_id % num_groups for client_id in range(self.config.num_clients)]
+        return [client_id % num_groups for client_id in range(self.config.fl.num_clients)]
 
     def _assign_attacker_ids(self) -> List[int]:
-        if self.config.num_attackers <= 0:
+        if self.config.resolved_num_attackers() <= 0:
             return []
         group_to_clients: Dict[int, List[int]] = {}
         for client_id, group_id in enumerate(self.client_groups):
@@ -696,16 +648,16 @@ class MinimalFLRunner:
         attacker_ids: List[int] = []
         group_ids = sorted(group_to_clients)
         cursor = 0
-        while len(attacker_ids) < self.config.num_attackers:
+        while len(attacker_ids) < self.config.resolved_num_attackers():
             group_id = group_ids[cursor % len(group_ids)]
             clients = group_to_clients[group_id]
             pick_idx = len([cid for cid in attacker_ids if self.client_groups[cid] == group_id])
             if pick_idx < len(clients):
                 attacker_ids.append(clients[pick_idx])
             cursor += 1
-            if cursor > self.config.num_clients * 4:
+            if cursor > self.config.fl.num_clients * 4:
                 break
-        return sorted(attacker_ids[: self.config.num_attackers])
+        return sorted(attacker_ids[: self.config.resolved_num_attackers()])
 
     def _dataset_targets(self) -> List[int]:
         targets = self.train_dataset.targets
@@ -714,9 +666,9 @@ class MinimalFLRunner:
         return [int(value) for value in list(targets)]
 
     def _sample_clients(self, round_idx: int) -> List[int]:
-        num_sampled = min(self.config.num_clients, max(1, int(self.config.num_clients * self.config.subsample_rate)))
-        rng = random.Random(self.config.seed + round_idx * 997)
-        return sorted(rng.sample(range(self.config.num_clients), num_sampled))
+        num_sampled = min(self.config.fl.num_clients, max(1, int(self.config.fl.num_clients * self.config.fl.subsample_rate)))
+        rng = random.Random(self.config.runtime.seed + round_idx * 997)
+        return sorted(rng.sample(range(self.config.fl.num_clients), num_sampled))
 
     def _make_loader_kwargs(self, shuffle: bool) -> Dict[str, object]:
         kwargs: Dict[str, object] = {
@@ -726,7 +678,7 @@ class MinimalFLRunner:
         }
         if self.num_workers > 0:
             kwargs["persistent_workers"] = True
-            kwargs["prefetch_factor"] = self.config.prefetch_factor
+            kwargs["prefetch_factor"] = 4
         return kwargs
 
     @staticmethod

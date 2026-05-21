@@ -39,7 +39,6 @@ METHODS=(
   "bfl"
   "dba"
   "rl"
-  "brl"
 )
 
 echo "Postprocessing MNIST 30-round attacks -> ${TB_ROOT}"

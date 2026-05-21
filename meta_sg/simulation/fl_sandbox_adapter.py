@@ -7,11 +7,24 @@ from typing import Optional
 import numpy as np
 
 from fl_sandbox.attacks import create_attack
-from fl_sandbox.federation.runner import MinimalFLRunner, SandboxConfig
+from fl_sandbox.config import RunConfig
+from fl_sandbox.federation.runner import MinimalFLRunner
 from fl_sandbox.utils import set_parameters
 
 from meta_sg.simulation.interface import FLCoordinator
 from meta_sg.simulation.types import InitialState, RoundSummary, SimulationSnapshot, SimulationSpec, Weights
+
+
+def SandboxConfig(**values) -> RunConfig:
+    """Compatibility factory for older meta_sg scripts using flat sandbox args."""
+    supported = set(RunConfig().to_flat_dict())
+    legacy_ignored = {"data_dir"}
+    filtered = {
+        key: value
+        for key, value in values.items()
+        if key in supported and key not in legacy_ignored
+    }
+    return RunConfig.from_flat_dict(filtered)
 
 
 class FLSandboxCoordinatorAdapter(FLCoordinator):
@@ -25,15 +38,15 @@ class FLSandboxCoordinatorAdapter(FLCoordinator):
     - Post-training defenses remain outside the FL transition.
     """
 
-    def __init__(self, config: Optional[SandboxConfig] = None) -> None:
+    def __init__(self, config: Optional[RunConfig] = None) -> None:
         self.config = config or SandboxConfig()
         self.runner = MinimalFLRunner(self.config)
         self._round_idx = 0
         self._last_summary: Optional[RoundSummary] = None
 
     def reset(self, seed: Optional[int] = None) -> InitialState:
-        if seed is not None and seed != self.config.seed:
-            self.config.seed = int(seed)
+        if seed is not None and seed != self.config.runtime.seed:
+            self.config.runtime.seed = int(seed)
             self.runner = MinimalFLRunner(self.config)
         else:
             self.runner.reset_model()
@@ -120,14 +133,16 @@ def _attack_name(attack) -> str:
     return str(getattr(attack, "name", "clean")).lower()
 
 
-def _attack_config_from_sandbox(config: SandboxConfig, attack_name: str, attack_decision) -> SimpleNamespace:
-    values = dict(vars(config))
+def _attack_config_from_sandbox(config: RunConfig, attack_name: str, attack_decision) -> SimpleNamespace:
+    values = config.to_flat_dict()
     values.update(
         {
             "type": attack_name,
-            "alie_tau": getattr(config, "alie_tau", 1.0),
-            "gaussian_sigma": getattr(config, "gaussian_sigma", 0.1),
-            "attacker_action": tuple(np.asarray(getattr(attack_decision, "raw", config.attacker_action), dtype=float)),
+            "alie_tau": config.attacker.alie_tau,
+            "gaussian_sigma": config.attacker.gaussian_sigma,
+            "attacker_action": tuple(
+                np.asarray(getattr(attack_decision, "raw", config.attacker.attacker_action), dtype=float)
+            ),
         }
     )
     return SimpleNamespace(**values)

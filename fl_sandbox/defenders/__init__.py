@@ -14,7 +14,7 @@ Main re-exports in this file:
 
 from fl_sandbox.config.schema import DefenderSection
 
-from .aggregation import (
+from .rules import (
     ClippedMedianDefender,
     FLTrustDefender,
     FedAvgDefender,
@@ -25,7 +25,7 @@ from .aggregation import (
     PaperNormTrimmedMeanDefender,
     TrimmedMeanDefender,
 )
-from .aggregation_runtime import (
+from fl_sandbox.aggregators.rules import (
     AggregationDefender,
     clipped_median_aggregate,
     fedavg_aggregate,
@@ -43,7 +43,7 @@ from .factory import DEFENSE_CHOICES, create_defender, supported_defense_types
 
 
 def build_defender_config_kwargs(defender: DefenderSection) -> dict[str, object]:
-    """Translate defender config into ``SandboxConfig`` keyword arguments."""
+    """Translate defender config into runtime aggregation keyword arguments."""
 
     defender_impl = create_defender(defender)
     kwargs = {

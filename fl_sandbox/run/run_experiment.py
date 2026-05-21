@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from fl_sandbox.config import PROTOCOL_CHOICES, RunConfig, config_to_namespace, load_run_config, merge_cli_overrides
+from fl_sandbox.config import PROTOCOL_CHOICES, RunConfig, load_run_config, merge_cli_overrides
 from fl_sandbox.attacks import ATTACK_CHOICES
 from fl_sandbox.defenders import DEFENSE_CHOICES
 from fl_sandbox.core.experiment_builders import build_run_name
@@ -135,14 +135,7 @@ def _build_parser(
     )
     parser.add_argument(
         '--rl_attacker_semantics',
-        choices=(
-            'canonical',
-            'legacy_clipped_median',
-            'legacy_clipped_median_strict',
-            'legacy_clipped_median_scaleaware',
-            'legacy_krum_strict',
-            'legacy_krum_geometry',
-        ),
+        choices=('canonical',),
         **_default_kwargs(defaults.attacker.rl_attacker_semantics, use_defaults),
     )
     parser.add_argument('--rl_policy_lr', type=float, **_default_kwargs(defaults.attacker.rl_policy_lr, use_defaults))
@@ -296,21 +289,20 @@ def parse_args(
     return args
 
 
-def _prepare_run_args(args: argparse.Namespace) -> tuple[argparse.Namespace, str, RunConfig]:
+def _prepare_run_config(args: argparse.Namespace) -> tuple[RunConfig, str, str, str]:
     base_config = load_run_config(args.config or None)
     run_config = merge_cli_overrides(base_config, args)
-    run_args = config_to_namespace(run_config)
     run_name = build_run_name(
-        dataset=run_args.dataset,
-        attack_type=run_args.attack_type,
-        defense_type=run_args.defense_type,
-        split_mode=run_args.split_mode,
-        noniid_q=run_args.noniid_q,
-        rounds=run_args.rounds,
+        dataset=run_config.data.dataset,
+        attack_type=run_config.attacker.type,
+        defense_type=run_config.defender.type,
+        split_mode=run_config.data.split_mode,
+        noniid_q=run_config.data.noniid_q,
+        rounds=run_config.runtime.rounds,
     )
-    run_args.output_dir = str(Path(run_args.output_root) / run_name)
-    run_args.tb_dir = str(Path(run_args.tb_root) / run_name)
-    return run_args, run_name, run_config
+    output_dir = str(Path(run_config.output.output_root) / run_name)
+    tb_dir = str(Path(run_config.output.tb_root) / run_name)
+    return run_config, run_name, output_dir, tb_dir
 
 
 def main(
@@ -319,8 +311,8 @@ def main(
     description: str = 'Run one configured fl_sandbox experiment',
 ) -> None:
     args = parse_args(argv, description=description)
-    run_args, run_name, run_config = _prepare_run_args(args)
-    result = execute_experiment(run_args, progress_desc=run_name, run_config=run_config)
+    run_config, run_name, output_dir, tb_dir = _prepare_run_config(args)
+    result = execute_experiment(run_config, progress_desc=run_name, output_dir=output_dir, tb_dir=tb_dir)
     persist_experiment_artifacts(
         result,
         write_client_metrics=True,
@@ -330,8 +322,8 @@ def main(
 
     for line in completion_lines(result):
         print(line)
-    if run_args.protocol != 'none':
-        print(f'Protocol: {run_args.protocol}')
+    if run_config.protocol.name != 'none':
+        print(f'Protocol: {run_config.protocol.name}')
 
 
 if __name__ == '__main__':

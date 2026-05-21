@@ -65,6 +65,7 @@ class AttackerSection:
     dba_poison_frac: float = 0.5
     dba_num_sub_triggers: int = 4
     attacker_action: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    rl_backdoor_default_action: tuple[float, float, float, float] = (1.0, 0.0, -1.0, 0.0)
     rl_algorithm: str = "td3"
     rl_attacker_semantics: str = "canonical"
     rl_policy_lr: float = 3e-4
@@ -164,6 +165,11 @@ class RunConfig:
         self.attacker.rl_attack_start_round = self.attacker.rl_attack_start_round or 10
         return self
 
+    def resolved_num_attackers(self) -> int:
+        if self.fl.num_attackers is not None:
+            return self.fl.num_attackers
+        return 0 if self.attacker.type == "clean" else 2
+
     def benchmark_protocol_payload(self) -> dict[str, object] | None:
         if self.protocol.name != 'rlfl':
             return None
@@ -213,6 +219,7 @@ class RunConfig:
             "dba_poison_frac": self.attacker.dba_poison_frac,
             "dba_num_sub_triggers": self.attacker.dba_num_sub_triggers,
             "attacker_action": list(self.attacker.attacker_action),
+            "rl_backdoor_default_action": list(self.attacker.rl_backdoor_default_action),
             "rl_algorithm": self.attacker.rl_algorithm,
             "rl_attacker_semantics": self.attacker.rl_attacker_semantics,
             "rl_policy_lr": self.attacker.rl_policy_lr,
@@ -296,6 +303,7 @@ def _set_flat_value(config: RunConfig, key: str, value: Any) -> None:
         "dba_poison_frac": (config.attacker, "dba_poison_frac"),
         "dba_num_sub_triggers": (config.attacker, "dba_num_sub_triggers"),
         "attacker_action": (config.attacker, "attacker_action"),
+        "rl_backdoor_default_action": (config.attacker, "rl_backdoor_default_action"),
         "rl_algorithm": (config.attacker, "rl_algorithm"),
         "rl_attacker_semantics": (config.attacker, "rl_attacker_semantics"),
         "rl_policy_lr": (config.attacker, "rl_policy_lr"),

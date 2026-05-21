@@ -13,6 +13,14 @@ def test_rl_training_tensorboard_scalars_maps_td3_losses_and_rewards():
         "rl_simulated_reward": 0.2,
         "rl_action_gamma_scale": 15.0,
         "rl_action_local_steps": 25.0,
+        "rl_action_raw_0": 10.0,
+        "rl_action_raw_1": 20.0,
+        "rl_action_raw_2": 30.0,
+        "rl_action_raw_3": 40.0,
+        "rl_action_poison_frac": 0.5,
+        "rl_action_local_lr": 0.01,
+        "rl_action_local_epochs": 3.0,
+        "rl_action_boost": 8.0,
         "rl_observation_norm": 3.5,
         "rl_observation_std": 0.7,
         "rl_trainer_replay_size": 128,
@@ -32,6 +40,14 @@ def test_rl_training_tensorboard_scalars_maps_td3_losses_and_rewards():
     assert scalars["rl_training/simulated_reward"] == 0.2
     assert scalars["rl_action/gamma_scale"] == 15.0
     assert scalars["rl_action/local_steps"] == 25.0
+    assert scalars["rl_action/raw_0"] == 10.0
+    assert scalars["rl_action/raw_1"] == 20.0
+    assert scalars["rl_action/raw_2"] == 30.0
+    assert scalars["rl_action/raw_3"] == 40.0
+    assert scalars["rl_action/poison_frac"] == 0.5
+    assert scalars["rl_action/local_lr"] == 0.01
+    assert scalars["rl_action/local_epochs"] == 3.0
+    assert scalars["rl_action/boost"] == 8.0
     assert scalars["rl_observation/norm"] == 3.5
     assert scalars["rl_observation/std"] == 0.7
     assert scalars["rl_training/replay_size"] == 128.0

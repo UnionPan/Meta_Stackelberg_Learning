@@ -31,7 +31,3 @@ def merge_cli_overrides(config: RunConfig, args: argparse.Namespace) -> RunConfi
     overrides = {key: value for key, value in vars(args).items() if key != "config"}
     flat.update(overrides)
     return RunConfig.from_flat_dict(flat).normalize()
-
-
-def config_to_namespace(config: RunConfig) -> argparse.Namespace:
-    return argparse.Namespace(**config.normalize().to_flat_dict())

@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .experiment_builders import build_attack, build_config, default_output_dir, default_tb_dir
+from .experiment_builders import build_attack, default_output_dir, default_tb_dir
 from .postprocess import build_postprocess_hint_lines
 from .postprocess.tensorboard_utils import build_summary_writer
 from .runtime import ExperimentTimer, client_metrics_to_rows, summaries_to_dict
@@ -60,6 +60,11 @@ RL_TRAINING_TENSORBOARD_TAGS = {
     "rl_action_raw_0": "rl_action/raw_0",
     "rl_action_raw_1": "rl_action/raw_1",
     "rl_action_raw_2": "rl_action/raw_2",
+    "rl_action_raw_3": "rl_action/raw_3",
+    "rl_action_poison_frac": "rl_action/poison_frac",
+    "rl_action_local_lr": "rl_action/local_lr",
+    "rl_action_local_epochs": "rl_action/local_epochs",
+    "rl_action_boost": "rl_action/boost",
     "rl_observation_dim": "rl_observation/dim",
     "rl_observation_norm": "rl_observation/norm",
     "rl_observation_mean": "rl_observation/mean",
@@ -376,9 +381,7 @@ class ExperimentCheckpointManager:
 
 @dataclass
 class ExperimentRunResult:
-    args: Any
     run_config: RunConfig
-    config: Any
     attack: Any
     output_dir: Path
     tb_dir: Path
@@ -436,8 +439,6 @@ def write_tensorboard_logs(
 
 
 def build_payload(
-    args,
-    config,
     run_config: RunConfig,
     series: dict[str, list[float]],
     summaries,
@@ -463,77 +464,77 @@ def build_payload(
                 final_mean_malicious_cosine = series["mean_malicious_cosine"][idx]
             break
     config_payload = {
-        "dataset": config.dataset,
-        "data_dir": config.data_dir,
-        "device": args.device,
-        "seed": config.seed,
-        "init_mode": config.init_mode,
-        "init_checkpoint_path": config.init_checkpoint_path,
-        "num_clients": config.num_clients,
-        "num_attackers": config.num_attackers,
-        "subsample_rate": config.subsample_rate,
-        "local_epochs": config.local_epochs,
-        "lr": config.lr,
-        "batch_size": config.batch_size,
-        "eval_batch_size": config.eval_batch_size,
-        "num_workers": config.num_workers,
-        "parallel_clients": config.parallel_clients,
+        "dataset": run_config.data.dataset,
+        "data_dir": "data",
+        "device": run_config.runtime.device,
+        "seed": run_config.runtime.seed,
+        "init_mode": run_config.init.init_mode,
+        "init_checkpoint_path": run_config.init.init_checkpoint_path,
+        "num_clients": run_config.fl.num_clients,
+        "num_attackers": run_config.resolved_num_attackers(),
+        "subsample_rate": run_config.fl.subsample_rate,
+        "local_epochs": run_config.fl.local_epochs,
+        "lr": run_config.runtime.lr,
+        "batch_size": run_config.runtime.batch_size,
+        "eval_batch_size": run_config.runtime.eval_batch_size,
+        "num_workers": run_config.runtime.num_workers,
+        "parallel_clients": run_config.runtime.parallel_clients,
         "eval_every": run_config.runtime.eval_every,
-        "base_class": config.base_class,
-        "target_class": config.target_class,
-        "pattern_type": config.pattern_type,
-        "attack_type": args.attack_type,
-        "ipm_scaling": args.ipm_scaling,
-        "lmp_scale": args.lmp_scale,
-        "alie_tau": args.alie_tau,
-        "gaussian_sigma": args.gaussian_sigma,
-        "bfl_poison_frac": args.bfl_poison_frac,
-        "dba_poison_frac": args.dba_poison_frac,
-        "dba_num_sub_triggers": args.dba_num_sub_triggers,
-        "attacker_action": list(args.attacker_action),
-        "rl_algorithm": args.rl_algorithm,
-        "rl_attacker_semantics": args.rl_attacker_semantics,
-        "rl_policy_lr": args.rl_policy_lr,
-        "rl_critic_lr": args.rl_critic_lr,
-        "rl_gamma": args.rl_gamma,
-        "rl_replay_capacity": args.rl_replay_capacity,
-        "rl_batch_size": args.rl_batch_size,
-        "rl_hidden_sizes": list(args.rl_hidden_sizes),
-        "rl_exploration_noise": args.rl_exploration_noise,
-        "rl_train_freq_steps": args.rl_train_freq_steps,
-        "rl_policy_train_steps_per_round": args.rl_policy_train_steps_per_round,
-        "rl_policy_checkpoint_path": args.rl_policy_checkpoint_path,
-        "rl_policy_checkpoint_dir": args.rl_policy_checkpoint_dir,
-        "rl_freeze_policy": args.rl_freeze_policy,
-        "rl_strict_reproduction_initial_samples": args.rl_strict_reproduction_initial_samples,
-        "rl_strict_reproduction_samples_per_epoch": args.rl_strict_reproduction_samples_per_epoch,
-        "defense_type": config.defense_type,
-        "krum_attackers": config.krum_attackers,
-        "multi_krum_selected": config.multi_krum_selected,
-        "clipped_median_norm": config.clipped_median_norm,
-        "trimmed_mean_ratio": config.trimmed_mean_ratio,
-        "geometric_median_iters": config.geometric_median_iters,
-        "fltrust_root_size": config.fltrust_root_size,
-        "split_mode": config.split_mode,
-        "noniid_q": config.noniid_q,
-        "rl_distribution_steps": config.rl_distribution_steps,
-        "rl_attack_start_round": config.rl_attack_start_round,
-        "rl_policy_train_end_round": config.rl_policy_train_end_round,
-        "rl_inversion_steps": config.rl_inversion_steps,
-        "rl_reconstruction_batch_size": config.rl_reconstruction_batch_size,
-        "rl_policy_train_episodes_per_round": config.rl_policy_train_episodes_per_round,
-        "rl_simulator_horizon": config.rl_simulator_horizon,
-        "rl_ppo_real_rollout_steps": config.rl_ppo_real_rollout_steps,
-        "rl_checkpoint_interval": args.rl_checkpoint_interval,
-        "rl_save_final_checkpoint": args.rl_save_final_checkpoint,
-        "rounds": args.rounds,
+        "base_class": run_config.attacker.base_class,
+        "target_class": run_config.attacker.target_class,
+        "pattern_type": run_config.attacker.pattern_type,
+        "attack_type": run_config.attacker.type,
+        "ipm_scaling": run_config.attacker.ipm_scaling,
+        "lmp_scale": run_config.attacker.lmp_scale,
+        "alie_tau": run_config.attacker.alie_tau,
+        "gaussian_sigma": run_config.attacker.gaussian_sigma,
+        "bfl_poison_frac": run_config.attacker.bfl_poison_frac,
+        "dba_poison_frac": run_config.attacker.dba_poison_frac,
+        "dba_num_sub_triggers": run_config.attacker.dba_num_sub_triggers,
+        "attacker_action": list(run_config.attacker.attacker_action),
+        "rl_algorithm": run_config.attacker.rl_algorithm,
+        "rl_attacker_semantics": run_config.attacker.rl_attacker_semantics,
+        "rl_policy_lr": run_config.attacker.rl_policy_lr,
+        "rl_critic_lr": run_config.attacker.rl_critic_lr,
+        "rl_gamma": run_config.attacker.rl_gamma,
+        "rl_replay_capacity": run_config.attacker.rl_replay_capacity,
+        "rl_batch_size": run_config.attacker.rl_batch_size,
+        "rl_hidden_sizes": list(run_config.attacker.rl_hidden_sizes),
+        "rl_exploration_noise": run_config.attacker.rl_exploration_noise,
+        "rl_train_freq_steps": run_config.attacker.rl_train_freq_steps,
+        "rl_policy_train_steps_per_round": run_config.attacker.rl_policy_train_steps_per_round,
+        "rl_policy_checkpoint_path": run_config.attacker.rl_policy_checkpoint_path,
+        "rl_policy_checkpoint_dir": run_config.attacker.rl_policy_checkpoint_dir,
+        "rl_freeze_policy": run_config.attacker.rl_freeze_policy,
+        "rl_strict_reproduction_initial_samples": run_config.attacker.rl_strict_reproduction_initial_samples,
+        "rl_strict_reproduction_samples_per_epoch": run_config.attacker.rl_strict_reproduction_samples_per_epoch,
+        "defense_type": run_config.defender.type,
+        "krum_attackers": run_config.defender.krum_attackers,
+        "multi_krum_selected": run_config.defender.multi_krum_selected,
+        "clipped_median_norm": run_config.defender.clipped_median_norm,
+        "trimmed_mean_ratio": run_config.defender.trimmed_mean_ratio,
+        "geometric_median_iters": run_config.defender.geometric_median_iters,
+        "fltrust_root_size": run_config.defender.fltrust_root_size,
+        "split_mode": run_config.data.split_mode,
+        "noniid_q": run_config.data.noniid_q,
+        "rl_distribution_steps": run_config.attacker.rl_distribution_steps,
+        "rl_attack_start_round": run_config.attacker.rl_attack_start_round,
+        "rl_policy_train_end_round": run_config.attacker.rl_policy_train_end_round,
+        "rl_inversion_steps": run_config.attacker.rl_inversion_steps,
+        "rl_reconstruction_batch_size": run_config.attacker.rl_reconstruction_batch_size,
+        "rl_policy_train_episodes_per_round": run_config.attacker.rl_policy_train_episodes_per_round,
+        "rl_simulator_horizon": run_config.attacker.rl_simulator_horizon,
+        "rl_ppo_real_rollout_steps": run_config.attacker.rl_ppo_real_rollout_steps,
+        "rl_checkpoint_interval": run_config.attacker.rl_checkpoint_interval,
+        "rl_save_final_checkpoint": run_config.attacker.rl_save_final_checkpoint,
+        "rounds": run_config.runtime.rounds,
     }
     benchmark_protocol = run_config.benchmark_protocol_payload()
     if benchmark_protocol is not None:
         config_payload["benchmark_protocol"] = benchmark_protocol
     return {
         "config": config_payload,
-        "attack_type": args.attack_type,
+        "attack_type": run_config.attacker.type,
         "total_seconds": total_seconds,
         "series": series,
         "rounds": [
@@ -616,58 +617,56 @@ def write_round_metrics_csv(output_dir: Path, summaries) -> Path:
 
 
 def execute_experiment(
-    args,
+    run_config: RunConfig,
     *,
     progress_desc: str | None = None,
-    run_config: RunConfig | None = None,
+    output_dir: str | Path | None = None,
+    tb_dir: str | Path | None = None,
 ) -> ExperimentRunResult:
     from fl_sandbox.core.fl_runner import MinimalFLRunner
 
-    run_config = (run_config or RunConfig.from_flat_dict(vars(args))).normalize()
-    config = build_config(run_config)
+    run_config = run_config.normalize()
     attack = build_attack(run_config.attacker)
-    output_dir = Path(args.output_dir or default_output_dir(run_config.attacker, run_config.defender, run_config.data))
-    tb_dir = Path(args.tb_dir or default_tb_dir(run_config.attacker, run_config.defender, run_config.data))
+    output_dir = Path(output_dir or default_output_dir(run_config.attacker, run_config.defender, run_config.data))
+    tb_dir = Path(tb_dir or default_tb_dir(run_config.attacker, run_config.defender, run_config.data))
     output_dir.mkdir(parents=True, exist_ok=True)
     tb_dir.mkdir(parents=True, exist_ok=True)
 
     live_config_payload = {
-        "dataset": config.dataset,
-        "device": args.device,
-        "attack_type": args.attack_type,
-        "defense_type": config.defense_type,
-        "rounds": args.rounds,
-        "num_clients": config.num_clients,
-        "num_attackers": config.num_attackers,
-        "subsample_rate": config.subsample_rate,
-        "local_epochs": config.local_epochs,
-        "lr": config.lr,
-        "batch_size": config.batch_size,
-        "eval_batch_size": config.eval_batch_size,
-        "split_mode": config.split_mode,
-        "noniid_q": config.noniid_q,
-        "rl_distribution_steps": config.rl_distribution_steps,
-        "rl_attack_start_round": config.rl_attack_start_round,
-        "rl_policy_train_end_round": config.rl_policy_train_end_round,
-        "rl_policy_train_episodes_per_round": config.rl_policy_train_episodes_per_round,
-        "rl_simulator_horizon": config.rl_simulator_horizon,
-        "rl_ppo_real_rollout_steps": config.rl_ppo_real_rollout_steps,
-        "rl_attacker_semantics": config.rl_attacker_semantics,
-        "rl_policy_checkpoint_path": args.rl_policy_checkpoint_path,
-        "rl_policy_checkpoint_dir": args.rl_policy_checkpoint_dir,
-        "rl_freeze_policy": args.rl_freeze_policy,
-        "rl_checkpoint_interval": args.rl_checkpoint_interval,
-        "rl_save_final_checkpoint": args.rl_save_final_checkpoint,
+        "dataset": run_config.data.dataset,
+        "device": run_config.runtime.device,
+        "attack_type": run_config.attacker.type,
+        "defense_type": run_config.defender.type,
+        "rounds": run_config.runtime.rounds,
+        "num_clients": run_config.fl.num_clients,
+        "num_attackers": run_config.resolved_num_attackers(),
+        "subsample_rate": run_config.fl.subsample_rate,
+        "local_epochs": run_config.fl.local_epochs,
+        "lr": run_config.runtime.lr,
+        "batch_size": run_config.runtime.batch_size,
+        "eval_batch_size": run_config.runtime.eval_batch_size,
+        "split_mode": run_config.data.split_mode,
+        "noniid_q": run_config.data.noniid_q,
+        "rl_distribution_steps": run_config.attacker.rl_distribution_steps,
+        "rl_attack_start_round": run_config.attacker.rl_attack_start_round,
+        "rl_policy_train_end_round": run_config.attacker.rl_policy_train_end_round,
+        "rl_policy_train_episodes_per_round": run_config.attacker.rl_policy_train_episodes_per_round,
+        "rl_simulator_horizon": run_config.attacker.rl_simulator_horizon,
+        "rl_ppo_real_rollout_steps": run_config.attacker.rl_ppo_real_rollout_steps,
+        "rl_attacker_semantics": run_config.attacker.rl_attacker_semantics,
+        "rl_policy_checkpoint_path": run_config.attacker.rl_policy_checkpoint_path,
+        "rl_policy_checkpoint_dir": run_config.attacker.rl_policy_checkpoint_dir,
+        "rl_freeze_policy": run_config.attacker.rl_freeze_policy,
+        "rl_checkpoint_interval": run_config.attacker.rl_checkpoint_interval,
+        "rl_save_final_checkpoint": run_config.attacker.rl_save_final_checkpoint,
     }
     live_logger = LiveMetricsLogger(
         output_dir=output_dir,
         tb_dir=tb_dir,
-        attack_type=args.attack_type,
+        attack_type=run_config.attacker.type,
         config_payload=live_config_payload,
         target_rounds=run_config.runtime.rounds,
         payload_factory=lambda live_summaries, total_seconds: build_payload(
-            args,
-            config,
             run_config,
             summaries_to_dict(live_summaries),
             live_summaries,
@@ -675,7 +674,7 @@ def execute_experiment(
         ),
     )
 
-    runner = MinimalFLRunner(config)
+    runner = MinimalFLRunner(run_config)
     checkpoint_manager = ExperimentCheckpointManager(
         output_dir=output_dir,
         run_config=run_config,
@@ -708,7 +707,7 @@ def execute_experiment(
             run_config.runtime.rounds,
             attack=attack,
             show_progress=True,
-            progress_desc=progress_desc or f"{run_config.attacker.type} ({config.dataset})",
+            progress_desc=progress_desc or f"{run_config.attacker.type} ({run_config.data.dataset})",
             eval_every=run_config.runtime.eval_every,
             attacker_action=attacker_action_arg,
             per_round_callback=_after_round,
@@ -721,11 +720,9 @@ def execute_experiment(
         live_logger.close()
     total_seconds = timer.elapsed_seconds()
     series = summaries_to_dict(summaries)
-    payload = build_payload(args, config, run_config, series, summaries, total_seconds)
+    payload = build_payload(run_config, series, summaries, total_seconds)
     return ExperimentRunResult(
-        args=args,
         run_config=run_config,
-        config=config,
         attack=attack,
         output_dir=output_dir,
         tb_dir=tb_dir,
@@ -755,7 +752,7 @@ def persist_experiment_artifacts(
     if write_tensorboard:
         write_tensorboard_logs(
             result.tb_dir,
-            result.args.attack_type,
+            result.run_config.attacker.type,
             result.summaries,
             result.series,
             result.total_seconds,
@@ -768,7 +765,7 @@ def completion_lines(result: ExperimentRunResult) -> list[str]:
     lines = [
         "Sandbox run finished.",
         f"Mode: {attack_type}",
-        f"Defense: {result.config.defense_type}",
+        f"Defense: {result.run_config.defender.type}",
         f"Output directory: {result.output_dir}",
         f"TensorBoard dir: {result.tb_dir}",
         f"Summary file: {result.output_dir / 'summary.json'}",
@@ -777,9 +774,9 @@ def completion_lines(result: ExperimentRunResult) -> list[str]:
     lines.extend(
         build_postprocess_hint_lines(
             attack_type=attack_type,
-            defense_type=result.config.defense_type,
-            split_mode=result.config.split_mode,
-            noniid_q=result.config.noniid_q,
+            defense_type=result.run_config.defender.type,
+            split_mode=result.run_config.data.split_mode,
+            noniid_q=result.run_config.data.noniid_q,
             output_dir=result.output_dir,
             tb_dir=result.tb_dir,
         )

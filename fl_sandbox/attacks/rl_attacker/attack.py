@@ -50,6 +50,38 @@ class _PendingRealTransition:
     defense_type: str
 
 
+def _runtime_rounds(fl_config, fallback: int) -> int:
+    runtime = getattr(fl_config, "runtime", None)
+    return int(getattr(runtime, "rounds", getattr(fl_config, "rounds", fallback)) or fallback)
+
+
+def _fl_num_clients(fl_config, fallback: int = 1) -> int:
+    fl = getattr(fl_config, "fl", None)
+    return int(getattr(fl, "num_clients", getattr(fl_config, "num_clients", fallback)) or fallback)
+
+
+def _fl_num_attackers(fl_config, fallback: int = 1) -> int:
+    if hasattr(fl_config, "resolved_num_attackers"):
+        return int(fl_config.resolved_num_attackers())
+    fl = getattr(fl_config, "fl", None)
+    return int(getattr(fl, "num_attackers", getattr(fl_config, "num_attackers", fallback)) or fallback)
+
+
+def _fl_subsample_rate(fl_config, fallback: float = 1.0) -> float:
+    fl = getattr(fl_config, "fl", None)
+    return float(getattr(fl, "subsample_rate", getattr(fl_config, "subsample_rate", fallback)) or fallback)
+
+
+def _runtime_value(fl_config, name: str, fallback):
+    runtime = getattr(fl_config, "runtime", None)
+    return getattr(runtime, name, getattr(fl_config, name, fallback))
+
+
+def _defender_value(fl_config, name: str, fallback):
+    defender = getattr(fl_config, "defender", None)
+    return getattr(defender, name, getattr(fl_config, name, fallback))
+
+
 @dataclass
 class RLAttack(SandboxAttack):
     """Paper-style RL attacker with online proxy learning and Tianshou training."""
@@ -172,7 +204,7 @@ class RLAttack(SandboxAttack):
         self.last_action = np.asarray(action, dtype=np.float32).copy()
         self._pending_real_transition = None
         if self._is_ppo() and attacker_action is None and self._last_policy_obs is not None:
-            total_rounds = int(getattr(ctx.fl_config, "rounds", max(self.config.policy_train_end_round, ctx.round_idx, 1)) or 1)
+            total_rounds = _runtime_rounds(ctx.fl_config, max(self.config.policy_train_end_round, ctx.round_idx, 1))
             self._pending_real_transition = _PendingRealTransition(
                 obs=self._last_policy_obs.copy(),
                 action=self.last_action.copy(),
@@ -199,7 +231,7 @@ class RLAttack(SandboxAttack):
                 raw_malicious_weights=crafted,
                 benign_weights=ctx.benign_weights,
                 num_attackers=num_attackers,
-                num_byzantine=int(getattr(ctx.fl_config, "krum_attackers", num_attackers)),
+                num_byzantine=int(_defender_value(ctx.fl_config, "krum_attackers", num_attackers)),
                 max_alpha=float(decoded.gamma_scale),
             )
             crafted = projection.weights
@@ -282,7 +314,7 @@ class RLAttack(SandboxAttack):
                     ctx.old_weights,
                     num_attackers=self.selected_attacker_count(ctx),
                     round_idx=ctx.round_idx,
-                    total_rounds=int(getattr(ctx.fl_config, "rounds", max(self.config.policy_train_end_round, ctx.round_idx, 1)) or 1),
+                    total_rounds=_runtime_rounds(ctx.fl_config, max(self.config.policy_train_end_round, ctx.round_idx, 1)),
                 )
             else:
                 obs = build_legacy_clipped_median_observation(
@@ -291,7 +323,7 @@ class RLAttack(SandboxAttack):
                 )
             self._last_observation_metrics = self._observation_metrics(obs)
             return obs
-        total_rounds = int(getattr(ctx.fl_config, "rounds", max(self.config.policy_train_end_round, ctx.round_idx, 1)) or 1)
+        total_rounds = _runtime_rounds(ctx.fl_config, max(self.config.policy_train_end_round, ctx.round_idx, 1))
         obs = self.observation_builder.build(
             weights=ctx.old_weights,
             previous_weights=self.observation_previous_weights or ctx.old_weights,
@@ -343,9 +375,9 @@ class RLAttack(SandboxAttack):
 
     def _max_attackers(self, ctx) -> int:
         fl_config = ctx.fl_config or self.fl_config
-        num_clients = max(1, int(getattr(fl_config, "num_clients", 1) or 1))
-        num_attackers = max(1, int(getattr(fl_config, "num_attackers", 1) or 1))
-        subsample_rate = float(getattr(fl_config, "subsample_rate", 1.0) or 1.0)
+        num_clients = max(1, _fl_num_clients(fl_config))
+        num_attackers = max(1, _fl_num_attackers(fl_config))
+        subsample_rate = _fl_subsample_rate(fl_config)
         sampled_clients = max(1, int(num_clients * subsample_rate))
         return max(1, min(num_attackers, sampled_clients))
 
@@ -353,11 +385,11 @@ class RLAttack(SandboxAttack):
         fl_config = ctx.fl_config
         return AggregationDefender(
             defense_type=ctx.defense_type,
-            krum_attackers=getattr(fl_config, "krum_attackers", 1),
-            multi_krum_selected=getattr(fl_config, "multi_krum_selected", None),
-            clipped_median_norm=getattr(fl_config, "clipped_median_norm", 2.0),
-            trimmed_mean_ratio=getattr(fl_config, "trimmed_mean_ratio", 0.2),
-            geometric_median_iters=getattr(fl_config, "geometric_median_iters", 10),
+            krum_attackers=_defender_value(fl_config, "krum_attackers", 1),
+            multi_krum_selected=_defender_value(fl_config, "multi_krum_selected", None),
+            clipped_median_norm=_defender_value(fl_config, "clipped_median_norm", 2.0),
+            trimmed_mean_ratio=_defender_value(fl_config, "trimmed_mean_ratio", 0.2),
+            geometric_median_iters=_defender_value(fl_config, "geometric_median_iters", 10),
         )
 
     def _is_ppo(self) -> bool:

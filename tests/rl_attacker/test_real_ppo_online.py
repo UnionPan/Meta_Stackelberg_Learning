@@ -10,13 +10,17 @@ from fl_sandbox.attacks import RLAttack
 from fl_sandbox.attacks.rl_attacker.config import RLAttackerConfig
 from fl_sandbox.attacks.rl_attacker.trainer import UpdateStats
 from fl_sandbox.core.runtime import RoundContext
-from fl_sandbox.federation.runner import SandboxConfig
+from fl_sandbox.config import RunConfig
 from fl_sandbox.utils.weights import weights_to_vector
 from src.models.cnn import MNISTClassifier
 
 
 def _weights(model):
     return [value.detach().cpu().numpy().copy() for value in model.state_dict().values()]
+
+
+def _run_config(**kwargs):
+    return RunConfig.from_flat_dict(kwargs)
 
 
 class FakePPOTrainer:
@@ -85,7 +89,7 @@ def test_ppo_records_real_round_transition_and_skips_simulator_training():
         raise AssertionError("PPO should not train from simulator rollout")
 
     attack._train_policy = fail_if_simulator_training_is_called
-    fl_config = SandboxConfig(num_clients=4, num_attackers=1, batch_size=4)
+    fl_config = _run_config(num_clients=4, num_attackers=1, batch_size=4)
     ctx = RoundContext(
         round_idx=1,
         old_weights=weights,

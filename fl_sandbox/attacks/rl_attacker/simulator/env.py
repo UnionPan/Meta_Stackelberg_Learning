@@ -35,6 +35,28 @@ from fl_sandbox.attacks.rl_attacker.simulator.fl_dynamics import (
 from fl_sandbox.attacks.rl_attacker.simulator.reward import DefaultRewardFn, RewardInputs
 
 
+def _fl_num_clients(fl_config, fallback: int = 1) -> int:
+    fl = getattr(fl_config, "fl", None)
+    return int(getattr(fl, "num_clients", getattr(fl_config, "num_clients", fallback)) or fallback)
+
+
+def _fl_num_attackers(fl_config, fallback: int = 1) -> int:
+    if hasattr(fl_config, "resolved_num_attackers"):
+        return int(fl_config.resolved_num_attackers())
+    fl = getattr(fl_config, "fl", None)
+    return int(getattr(fl, "num_attackers", getattr(fl_config, "num_attackers", fallback)) or fallback)
+
+
+def _fl_subsample_rate(fl_config, fallback: float = 1.0) -> float:
+    fl = getattr(fl_config, "fl", None)
+    return float(getattr(fl, "subsample_rate", getattr(fl_config, "subsample_rate", fallback)) or fallback)
+
+
+def _runtime_value(fl_config, name: str, fallback):
+    runtime = getattr(fl_config, "runtime", None)
+    return getattr(runtime, name, getattr(fl_config, name, fallback))
+
+
 class _StrictReproductionDataLoaderSource:
     """DataLoader-backed attacker data source matching the legacy growth schedule."""
 
@@ -142,7 +164,8 @@ class SimulatedFLEnv:
         if self.current_weights is None:
             raise RuntimeError("SimulatedFLEnv must be reset before stepping")
         action = np.asarray(action, dtype=np.float32)
-        benign_count = max(0, max(1, int(self.fl_config.num_clients * self.fl_config.subsample_rate)) - self.current_num_attackers)
+        sampled_clients = max(1, int(_fl_num_clients(self.fl_config) * _fl_subsample_rate(self.fl_config)))
+        benign_count = max(0, sampled_clients - self.current_num_attackers)
         old_weights = [layer.copy() for layer in self.current_weights]
         benign_weights = self._simulate_benign_weights(self.current_weights, benign_count)
         if self.config.uses_legacy_reversal_attack() and self.current_num_attackers > 0:
@@ -194,10 +217,10 @@ class SimulatedFLEnv:
         return self._get_state(), reward, done
 
     def _sample_num_attackers(self, *, require_positive: bool = False) -> int:
-        total_clients = max(1, int(getattr(self.fl_config, "num_clients", 1) or 1))
-        configured_attackers = getattr(self.fl_config, "num_attackers", 1)
+        total_clients = max(1, _fl_num_clients(self.fl_config))
+        configured_attackers = _fl_num_attackers(self.fl_config)
         total_attackers = min(max(0, int(configured_attackers or 0)), total_clients)
-        subsample_rate = float(getattr(self.fl_config, "subsample_rate", 1.0) or 1.0)
+        subsample_rate = _fl_subsample_rate(self.fl_config)
         sampled_clients = max(1, int(total_clients * subsample_rate))
         if total_attackers <= 0:
             return 0
@@ -236,10 +259,13 @@ class SimulatedFLEnv:
 
     def _simulate_benign_update(self, old_weights):
         model = build_model_from_template(self.model_template, old_weights, self.device)
-        optimizer = torch.optim.SGD(model.parameters(), lr=float(getattr(self.fl_config, "lr", 0.05) or 0.05))
+        optimizer = torch.optim.SGD(model.parameters(), lr=float(_runtime_value(self.fl_config, "lr", 0.05) or 0.05))
         proxy_buffer = self.active_proxy_buffer()
-        for _ in range(max(1, int(getattr(self.fl_config, "local_epochs", 1) or 1))):
-            batch_size = int(getattr(self.fl_config, "batch_size", self.config.local_search_batch_size) or 1)
+        local_epochs = _runtime_value(self.fl_config, "local_epochs", None)
+        if local_epochs is None:
+            local_epochs = getattr(getattr(self.fl_config, "fl", None), "local_epochs", 1)
+        for _ in range(max(1, int(local_epochs or 1))):
+            batch_size = int(_runtime_value(self.fl_config, "batch_size", self.config.local_search_batch_size) or 1)
             images, labels = proxy_buffer.sample(batch_size, self.device)
             loss = F.cross_entropy(model(images), labels)
             optimizer.zero_grad(set_to_none=True)

@@ -29,50 +29,7 @@ if str(ROOT) not in sys.path:
 from fl_sandbox.run.run_experiment import main as run_experiment_main
 
 
-DEFAULT_RLFL_ARGS = [
-    "--protocol",
-    "rlfl",
-    "--attack_type",
-    "rl",
-    "--rounds",
-    "1000",
-    "--warmup_rounds",
-    "100",
-    "--rl_distribution_steps",
-    "100",
-    "--rl_attack_start_round",
-    "101",
-    "--rl_policy_train_end_round",
-    "400",
-    "--num_clients",
-    "100",
-    "--num_attackers",
-    "20",
-    "--subsample_rate",
-    "0.1",
-    "--lr",
-    "0.01",
-    "--batch_size",
-    "128",
-    "--eval_batch_size",
-    "4096",
-    "--num_workers",
-    "0",
-    "--seed",
-    "1001",
-    "--defense_type",
-    "clipped_median",
-    "--split_mode",
-    "paper_q",
-    "--noniid_q",
-    "0.1",
-    "--ipm_scaling",
-    "5.0",
-    "--output_root",
-    "fl_sandbox/outputs/rlfl_benchmark",
-    "--tb_root",
-    "fl_sandbox/runs/rlfl_benchmark",
-]
+DEFAULT_RLFL_ARGS = ["--config", "fl_sandbox/config/presets/rlfl_paper.yaml"]
 
 
 def main(argv: Optional[list[str]] = None) -> None:

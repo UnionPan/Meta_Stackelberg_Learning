@@ -19,7 +19,7 @@ from meta_sg.strategies.attacks.fixed import IPMAttack
 from meta_sg.strategies.defenses.paper import PaperDefenseStrategy
 from meta_sg.strategies.types import ATTACK_DOMAIN
 from fl_sandbox.aggregators.rules import PaperActionDefender
-from fl_sandbox.federation.runner import SandboxConfig
+from fl_sandbox.config import RunConfig
 
 
 class RecordingPolicy:
@@ -172,8 +172,8 @@ def test_fl_sandbox_paper_defender_uses_alpha_beta():
     assert np.linalg.norm(tight_result) < np.linalg.norm(loose_result)
 
 
-def test_sandbox_config_exposes_small_experiment_limits():
-    config = SandboxConfig(max_client_samples_per_client=4, max_eval_samples=8)
+def test_run_config_exposes_small_experiment_limits():
+    config = RunConfig.from_flat_dict({"max_client_samples_per_client": 4, "max_eval_samples": 8})
 
-    assert config.max_client_samples_per_client == 4
-    assert config.max_eval_samples == 8
+    assert config.runtime.max_client_samples_per_client == 4
+    assert config.runtime.max_eval_samples == 8

@@ -36,7 +36,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from fl_sandbox.config import RunConfig, config_to_namespace
+from fl_sandbox.config import RunConfig
 from fl_sandbox.core.experiment_builders import build_run_name
 from fl_sandbox.core.experiment_service import (
     execute_experiment,
@@ -82,7 +82,6 @@ def _attack_overrides(rounds: int) -> dict[str, dict]:
         "lmp":   dict(lmp_scale=SCALE),
         "bfl":   dict(bfl_poison_frac=1.0),
         "dba":   dict(dba_poison_frac=0.5, dba_num_sub_triggers=4),
-        "brl":  dict(attacker_action=[0.0, 0.0, 0.0]),
         "rl": dict(
             protocol="rlfl",
             warmup_rounds=warmup,
@@ -131,12 +130,9 @@ def _prepare(args: argparse.Namespace):
         noniid_q=run_config.data.noniid_q,
         rounds=run_config.runtime.rounds,
     )
-    run_args = config_to_namespace(run_config)
-    run_args.output_dir = str(Path(args.output_root) / run_name)
-    run_args.tb_dir = str(Path(args.tb_root) / run_name)
-    for field in ("output_root", "tb_root"):
-        setattr(run_args, field, getattr(args, field))
-    return run_args, run_name, run_config
+    output_dir = str(Path(args.output_root) / run_name)
+    tb_dir = str(Path(args.tb_root) / run_name)
+    return run_config, run_name, output_dir, tb_dir
 
 
 # ── Metrics helpers ───────────────────────────────────────────────────────────
@@ -174,7 +170,7 @@ def run_claim1(
     attacks: Optional[list[str]] = None,
     device: str = "auto",
 ) -> None:
-    attacks = attacks or ["clean", "ipm", "lmp", "bfl", "dba", "rl", "brl"]
+    attacks = attacks or ["clean", "ipm", "lmp", "bfl", "dba", "rl"]
     output_root = f"fl_sandbox/outputs/{SUITE_NAME}"
     tb_root     = f"fl_sandbox/runs/{SUITE_NAME}"
 
@@ -194,12 +190,12 @@ def run_claim1(
 
     for idx, attack_type in enumerate(attacks, 1):
         args = _make_args(attack_type, rounds, output_root, tb_root, device)
-        run_args, run_name, run_config = _prepare(args)
+        run_config, run_name, output_dir, tb_dir = _prepare(args)
 
         print(f"[{idx}/{len(attacks)}] {run_name}")
         t0 = time.perf_counter()
         try:
-            result = execute_experiment(run_args, progress_desc=run_name, run_config=run_config)
+            result = execute_experiment(run_config, progress_desc=run_name, output_dir=output_dir, tb_dir=tb_dir)
             persist_experiment_artifacts(
                 result,
                 write_client_metrics=True,
@@ -231,7 +227,7 @@ def run_claim1(
                 f"l15asr={detail['last15_mean_asr']:.4f}  "
                 f"converge={conv}  "
                 f"({elapsed:.0f}s)\n"
-                f"    TB → {run_args.tb_dir}"
+                f"    TB → {tb_dir}"
             )
         except Exception as exc:
             elapsed = time.perf_counter() - t0
@@ -286,22 +282,6 @@ def run_claim1(
             verdict = "SUPPORTED" if rl_drop > best_fixed else "not yet — may need more rounds"
             print(f"Claim 1 untargeted [{verdict}]")
 
-    # Targeted: BRL vs BFL/DBA
-    brl_row = next((r for r in summary_rows if r.get("attack_type") == "brl" and "error" not in r), None)
-    if brl_row:
-        fixed_asr = [
-            r["last15_mean_asr"]
-            for r in summary_rows
-            if r.get("attack_type") in {"bfl", "dba"} and "error" not in r
-        ]
-        brl_asr = brl_row["last15_mean_asr"]
-        best_fixed_asr = max(fixed_asr) if fixed_asr else float("nan")
-        print(f"\n[Targeted]   BRL ASR (last 15r):           {brl_asr:+.4f}")
-        if not math.isnan(best_fixed_asr):
-            print(f"[Targeted]   Best fixed ASR (BFL/DBA):     {best_fixed_asr:+.4f}")
-            verdict = "SUPPORTED" if brl_asr > best_fixed_asr else "not yet"
-            print(f"Claim 1 targeted  [{verdict}]")
-
     # ── Save summary ──────────────────────────────────────────────────────────
     summary_path = Path(output_root) / "benchmark_summary.json"
     with summary_path.open("w") as f:
@@ -319,7 +299,7 @@ if __name__ == "__main__":
     parser.add_argument("--device",  default="auto",
                         help="torch device: auto / cpu / cuda (default: auto)")
     parser.add_argument("--attacks", nargs="+",
-                        default=["clean", "ipm", "lmp", "bfl", "dba", "rl", "brl"],
+                        default=["clean", "ipm", "lmp", "bfl", "dba", "rl"],
                         help="Attack types to include")
     args = parser.parse_args()
     run_claim1(rounds=args.rounds, attacks=args.attacks, device=args.device)

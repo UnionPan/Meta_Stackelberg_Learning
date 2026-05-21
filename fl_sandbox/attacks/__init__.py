@@ -11,15 +11,13 @@ from fl_sandbox.attacks.base import (
     train_on_loader,
 )
 from fl_sandbox.attacks.bfl import BFLAttack
-from fl_sandbox.attacks.brl import BRLAttack, SelfGuidedBRLAttack
-from fl_sandbox.attacks.clipped_median_geometry_search import ClippedMedianGeometrySearchAttack
 from fl_sandbox.attacks.dba import DBAAttack
 from fl_sandbox.attacks.gaussian import GaussianAttack
 from fl_sandbox.attacks.ipm import IPMAttack, craft_ipm
-from fl_sandbox.attacks.krum_geometry_search import KrumGeometrySearchAttack
 from fl_sandbox.attacks.lmp import LMPAttack, craft_lmp
 from fl_sandbox.attacks.registry import ATTACK_CHOICES, create_attack, supported_attack_types
 from fl_sandbox.attacks.rl_attacker import RLAttack
+from fl_sandbox.attacks.rl_backdoor import BackdoorRLConfig, RLBackdoorAttack, TD3BackdoorPolicy
 from fl_sandbox.attacks.signflip import SignFlipAttack
 from fl_sandbox.core.runtime import Weights
 
@@ -27,17 +25,16 @@ __all__ = [
     "ATTACK_CHOICES",
     "ALIEAttack",
     "BFLAttack",
-    "BRLAttack",
-    "ClippedMedianGeometrySearchAttack",
+    "BackdoorRLConfig",
     "DBAAttack",
     "GaussianAttack",
     "IPMAttack",
-    "KrumGeometrySearchAttack",
     "LMPAttack",
     "RLAttack",
+    "RLBackdoorAttack",
     "SandboxAttack",
-    "SelfGuidedBRLAttack",
     "SignFlipAttack",
+    "TD3BackdoorPolicy",
     "Weights",
     "bounded_boost",
     "bounded_local_epochs",

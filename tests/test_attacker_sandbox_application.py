@@ -3,17 +3,14 @@ from pathlib import Path
 import random
 import sys
 import tempfile
-from types import ModuleType
 import unittest
-from unittest.mock import patch
 
 import numpy as np
 
-from fl_sandbox.core.batch_runner import BatchRunRequest, clone_args
+from fl_sandbox.core.batch_runner import BatchRunRequest
 from fl_sandbox.attacks import craft_lmp
 from fl_sandbox.core.experiment_builders import (
     build_attack,
-    build_config,
     build_run_name,
     default_output_dir,
     default_tb_dir,
@@ -21,8 +18,7 @@ from fl_sandbox.core.experiment_builders import (
     split_suffix,
 )
 from fl_sandbox.core.postprocess import build_postprocess_hint_lines
-from fl_sandbox.config import RunConfig, config_to_namespace, load_run_config, merge_cli_overrides
-from fl_sandbox.application import execute_experiment as application_execute_experiment
+from fl_sandbox.config import RunConfig, load_run_config, merge_cli_overrides
 from fl_sandbox.federation import FederatedCoordinator
 from fl_sandbox.aggregators import AggregationDefender as NewAggregationDefender
 from fl_sandbox.attacks.registry import create_attack as create_benchmark_attack
@@ -199,23 +195,14 @@ class TestAttackerSandboxApplication(unittest.TestCase):
 
         self.assertEqual(run_name, "mnist_rl_clipped_median_paper_q_q0.1_30r")
 
-    def test_clone_args_overrides_selected_fields(self):
-        args = _args(dataset="mnist", attack_type="clean")
-
-        cloned = clone_args(args, dataset="cifar10", attack_type="rl")
-
-        self.assertEqual(cloned.dataset, "cifar10")
-        self.assertEqual(cloned.attack_type, "rl")
-        self.assertEqual(cloned.rounds, args.rounds)
-
     def test_batch_run_request_keeps_run_metadata(self):
-        args = _args()
+        run_config = _run_config()
 
-        request = BatchRunRequest(run_name="demo_run", args=args, progress_desc="demo progress")
+        request = BatchRunRequest(run_name="demo_run", run_config=run_config, progress_desc="demo progress")
 
         self.assertEqual(request.run_name, "demo_run")
         self.assertEqual(request.progress_desc, "demo progress")
-        self.assertIs(request.args, args)
+        self.assertIs(request.run_config, run_config)
 
     def test_run_entry_parser_builds_consistent_args(self):
         args = parse_args(['--dataset', 'cifar10', '--attack_type', 'rl', '--defense_type', 'krum'])
@@ -253,7 +240,7 @@ class TestAttackerSandboxApplication(unittest.TestCase):
         self.assertEqual(FederatedCoordinator.__name__, "MinimalFLRunner")
         self.assertTrue(NewAggregationDefender.__module__.startswith("fl_sandbox.aggregators"))
         self.assertEqual(create_benchmark_attack(run_config.attacker).scale, 3.0)
-        self.assertTrue(callable(application_execute_experiment))
+        self.assertNotIn("fl_sandbox.application", sys.modules)
 
     def test_schema_round_trip_includes_vector_attack_hyperparameters(self):
         run_config = _run_config(attack_type="alie", alie_tau=2.25, gaussian_sigma=0.2)
@@ -345,12 +332,11 @@ runtime:
         args = argparse.Namespace(dataset="fmnist", rounds=99, config="demo.yaml")
 
         merged = merge_cli_overrides(config, args)
-        namespace = config_to_namespace(merged)
 
-        self.assertEqual(namespace.dataset, "fmnist")
-        self.assertEqual(namespace.rounds, 99)
+        self.assertEqual(merged.data.dataset, "fmnist")
+        self.assertEqual(merged.runtime.rounds, 99)
 
-    def test_build_config_reads_structured_run_config_sections(self):
+    def test_run_config_reads_structured_runtime_sections(self):
         run_config = _run_config(
             dataset="cifar10",
             attack_type="rl",
@@ -360,22 +346,11 @@ runtime:
             rl_distribution_steps=21,
         )
 
-        fake_runner_module = ModuleType("attacker_sandbox.core.fl_runner")
-
-        class FakeSandboxConfig:
-            def __init__(self, **kwargs):
-                self.__dict__.update(kwargs)
-
-        fake_runner_module.SandboxConfig = FakeSandboxConfig
-
-        with patch.dict(sys.modules, {"attacker_sandbox.core.fl_runner": fake_runner_module}):
-            sandbox_config = build_config(run_config)
-
-        self.assertEqual(sandbox_config.dataset, "cifar10")
-        self.assertEqual(sandbox_config.defense_type, "krum")
-        self.assertEqual(sandbox_config.num_attackers, 2)
-        self.assertEqual(sandbox_config.attacker_action, (0.1, 0.2, 0.3))
-        self.assertEqual(sandbox_config.rl_distribution_steps, 21)
+        self.assertEqual(run_config.data.dataset, "cifar10")
+        self.assertEqual(run_config.defender.type, "krum")
+        self.assertEqual(run_config.resolved_num_attackers(), 2)
+        self.assertEqual(run_config.attacker.attacker_action, (0.1, 0.2, 0.3))
+        self.assertEqual(run_config.attacker.rl_distribution_steps, 21)
 
     def test_build_attack_reads_structured_run_config_sections(self):
         run_config = _run_config(

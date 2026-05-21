@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fl_sandbox.config.schema import DefenderSection
 
-from .aggregation import (
+from .rules import (
     ClippedMedianDefender,
     FLTrustDefender,
     FedAvgDefender,
@@ -15,7 +15,7 @@ from .aggregation import (
     PaperNormTrimmedMeanDefender,
     TrimmedMeanDefender,
 )
-from .aggregation_runtime import DEFENSE_CHOICES
+from fl_sandbox.aggregators.rules import DEFENSE_CHOICES
 from .base import SandboxDefender
 
 

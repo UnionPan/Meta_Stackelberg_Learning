@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-import argparse
 import csv
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Callable
+
+from fl_sandbox.config import RunConfig
 
 from .experiment_service import ExperimentRunResult, execute_experiment
 
@@ -15,14 +16,8 @@ from .experiment_service import ExperimentRunResult, execute_experiment
 @dataclass
 class BatchRunRequest:
     run_name: str
-    args: argparse.Namespace
+    run_config: RunConfig
     progress_desc: str
-
-
-def clone_args(base_args: argparse.Namespace, **overrides: Any) -> argparse.Namespace:
-    values = dict(vars(base_args))
-    values.update(overrides)
-    return argparse.Namespace(**values)
 
 
 def execute_batch_run(
@@ -31,7 +26,7 @@ def execute_batch_run(
     payload_transform: Callable[[ExperimentRunResult], dict[str, object]] | None = None,
     artifact_writer: Callable[[ExperimentRunResult, dict[str, object]], None] | None = None,
 ) -> tuple[ExperimentRunResult, dict[str, object]]:
-    result = execute_experiment(request.args, progress_desc=request.progress_desc)
+    result = execute_experiment(request.run_config, progress_desc=request.progress_desc)
     payload = result.payload if payload_transform is None else payload_transform(result)
     if artifact_writer is not None:
         artifact_writer(result, payload)

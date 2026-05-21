@@ -50,22 +50,22 @@ def test_package_level_attacker_imports():
         ALIEAttack,
         ATTACK_CHOICES,
         BFLAttack,
-        BRLAttack,
-        ClippedMedianGeometrySearchAttack,
         DBAAttack,
         GaussianAttack,
         IPMAttack,
-        KrumGeometrySearchAttack,
         LMPAttack,
         RLAttack,
         SandboxAttack,
-        SelfGuidedBRLAttack,
         SignFlipAttack,
         create_attack,
         supported_attack_types,
     )
 
     assert "rl" in ATTACK_CHOICES
+    assert "brl" not in ATTACK_CHOICES
+    assert "sgbrl" not in ATTACK_CHOICES
+    assert "krum_geometry_search" not in ATTACK_CHOICES
+    assert "clipped_median_geometry_search" not in ATTACK_CHOICES
     assert ATTACK_CHOICES == supported_attack_types()
     assert issubclass(IPMAttack, SandboxAttack)
     assert issubclass(LMPAttack, SandboxAttack)
@@ -74,12 +74,17 @@ def test_package_level_attacker_imports():
     assert issubclass(GaussianAttack, SandboxAttack)
     assert issubclass(BFLAttack, SandboxAttack)
     assert issubclass(DBAAttack, SandboxAttack)
-    assert issubclass(BRLAttack, SandboxAttack)
-    assert issubclass(SelfGuidedBRLAttack, SandboxAttack)
     assert issubclass(RLAttack, SandboxAttack)
-    assert issubclass(KrumGeometrySearchAttack, SandboxAttack)
-    assert issubclass(ClippedMedianGeometrySearchAttack, SandboxAttack)
     assert create_attack(_default_attacker_config("clean")) is None
+
+
+def test_experimental_attacks_are_not_package_level_public_api():
+    import fl_sandbox.attacks as attacks
+
+    assert "BRLAttack" not in attacks.__all__
+    assert "SelfGuidedBRLAttack" not in attacks.__all__
+    assert "KrumGeometrySearchAttack" not in attacks.__all__
+    assert "ClippedMedianGeometrySearchAttack" not in attacks.__all__
 
 
 def test_create_attack_constructs_every_non_clean_attack():

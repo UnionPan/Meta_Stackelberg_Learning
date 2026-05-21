@@ -4,7 +4,6 @@ import ast
 from pathlib import Path
 
 from fl_sandbox.config.schema import DefenderSection, RunConfig
-from fl_sandbox.core.experiment_builders import build_config
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -58,19 +57,17 @@ def test_package_level_defender_imports_and_factory():
 
 
 def test_paper_norm_trimmed_mean_builds_through_run_config():
-    config = build_config(
-        RunConfig.from_flat_dict(
-            {
-                "defense_type": "paper_norm_trimmed_mean",
-                "clipped_median_norm": 1.25,
-                "trimmed_mean_ratio": 0.15,
-            }
-        )
+    config = RunConfig.from_flat_dict(
+        {
+            "defense_type": "paper_norm_trimmed_mean",
+            "clipped_median_norm": 1.25,
+            "trimmed_mean_ratio": 0.15,
+        }
     )
 
-    assert config.defense_type == "paper_norm_trimmed_mean"
-    assert config.clipped_median_norm == 1.25
-    assert config.trimmed_mean_ratio == 0.15
+    assert config.defender.type == "paper_norm_trimmed_mean"
+    assert config.defender.clipped_median_norm == 1.25
+    assert config.defender.trimmed_mean_ratio == 0.15
 
 
 def test_no_old_defender_import_paths_remain_in_python_sources():
@@ -105,3 +102,8 @@ def test_no_old_defender_import_paths_remain_in_python_sources():
                 offenders.append((str(rel_path), '".defender" lazy export'))
 
     assert offenders == []
+
+
+def test_defender_adapter_shims_are_removed():
+    assert not (PROJECT_ROOT / "fl_sandbox/defenders/aggregation.py").exists()
+    assert not (PROJECT_ROOT / "fl_sandbox/defenders/aggregation_runtime.py").exists()

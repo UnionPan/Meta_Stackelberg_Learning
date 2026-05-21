@@ -3,7 +3,7 @@ from pathlib import Path
 from fl_sandbox.scripts.run_robust_defense_attack_matrix import (
     BENCHMARK_ATTACK_NAMES,
     DEFAULT_ATTACK_NAMES,
-    OPTIMIZED_RL_ATTACK_NAMES,
+    RL_ATTACK_NAMES,
     attack_plan_by_name,
     attack_plans_for_defense,
     build_attack_command,
@@ -21,39 +21,40 @@ def test_matrix_filters_defense_specific_attack_plans():
 
     assert {"clean", "ipm", "lmp", "dba", "bfl"}.issubset(clipped)
     assert {"clean", "ipm", "lmp", "dba", "bfl"}.issubset(krum)
-    assert "rl_clipped_median_scaleaware" in clipped
-    assert "rl_krum_geometry" in krum
-    assert "rl_clipped_median_strict" not in clipped
-    assert "rl_krum_strict" not in krum
+    assert "rl" in clipped
+    assert "rl" in krum
     assert "clipped_median_geometry_search" not in clipped
     assert "krum_geometry_search" not in krum
     assert "krum_geometry_search" not in clipped
     assert "clipped_median_geometry_search" not in krum
-    assert "rl_krum_geometry" not in clipped
-    assert "rl_clipped_median_scaleaware" not in krum
 
 
-def test_matrix_default_attack_names_are_focused_benchmark_plus_two_optimized_rl_attackers():
+def test_matrix_default_attack_names_are_focused_benchmark_plus_canonical_rl():
     assert BENCHMARK_ATTACK_NAMES == ("clean", "ipm", "lmp", "dba", "bfl")
-    assert OPTIMIZED_RL_ATTACK_NAMES == ("rl_clipped_median_scaleaware", "rl_krum_geometry")
-    assert DEFAULT_ATTACK_NAMES == BENCHMARK_ATTACK_NAMES + OPTIMIZED_RL_ATTACK_NAMES
+    assert RL_ATTACK_NAMES == ("rl",)
+    assert DEFAULT_ATTACK_NAMES == BENCHMARK_ATTACK_NAMES + RL_ATTACK_NAMES
 
 
-def test_matrix_can_request_strict_and_heuristic_plans_explicitly():
-    clipped = {
-        plan.name
-        for plan in attack_plans_for_defense(
-            "clipped_median",
-            ["rl_clipped_median_strict", "clipped_median_geometry_search"],
-        )
-    }
-    krum = {
-        plan.name
-        for plan in attack_plans_for_defense("krum", ["rl_krum_strict", "krum_geometry_search"])
-    }
+def test_matrix_can_request_canonical_rl_explicitly_but_not_legacy_or_heuristics():
+    clipped = {plan.name for plan in attack_plans_for_defense("clipped_median", ["rl"])}
+    krum = {plan.name for plan in attack_plans_for_defense("krum", ["rl"])}
 
-    assert clipped == {"clean", "rl_clipped_median_strict", "clipped_median_geometry_search"}
-    assert krum == {"clean", "rl_krum_strict", "krum_geometry_search"}
+    assert clipped == {"clean", "rl"}
+    assert krum == {"clean", "rl"}
+    for name in (
+        "clipped_median_geometry_search",
+        "krum_geometry_search",
+        "rl_clipped_median_strict",
+        "rl_clipped_median_scaleaware",
+        "rl_krum_strict",
+        "rl_krum_geometry",
+    ):
+        try:
+            attack_plan_by_name(name)
+        except KeyError:
+            pass
+        else:
+            raise AssertionError(f"{name} should use its dedicated compare script, not the matrix runner")
 
 
 def test_matrix_parses_reused_summary_specs():
@@ -93,15 +94,12 @@ def test_matrix_counts_payload_rounds_from_numeric_series_or_round_rows():
     assert summary_payload_round_count({"series": {"name": ["a", "b"]}}) == 0
 
 
-def test_matrix_run_name_keeps_plan_name_to_avoid_rl_collisions():
-    assert (
-        run_name_for("rl_krum_geometry", "krum", rounds=150)
-        == "krum/rl_krum_geometry/mnist_rl_krum_paper_q_q0.1_150r"
-    )
+def test_matrix_run_name_keeps_plan_name_to_avoid_collisions():
+    assert run_name_for("rl", "krum", rounds=150) == "krum/rl/mnist_rl_krum_paper_q_q0.1_150r"
 
 
-def test_matrix_builds_rl_geometry_command_with_paper_scale_knobs():
-    plan = attack_plan_by_name("rl_krum_geometry")
+def test_matrix_builds_canonical_rl_command_with_paper_scale_knobs():
+    plan = attack_plan_by_name("rl")
     cmd = build_attack_command(
         plan,
         defense="krum",
@@ -124,28 +122,12 @@ def test_matrix_builds_rl_geometry_command_with_paper_scale_knobs():
 
     assert cmd[cmd.index("--attack_type") + 1] == "rl"
     assert cmd[cmd.index("--defense_type") + 1] == "krum"
-    assert cmd[cmd.index("--rl_attacker_semantics") + 1] == "legacy_krum_geometry"
+    assert "--rl_attacker_semantics" not in cmd
     assert cmd[cmd.index("--rl_policy_train_steps_per_round") + 1] == "50"
     assert cmd[cmd.index("--num_clients") + 1] == "100"
     assert cmd[cmd.index("--krum_attackers") + 1] == "20"
     assert "--rl_save_final_checkpoint" in cmd
-    assert cmd[cmd.index("--output_root") + 1] == "out/krum/rl_krum_geometry"
-
-
-def test_matrix_builds_heuristic_command_without_rl_semantics():
-    plan = attack_plan_by_name("clipped_median_geometry_search")
-    cmd = build_attack_command(
-        plan,
-        defense="clipped_median",
-        config_path=Path("cfg.yaml"),
-        output_root=Path("out"),
-        tb_root=Path("runs"),
-        rounds=40,
-    )
-
-    assert cmd[cmd.index("--attack_type") + 1] == "clipped_median_geometry_search"
-    assert "--rl_attacker_semantics" not in cmd
-    assert cmd[cmd.index("--output_root") + 1] == "out/clipped_median/clipped_median_geometry_search"
+    assert cmd[cmd.index("--output_root") + 1] == "out/krum/rl"
 
 
 def test_matrix_completed_row_reports_clean_relative_drops_and_tail():

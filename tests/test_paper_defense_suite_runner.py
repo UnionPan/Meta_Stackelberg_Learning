@@ -34,7 +34,7 @@ def test_non_clipped_defense_train_uses_canonical_semantics_and_checkpoints():
 
     assert "--defense_type" in cmd
     assert cmd[cmd.index("--defense_type") + 1] == "krum"
-    assert cmd[cmd.index("--rl_attacker_semantics") + 1] == "canonical"
+    assert "--rl_attacker_semantics" not in cmd
     assert cmd[cmd.index("--rl_checkpoint_interval") + 1] == "25"
     assert "--no-rl_freeze_policy" not in cmd
 
@@ -53,9 +53,9 @@ def test_all_defenses_includes_every_supported_aggregator():
     )
 
 
-def test_paper_defense_plans_use_strict_reproduction_semantics_where_available():
-    assert defense_plan_for("clipped_median").semantics == "legacy_clipped_median_strict"
-    assert defense_plan_for("krum").semantics == "legacy_krum_strict"
+def test_paper_defense_plans_use_canonical_semantics_for_all_defenses():
+    assert defense_plan_for("clipped_median").semantics == "canonical"
+    assert defense_plan_for("krum").semantics == "canonical"
     assert defense_plan_for("median").semantics == "canonical"
 
 

@@ -1,0 +1,38 @@
+data:
+  dataset: mnist
+  split_mode: paper_q
+  noniid_q: 0.1
+
+fl:
+  num_clients: 20
+  num_attackers: 4
+  subsample_rate: 0.25
+  local_epochs: 1
+
+protocol:
+  name: rlfl
+  warmup_rounds: 10
+
+runtime:
+  rounds: 30
+  device: auto
+  lr: 0.05
+  batch_size: 128
+  eval_batch_size: 1024
+  num_workers: 0
+  parallel_clients: 1
+  seed: 42
+
+attacker:
+  type: rl
+  rl_algorithm: td3
+  rl_distribution_steps: 10
+  rl_attack_start_round: 11
+  rl_policy_train_end_round: 20
+
+defender:
+  type: clipped_median
+
+output:
+  output_root: fl_sandbox/outputs/rlfl_quick
+  tb_root: fl_sandbox/runs/rlfl_quick

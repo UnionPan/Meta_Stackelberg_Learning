@@ -15,13 +15,18 @@ from fl_sandbox.attacks.rl_attacker import (
 )
 from fl_sandbox.attacks.rl_attacker.action_decoder import decode_action
 from fl_sandbox.defenders import AggregationDefender
-from fl_sandbox.core.fl_runner import MinimalFLRunner, SandboxConfig
+from fl_sandbox.config import RunConfig
+from fl_sandbox.core.fl_runner import MinimalFLRunner
 from fl_sandbox.core.runtime import RoundContext, RoundSummary, summaries_to_dict
 from src.models.cnn import MNISTClassifier
 
 
 def _weights(model):
     return [value.detach().cpu().numpy().copy() for value in model.state_dict().values()]
+
+
+def _run_config(**kwargs):
+    return RunConfig.from_flat_dict(kwargs)
 
 
 class _TinyDataset:
@@ -67,7 +72,7 @@ class TestRLAttacker(unittest.TestCase):
         images = torch.randn(16, 1, 28, 28)
         labels = torch.randint(0, 10, (16,))
         loader = DataLoader(TensorDataset(images, labels), batch_size=4, shuffle=False)
-        fl_config = SandboxConfig(
+        fl_config = _run_config(
             num_clients=4,
             num_attackers=1,
             batch_size=4,
@@ -139,7 +144,7 @@ class TestRLAttacker(unittest.TestCase):
             proxy_buffer=learner.buffer,
             defender=AggregationDefender(defense_type="krum"),
             config=RLAttackerConfig(simulator_horizon=2, local_search_batch_size=4),
-            fl_config=SandboxConfig(num_clients=10, num_attackers=2, subsample_rate=0.1, batch_size=4),
+            fl_config=_run_config(num_clients=10, num_attackers=2, subsample_rate=0.1, batch_size=4),
             device=torch.device("cpu"),
         )
 
@@ -167,7 +172,7 @@ class TestRLAttacker(unittest.TestCase):
             proxy_buffer=learner.buffer,
             defender=AggregationDefender(defense_type="clipped_median"),
             config=learner.config,
-            fl_config=SandboxConfig(num_clients=4, num_attackers=2, subsample_rate=0.5, batch_size=4),
+            fl_config=_run_config(num_clients=4, num_attackers=2, subsample_rate=0.5, batch_size=4),
             device=torch.device("cpu"),
         )
         sim.reset(weights)
@@ -204,7 +209,7 @@ class TestRLAttacker(unittest.TestCase):
         images = torch.randn(16, 1, 28, 28)
         labels = torch.randint(0, 10, (16,))
         loader = DataLoader(TensorDataset(images, labels), batch_size=4, shuffle=False)
-        fl_config = SandboxConfig(
+        fl_config = _run_config(
             num_clients=4,
             num_attackers=1,
             batch_size=4,
@@ -266,7 +271,7 @@ class TestRLAttacker(unittest.TestCase):
             proxy_buffer=learner.buffer,
             defender=AggregationDefender(defense_type="clipped_median"),
             config=learner.config,
-            fl_config=SandboxConfig(num_clients=4, num_attackers=1, subsample_rate=0.25, batch_size=4),
+            fl_config=_run_config(num_clients=4, num_attackers=1, subsample_rate=0.25, batch_size=4),
             device=torch.device("cpu"),
             eval_loader=eval_loader,
         )
@@ -310,7 +315,7 @@ class TestRLAttacker(unittest.TestCase):
             proxy_buffer=learner.buffer,
             defender=AggregationDefender(defense_type="clipped_median"),
             config=config,
-            fl_config=SandboxConfig(num_clients=4, num_attackers=1, batch_size=4),
+            fl_config=_run_config(num_clients=4, num_attackers=1, batch_size=4),
             device=torch.device("cpu"),
         )
 
@@ -332,7 +337,7 @@ class TestRLAttacker(unittest.TestCase):
         buffer_learner = GradientDistributionLearner(RLAttackerConfig(seed_samples=8, reconstruction_batch_size=4))
         loader = DataLoader(TensorDataset(images, labels), batch_size=4, shuffle=False)
         buffer_learner.initialize_from_loader(loader, torch.device("cpu"))
-        fl_config = SandboxConfig(num_clients=4, num_attackers=1, batch_size=4)
+        fl_config = _run_config(num_clients=4, num_attackers=1, batch_size=4)
         sim = SimulatedFLEnv(
             model_template=model,
             proxy_buffer=buffer_learner.buffer,
@@ -360,7 +365,7 @@ class TestRLAttacker(unittest.TestCase):
             torch.save({"state_dict": reference_model.state_dict()}, handle.name)
 
             runner = MinimalFLRunner.__new__(MinimalFLRunner)
-            runner.config = SandboxConfig(
+            runner.config = _run_config(
                 dataset="mnist",
                 init_mode="checkpoint",
                 init_checkpoint_path=handle.name,
@@ -401,7 +406,7 @@ class TestRLAttacker(unittest.TestCase):
 
     def test_paper_q_split_assigns_every_example(self):
         runner = MinimalFLRunner.__new__(MinimalFLRunner)
-        runner.config = SandboxConfig(num_clients=10, num_attackers=2, split_mode="paper_q", noniid_q=0.1, seed=7)
+        runner.config = _run_config(num_clients=10, num_attackers=2, split_mode="paper_q", noniid_q=0.1, seed=7)
         runner.train_dataset = _TinyDataset([idx % 10 for idx in range(100)])
         runner.client_groups = list(range(10))
 
@@ -415,7 +420,7 @@ class TestRLAttacker(unittest.TestCase):
 
     def test_poisoned_train_loaders_stay_within_attacker_local_partitions(self):
         runner = MinimalFLRunner.__new__(MinimalFLRunner)
-        runner.config = SandboxConfig(
+        runner.config = _run_config(
             dataset="mnist",
             num_attackers=2,
             batch_size=2,
