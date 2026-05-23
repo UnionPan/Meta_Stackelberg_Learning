@@ -58,7 +58,8 @@ RL_TRAINING_TENSORBOARD_TAGS = {
     "rl_simulated_sampled_attackers": "rl_simulator/sampled_attackers",
     "rl_simulated_sampled_clients": "rl_simulator/sampled_clients",
     "rl_simulated_decoded_poison_grid_index": "rl_simulator/decoded_poison_grid_index",
-    "rl_simulated_decoded_boost": "rl_simulator/decoded_boost",
+    "rl_simulated_decoded_boost_raw": "rl_simulator/decoded_boost_raw",
+    "rl_simulated_effective_boost": "rl_simulator/effective_boost",
     "rl_sim2real_gap": "rl_training/sim2real_gap",
     "rl_trainer_replay_size": "rl_training/replay_size",
     "rl_trainer_update_steps": "rl_training/update_steps",
@@ -111,6 +112,47 @@ RL_TRAINING_TENSORBOARD_TAGS = {
     "rl_krum_actual_feasible_byzantine": "rl_krum/actual_feasible_byzantine",
     "rl_krum_actual_neighbor_count": "rl_krum/actual_neighbor_count",
 }
+
+
+LIVE_ATTACK_METRICS_FIELDNAMES = [
+    "rl_action_raw_0",
+    "rl_action_raw_1",
+    "rl_action_raw_2",
+    "rl_action_raw_3",
+    "rl_action_poison_frac",
+    "rl_action_local_lr",
+    "rl_action_local_epochs",
+    "rl_action_boost",
+    "rl_backdoor_policy_present",
+    "rl_backdoor_warmstart_done",
+    "rl_backdoor_freeze_boost_active",
+    "rl_backdoor_stealth_norm_cap_active",
+    "rl_warmstart_transitions",
+    "rl_trainer_collect_steps",
+    "rl_trainer_update_steps",
+    "rl_trainer_replay_size",
+    "rl_trainer_actor_loss",
+    "rl_trainer_critic1_loss",
+    "rl_trainer_critic2_loss",
+    "rl_trainer_loss",
+    "rl_trainer_last_update_loss",
+    "rl_trainer_reward_mean",
+    "rl_trainer_train_time",
+    "rl_simulated_reward",
+    "rl_simulated_poi_acc",
+    "rl_simulated_clean_acc",
+    "rl_simulated_clean_loss",
+    "rl_simulated_backdoor_loss",
+    "rl_simulated_attack_objective",
+    "rl_simulated_mal_norm",
+    "rl_simulated_benign_norm",
+    "rl_simulated_sampled_attackers",
+    "rl_simulated_sampled_clients",
+    "rl_simulated_decoded_poison_grid_index",
+    "rl_simulated_decoded_boost_raw",
+    "rl_simulated_effective_boost",
+    "rl_sim2real_gap",
+]
 
 
 def rl_training_tensorboard_scalars(metrics: dict[str, object]) -> list[tuple[str, float]]:
@@ -167,6 +209,7 @@ class LiveMetricsLogger:
                 "mean_benign_norm",
                 "mean_malicious_norm",
                 "mean_malicious_cosine",
+                *LIVE_ATTACK_METRICS_FIELDNAMES,
             ],
         )
         self._csv_writer.writeheader()
@@ -223,6 +266,10 @@ class LiveMetricsLogger:
             "mean_malicious_norm": mean_malicious_norm,
             "mean_malicious_cosine": mean_malicious_cosine,
         }
+        for key in LIVE_ATTACK_METRICS_FIELDNAMES:
+            value = summary.attack_metrics.get(key)
+            if isinstance(value, (int, float)) and math.isfinite(float(value)):
+                row[key] = float(value)
         self._csv_writer.writerow(row)
         self._csv_file.flush()
         self._round_metrics_writer.writerow(
@@ -519,8 +566,14 @@ def build_payload(
         "rl_policy_checkpoint_path": run_config.attacker.rl_policy_checkpoint_path,
         "rl_policy_checkpoint_dir": run_config.attacker.rl_policy_checkpoint_dir,
         "rl_freeze_policy": run_config.attacker.rl_freeze_policy,
+        "rl_backdoor_stealth_norm_cap": run_config.attacker.rl_backdoor_stealth_norm_cap,
         "rl_backdoor_reward_mode": run_config.attacker.rl_backdoor_reward_mode,
         "rl_backdoor_reward_clean_lambda": run_config.attacker.rl_backdoor_reward_clean_lambda,
+        "rl_backdoor_reward_norm_lambda": run_config.attacker.rl_backdoor_reward_norm_lambda,
+        "rl_backdoor_freeze_boost": run_config.attacker.rl_backdoor_freeze_boost,
+        "rl_backdoor_warmup_fixed_rollouts": run_config.attacker.rl_backdoor_warmup_fixed_rollouts,
+        "rl_backdoor_simulator_shadow_clients": run_config.attacker.rl_backdoor_simulator_shadow_clients,
+        "rl_backdoor_simulator_shadow_samples_per_client": run_config.attacker.rl_backdoor_simulator_shadow_samples_per_client,
         "rl_strict_reproduction_initial_samples": run_config.attacker.rl_strict_reproduction_initial_samples,
         "rl_strict_reproduction_samples_per_epoch": run_config.attacker.rl_strict_reproduction_samples_per_epoch,
         "defense_type": run_config.defender.type,
@@ -665,6 +718,14 @@ def execute_experiment(
         "rl_distribution_steps": run_config.attacker.rl_distribution_steps,
         "rl_attack_start_round": run_config.attacker.rl_attack_start_round,
         "rl_policy_train_end_round": run_config.attacker.rl_policy_train_end_round,
+        "rl_backdoor_stealth_norm_cap": run_config.attacker.rl_backdoor_stealth_norm_cap,
+        "rl_backdoor_reward_mode": run_config.attacker.rl_backdoor_reward_mode,
+        "rl_backdoor_reward_clean_lambda": run_config.attacker.rl_backdoor_reward_clean_lambda,
+        "rl_backdoor_reward_norm_lambda": run_config.attacker.rl_backdoor_reward_norm_lambda,
+        "rl_backdoor_freeze_boost": run_config.attacker.rl_backdoor_freeze_boost,
+        "rl_backdoor_warmup_fixed_rollouts": run_config.attacker.rl_backdoor_warmup_fixed_rollouts,
+        "rl_backdoor_simulator_shadow_clients": run_config.attacker.rl_backdoor_simulator_shadow_clients,
+        "rl_backdoor_simulator_shadow_samples_per_client": run_config.attacker.rl_backdoor_simulator_shadow_samples_per_client,
         "rl_policy_train_episodes_per_round": run_config.attacker.rl_policy_train_episodes_per_round,
         "rl_simulator_horizon": run_config.attacker.rl_simulator_horizon,
         "rl_ppo_real_rollout_steps": run_config.attacker.rl_ppo_real_rollout_steps,

@@ -183,6 +183,13 @@ class SimulatedBackdoorFLEnv:
         mal: Optional[List[np.ndarray]] = None
         if sampled_attackers:
             mal = self._craft_malicious(decoded)
+            # Sim/live parity: apply the same benign-norm cap that the live
+            # attacker applies. Without this the policy trains on un-capped
+            # Krum dynamics and deploys against capped ones. Skip for fedavg
+            # (no robust filtering → cap is a no-op) — mirrors the live path.
+            if self.config.stealth_norm_cap and benign_weights:
+                if str(self.defender.defense_type).lower() != "fedavg":
+                    mal = self._cap_to_benign_norm(mal, benign_weights)
             all_weights.extend([[layer.copy() for layer in mal] for _ in sampled_attackers])
 
         old_weights = [layer.copy() for layer in self.current_weights]
@@ -230,6 +237,7 @@ class SimulatedBackdoorFLEnv:
             local_bd_success=poi_acc,
         )
         truncated = self.round_idx >= max(1, int(self.config.train_horizon))
+        effective_boost = self._effective_boost(decoded)
         info = {
             "round_idx": self.round_idx,
             "poi_acc": poi_acc,
@@ -242,7 +250,8 @@ class SimulatedBackdoorFLEnv:
             "sampled_attackers": sampled_attacker_count,
             "sampled_clients": sampled_client_count,
             "decoded_poison_grid_index": int(decoded.poison_grid_index),
-            "decoded_boost": float(decoded.boost),
+            "decoded_boost_raw": float(decoded.boost),
+            "effective_boost": float(effective_boost),
         }
         return obs, float(reward), False, bool(truncated), info
 
@@ -271,10 +280,21 @@ class SimulatedBackdoorFLEnv:
             lr_override=decoded.local_lr,
             epochs_override=decoded.local_epochs,
         )
+        boost = self._effective_boost(decoded)
         return [
-            old + decoded.boost * (new - old)
+            old + boost * (new - old)
             for old, new in zip(self.current_weights, trained)
         ]
+
+    def _effective_boost(self, decoded) -> float:
+        # Pin boost when ``config.freeze_boost`` is set — under robust
+        # aggregation with norm-cap the optimal boost is known a priori, so we
+        # don't waste actor capacity / noise budget on a dead dim.
+        return (
+            float(self.config.freeze_boost)
+            if self.config.freeze_boost is not None
+            else float(decoded.boost)
+        )
 
     def _sgd(
         self,
@@ -335,6 +355,18 @@ class SimulatedBackdoorFLEnv:
                 total += batch_size
                 loss_sum += float(criterion(logits, labels).item()) * batch_size
         return float(correct) / max(1, total), float(loss_sum) / max(1, total)
+
+    def _cap_to_benign_norm(self, mal, benign_weights):
+        """Hard-cap malicious update norm to benign-mean — sim mirror of
+        ``RLBackdoorAttack._match_benign_norm`` so both worlds share the
+        same Krum-bypass invariant."""
+        old = self.current_weights
+        benign_norm = float(np.mean([self._update_norm(old, w) for w in benign_weights]))
+        mal_norm = self._update_norm(old, mal)
+        if benign_norm <= 0.0 or mal_norm <= benign_norm or mal_norm <= 1e-12:
+            return mal
+        scale = benign_norm / mal_norm
+        return [o + scale * (m - o) for o, m in zip(old, mal)]
 
     @staticmethod
     def _update_norm(old, new) -> float:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 
@@ -35,7 +36,7 @@ class BackdoorRLConfig:
     critic_lr: float = 3e-4
     gamma: float = 1.0
     tau: float = 0.005
-    exploration_noise: float = 0.15
+    exploration_noise: float = 0.05
     policy_noise: float = 0.2
     noise_clip: float = 0.5
     update_actor_freq: int = 2
@@ -58,6 +59,27 @@ class BackdoorRLConfig:
     reward_clean_lambda: float = 0.5  # paper mode: lambda in F' = lambda*F(U)+(1-lambda)*F(U')
     reward_clean_weight: float = 1.0  # only consulted when reward_mode == "stealth"
     reward_norm_weight: float = 0.1   # only consulted when reward_mode == "stealth"
+
+    # When ``stealth_norm_cap`` is on, the malicious update's norm is hard-clamped
+    # to the benign mean, which saturates the boost action dim — the policy has
+    # nothing left to learn on a[3]. Pinning ``freeze_boost`` to a known-good
+    # scalar (e.g. 5.0, matching the static-action baseline) frees the actor's
+    # capacity for the remaining 3 dims (poison rate, lr, epochs) and lets RL
+    # at least match the strong fixed-action baseline instead of being stuck
+    # learning a dead dimension. Set to ``None`` to let the policy learn boost.
+    freeze_boost: Optional[float] = 5.0
+    # MUST match the live-path cap setting — see ``RLBackdoorAttack._craft_sybil_broadcast``.
+    # If live applies a benign-norm cap and sim doesn't, the policy trains on
+    # one Krum dynamics and deploys against another (sim→real mismatch). The
+    # cap is only meaningful when the defender filters by norm; ``fedavg`` is
+    # treated as a no-op identically on both sides.
+    stealth_norm_cap: bool = False
+    # Warm-start the replay buffer by rolling out the static default action in
+    # the simulator for ``warmup_fixed_rollouts`` steps before the first TD3
+    # update. Without this the policy spends the early training rounds with
+    # random actions, never plants the backdoor, gets zero reward, and the
+    # gradient signal collapses. 0 disables.
+    warmup_fixed_rollouts: int = 200
 
     # Checkpoint / deployment
     policy_checkpoint_path: str = ""
@@ -118,6 +140,8 @@ class BackdoorRLConfig:
 
     @classmethod
     def from_attacker_config(cls, attacker_config) -> "BackdoorRLConfig":
+        freeze_boost_raw = getattr(attacker_config, "rl_backdoor_freeze_boost", 5.0)
+        freeze_boost = None if freeze_boost_raw is None else float(freeze_boost_raw)
         return cls(
             algorithm=str(getattr(attacker_config, "rl_algorithm", "td3")),
             policy_lr=float(getattr(attacker_config, "rl_policy_lr", 3e-4)),
@@ -127,7 +151,7 @@ class BackdoorRLConfig:
             replay_capacity=int(getattr(attacker_config, "rl_replay_capacity", 200_000)),
             batch_size=int(getattr(attacker_config, "rl_batch_size", 128)),
             hidden_sizes=tuple(getattr(attacker_config, "rl_hidden_sizes", (256, 256))),
-            exploration_noise=float(getattr(attacker_config, "rl_exploration_noise", 0.15)),
+            exploration_noise=float(getattr(attacker_config, "rl_exploration_noise", 0.05)),
             train_freq_steps=int(getattr(attacker_config, "rl_train_freq_steps", 1)),
             policy_checkpoint_path=str(getattr(attacker_config, "rl_policy_checkpoint_path", "")),
             policy_checkpoint_dir=str(getattr(attacker_config, "rl_policy_checkpoint_dir", "")),
@@ -135,5 +159,24 @@ class BackdoorRLConfig:
             reward_mode=str(getattr(attacker_config, "rl_backdoor_reward_mode", "paper")),
             reward_clean_lambda=float(
                 getattr(attacker_config, "rl_backdoor_reward_clean_lambda", 0.5)
+            ),
+            reward_clean_weight=float(
+                getattr(attacker_config, "rl_backdoor_reward_clean_lambda", 1.0)
+            ),
+            reward_norm_weight=float(
+                getattr(attacker_config, "rl_backdoor_reward_norm_lambda", 0.1)
+            ),
+            freeze_boost=freeze_boost,
+            stealth_norm_cap=bool(
+                getattr(attacker_config, "rl_backdoor_stealth_norm_cap", False)
+            ),
+            warmup_fixed_rollouts=int(
+                getattr(attacker_config, "rl_backdoor_warmup_fixed_rollouts", 200)
+            ),
+            simulator_shadow_clients=int(
+                getattr(attacker_config, "rl_backdoor_simulator_shadow_clients", 10)
+            ),
+            simulator_shadow_samples_per_client=int(
+                getattr(attacker_config, "rl_backdoor_simulator_shadow_samples_per_client", 200)
             ),
         )

@@ -83,6 +83,7 @@ class RLBackdoorAttack(SandboxAttack):
     _last_obs: Optional[np.ndarray] = field(default=None, init=False, repr=False)
     _diagnostics: Dict[str, float] = field(default_factory=dict, init=False, repr=False)
     _checkpoint_loaded: bool = field(default=False, init=False, repr=False)
+    _warmstart_done: bool = field(default=False, init=False, repr=False)
 
     def __post_init__(self) -> None:
         self.config = self.config or BackdoorRLConfig()
@@ -174,7 +175,46 @@ class RLBackdoorAttack(SandboxAttack):
             # Reused by Phase 5 reporting. Picked up by the standard
             # ``rl_sim2real_gap`` TensorBoard scalar without special-casing.
             diagnostics["rl_sim2real_gap"] = float(abs(sim_poi_acc - backdoor_acc))
+        diagnostics.update(self._action_evidence_metrics())
         return diagnostics
+
+    def _action_evidence_metrics(self) -> Dict[str, float]:
+        """Per-round action audit trail.
+
+        Without this you can't tell whether the policy is producing
+        state-dependent actions or has collapsed to a constant. Every key
+        here maps to an existing ``rl_action/*`` TB scalar via
+        ``experiment_service.RL_TRAINING_TENSORBOARD_TAGS``, so the dashboard
+        wiring is free.
+        """
+        action = np.asarray(self._last_action, dtype=np.float32).reshape(-1)
+        if action.size < self.config.action_dim:
+            padded = np.zeros(self.config.action_dim, dtype=np.float32)
+            padded[: action.size] = action
+            action = padded
+        action = action[: self.config.action_dim]
+        decoded = decode_backdoor_action(action)
+        effective_boost = (
+            float(self.config.freeze_boost)
+            if self.config.freeze_boost is not None
+            else float(decoded.boost)
+        )
+        policy_present = bool(
+            self._trainer is not None and getattr(self._trainer, "policy", None) is not None
+        )
+        metrics: Dict[str, float] = {
+            "rl_action_poison_frac": float(decoded.poison_frac),
+            "rl_action_local_lr": float(decoded.local_lr),
+            "rl_action_local_epochs": float(decoded.local_epochs),
+            "rl_action_boost": effective_boost,
+            "rl_backdoor_policy_present": float(policy_present),
+            "rl_backdoor_warmstart_done": float(self._warmstart_done),
+            "rl_backdoor_freeze_boost_active": float(self.config.freeze_boost is not None),
+            "rl_backdoor_stealth_norm_cap_active": float(bool(self.config.stealth_norm_cap)),
+        }
+        for idx in range(min(4, action.size)):
+            metrics[f"rl_action_raw_{idx}"] = float(action[idx])
+        return metrics
 
     # ----------------------------------------------------- action selection
 
@@ -215,8 +255,13 @@ class RLBackdoorAttack(SandboxAttack):
             np.mean([model[layer] for model in trained_models], axis=0)
             for layer in range(len(ctx.old_weights))
         ]
+        boost = (
+            float(self.config.freeze_boost)
+            if self.config.freeze_boost is not None
+            else float(decoded.boost)
+        )
         crafted = [
-            old + decoded.boost * (new - old)
+            old + boost * (new - old)
             for old, new in zip(ctx.old_weights, averaged)
         ]
         if self.stealth_norm_cap:
@@ -420,6 +465,9 @@ class RLBackdoorAttack(SandboxAttack):
             return
         if self._trainer is None:
             self._trainer = build_trainer(self.config)
+        if not self._warmstart_done:
+            self._warmstart_replay(self.config.warmup_fixed_rollouts)
+            self._warmstart_done = True
         steps = max(1, int(self.policy_train_steps_per_round))
         started = time.perf_counter()
         collect = self._trainer.collect(self._simulator, steps=steps)
@@ -449,6 +497,42 @@ class RLBackdoorAttack(SandboxAttack):
                 "rl_trainer_train_time": float(train_time),
             }
         )
+
+    def _warmstart_replay(self, n_steps: int) -> None:
+        """Seed the replay buffer with static-default-action transitions.
+
+        Without this, TD3 begins from a random policy whose actions are far
+        from the known-good ``default_action`` — early simulator rollouts get
+        ~0 reward, the buffer never sees a successful backdoor trajectory,
+        and the actor's gradient signal collapses. We instead pre-fill ``K``
+        transitions where every action is the static default; the very first
+        TD3 update then has a buffer that contains the known-good outcome
+        and the policy learns starting from it.
+        """
+        if n_steps <= 0 or self._simulator is None or self._trainer is None:
+            return
+        self._trainer.ensure_initialized(
+            self._simulator.observation_space, self._simulator.action_space
+        )
+        fixed = np.asarray(self.default_action, dtype=np.float32)
+        fixed = np.clip(fixed, self.config.action_low, self.config.action_high).astype(np.float32)
+        obs, _ = self._simulator.reset()
+        seeded = 0
+        for _ in range(int(n_steps)):
+            obs_next, reward, terminated, truncated, _ = self._simulator.step(fixed)
+            self._trainer.add_transition(
+                obs,
+                fixed,
+                reward=float(reward),
+                obs_next=obs_next,
+                terminated=bool(terminated),
+                truncated=bool(truncated),
+            )
+            seeded += 1
+            obs = obs_next
+            if terminated or truncated:
+                obs, _ = self._simulator.reset()
+        self._diagnostics["rl_warmstart_transitions"] = float(seeded)
 
     def _maybe_load_checkpoint(self, round_idx: int) -> None:
         if self._checkpoint_loaded or self.config is None:

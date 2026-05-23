@@ -83,6 +83,11 @@ class AttackerSection:
     rl_freeze_policy: bool = False
     rl_backdoor_reward_mode: str = "paper"
     rl_backdoor_reward_clean_lambda: float = 0.5
+    rl_backdoor_reward_norm_lambda: float = 0.1
+    rl_backdoor_freeze_boost: float | None = 5.0
+    rl_backdoor_warmup_fixed_rollouts: int = 200
+    rl_backdoor_simulator_shadow_clients: int = 10
+    rl_backdoor_simulator_shadow_samples_per_client: int = 200
     rl_checkpoint_interval: int = 0
     rl_save_final_checkpoint: bool = True
     rl_strict_reproduction_initial_samples: int = 200
@@ -185,14 +190,23 @@ class RunConfig:
 
         if self.attacker.type == 'rl_backdoor':
             # Mirror the ``rl`` schedule under ``rlfl``: warmup observes the FL
-            # state, training fires from round 1 through end_round, deployment
-            # starts at attack_start_round.
-            self.attacker.rl_policy_train_end_round = (
-                self.attacker.rl_policy_train_end_round or warmup_rounds
-            )
-            self.attacker.rl_attack_start_round = (
-                self.attacker.rl_attack_start_round or (warmup_rounds + 1)
-            )
+            # state, training fires from ``attack_start_round`` through
+            # ``policy_train_end_round``, deployment continues to the runtime
+            # end. The schema defaults (10 / 30) are non-None — ``... or X``
+            # cannot override them — so we validate explicitly. The empty-
+            # window failure mode (attack_start=101, train_end=30) where TD3
+            # silently never fires comes from exactly this default-leak path.
+            attack_start = self.attacker.rl_attack_start_round
+            if attack_start is None or int(attack_start) <= warmup_rounds:
+                attack_start = warmup_rounds + 1
+            attack_start = int(attack_start)
+            self.attacker.rl_attack_start_round = attack_start
+
+            default_end = max(4 * warmup_rounds, attack_start + 1)
+            end = self.attacker.rl_policy_train_end_round
+            if end is None or int(end) < attack_start:
+                end = default_end
+            self.attacker.rl_policy_train_end_round = int(end)
             return self
 
         self.attacker.rl_distribution_steps = self.attacker.rl_distribution_steps or 10
@@ -272,6 +286,11 @@ class RunConfig:
             "rl_freeze_policy": self.attacker.rl_freeze_policy,
             "rl_backdoor_reward_mode": self.attacker.rl_backdoor_reward_mode,
             "rl_backdoor_reward_clean_lambda": self.attacker.rl_backdoor_reward_clean_lambda,
+            "rl_backdoor_reward_norm_lambda": self.attacker.rl_backdoor_reward_norm_lambda,
+            "rl_backdoor_freeze_boost": self.attacker.rl_backdoor_freeze_boost,
+            "rl_backdoor_warmup_fixed_rollouts": self.attacker.rl_backdoor_warmup_fixed_rollouts,
+            "rl_backdoor_simulator_shadow_clients": self.attacker.rl_backdoor_simulator_shadow_clients,
+            "rl_backdoor_simulator_shadow_samples_per_client": self.attacker.rl_backdoor_simulator_shadow_samples_per_client,
             "rl_checkpoint_interval": self.attacker.rl_checkpoint_interval,
             "rl_save_final_checkpoint": self.attacker.rl_save_final_checkpoint,
             "rl_strict_reproduction_initial_samples": self.attacker.rl_strict_reproduction_initial_samples,
@@ -359,6 +378,11 @@ def _set_flat_value(config: RunConfig, key: str, value: Any) -> None:
         "rl_freeze_policy": (config.attacker, "rl_freeze_policy"),
         "rl_backdoor_reward_mode": (config.attacker, "rl_backdoor_reward_mode"),
         "rl_backdoor_reward_clean_lambda": (config.attacker, "rl_backdoor_reward_clean_lambda"),
+        "rl_backdoor_reward_norm_lambda": (config.attacker, "rl_backdoor_reward_norm_lambda"),
+        "rl_backdoor_freeze_boost": (config.attacker, "rl_backdoor_freeze_boost"),
+        "rl_backdoor_warmup_fixed_rollouts": (config.attacker, "rl_backdoor_warmup_fixed_rollouts"),
+        "rl_backdoor_simulator_shadow_clients": (config.attacker, "rl_backdoor_simulator_shadow_clients"),
+        "rl_backdoor_simulator_shadow_samples_per_client": (config.attacker, "rl_backdoor_simulator_shadow_samples_per_client"),
         "rl_checkpoint_interval": (config.attacker, "rl_checkpoint_interval"),
         "rl_save_final_checkpoint": (config.attacker, "rl_save_final_checkpoint"),
         "rl_strict_reproduction_initial_samples": (config.attacker, "rl_strict_reproduction_initial_samples"),

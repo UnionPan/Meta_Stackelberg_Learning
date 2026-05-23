@@ -194,6 +194,36 @@ def _build_parser(
         **_default_kwargs(defaults.attacker.rl_backdoor_reward_clean_lambda, use_defaults),
     )
     parser.add_argument(
+        '--rl_backdoor_stealth_norm_cap',
+        action=argparse.BooleanOptionalAction,
+        **_default_kwargs(defaults.attacker.rl_backdoor_stealth_norm_cap, use_defaults),
+    )
+    parser.add_argument(
+        '--rl_backdoor_reward_norm_lambda',
+        type=float,
+        **_default_kwargs(defaults.attacker.rl_backdoor_reward_norm_lambda, use_defaults),
+    )
+    parser.add_argument(
+        '--rl_backdoor_freeze_boost',
+        type=float,
+        **_default_kwargs(defaults.attacker.rl_backdoor_freeze_boost, use_defaults),
+    )
+    parser.add_argument(
+        '--rl_backdoor_warmup_fixed_rollouts',
+        type=int,
+        **_default_kwargs(defaults.attacker.rl_backdoor_warmup_fixed_rollouts, use_defaults),
+    )
+    parser.add_argument(
+        '--rl_backdoor_simulator_shadow_clients',
+        type=int,
+        **_default_kwargs(defaults.attacker.rl_backdoor_simulator_shadow_clients, use_defaults),
+    )
+    parser.add_argument(
+        '--rl_backdoor_simulator_shadow_samples_per_client',
+        type=int,
+        **_default_kwargs(defaults.attacker.rl_backdoor_simulator_shadow_samples_per_client, use_defaults),
+    )
+    parser.add_argument(
         '--rl_checkpoint_interval',
         type=int,
         **_default_kwargs(defaults.attacker.rl_checkpoint_interval, use_defaults),

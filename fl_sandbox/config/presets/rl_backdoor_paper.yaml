@@ -30,7 +30,7 @@ runtime:
 attacker:
   type: rl_backdoor
   rl_backdoor_default_action: [1.0, 0.0, -1.0, 0.0]
-  rl_backdoor_stealth_norm_cap: false
+  rl_backdoor_stealth_norm_cap: true
   rl_algorithm: td3
   rl_attack_start_round: 101
   rl_policy_train_end_round: 400
