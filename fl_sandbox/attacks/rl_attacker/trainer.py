@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 import numpy as np
@@ -14,6 +14,7 @@ from fl_sandbox.attacks.rl_attacker.config import RLAttackerConfig
 class CollectStats:
     steps: int
     reward_mean: float
+    info_means: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass

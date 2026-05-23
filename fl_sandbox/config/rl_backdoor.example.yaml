@@ -1,0 +1,67 @@
+# Paper-aligned RL backdoor attacker config.
+#
+# Drives the full pipeline through ``run_experiment.py`` (Phase 4
+# integration) — no bespoke training script needed. The TD3 policy trains in
+# the attacker-owned grey-box simulator inside ``observe_round`` between
+# ``rl_attack_start_round`` and ``rl_policy_train_end_round`` (derived from
+# ``warmup_rounds`` if either is omitted), and deploys live on the real
+# ``MinimalFLRunner`` rounds that follow. The defense matrix (Phase 5)
+# evaluates the same trained policy across robust aggregators.
+
+data:
+  dataset: mnist
+  split_mode: paper_q
+  noniid_q: 0.1
+
+fl:
+  num_clients: 100
+  num_attackers: 20
+  subsample_rate: 0.1
+  local_epochs: 1
+
+protocol:
+  name: rlfl
+  warmup_rounds: 100
+
+init:
+  init_mode: seed
+  init_checkpoint_path: ""
+
+runtime:
+  rounds: 1000
+  device: auto
+  lr: 0.01
+  batch_size: 128
+  eval_batch_size: 10000
+  num_workers: 0
+  parallel_clients: 1
+  eval_every: 1
+  seed: 150
+
+attacker:
+  type: rl_backdoor
+  rl_backdoor_default_action: [1.0, 0.0, -1.0, 0.0]
+  rl_backdoor_stealth_norm_cap: false
+  rl_algorithm: td3
+  rl_attack_start_round: 101
+  rl_policy_train_end_round: 100
+  rl_policy_train_steps_per_round: 50
+  rl_policy_lr: 3.0e-4
+  rl_critic_lr: 3.0e-4
+  rl_gamma: 1.0
+  rl_replay_capacity: 200000
+  rl_batch_size: 128
+  rl_hidden_sizes: [256, 256]
+  rl_exploration_noise: 0.15
+  rl_train_freq_steps: 1
+  rl_backdoor_reward_mode: paper
+  rl_backdoor_reward_clean_lambda: 0.375
+  rl_save_final_checkpoint: true
+
+defender:
+  type: krum
+  krum_attackers: 20
+
+output:
+  output_root: fl_sandbox/outputs/rl_backdoor
+  tb_root: fl_sandbox/runs/rl_backdoor

@@ -48,7 +48,8 @@ from fl_sandbox.attacks import (
 )
 from fl_sandbox.attacks.base import SandboxAttack
 from fl_sandbox.attacks.rl_attacker.legacy_td3 import RLAttackerConfig
-from fl_sandbox.federation.runner import MinimalFLRunner, SandboxConfig
+from fl_sandbox.federation.runner import MinimalFLRunner
+from meta_sg.simulation.fl_sandbox_adapter import SandboxConfig
 
 
 # ── Condition results ─────────────────────────────────────────────────────────

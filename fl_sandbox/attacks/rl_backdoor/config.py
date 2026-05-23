@@ -10,21 +10,30 @@ import numpy as np
 
 @dataclass
 class BackdoorRLConfig:
-    """Paper-style TD3 configuration for adaptive backdoor policy learning."""
+    """Paper-style TD3 configuration for adaptive backdoor policy learning.
+
+    Two distinct tau values intentionally share related names — ``tau`` is the
+    TD3 target-network update rate, ``round_phase_tau`` is the time-constant of
+    the ``tanh(round / tau)`` state component. Don't unify them.
+    """
 
     algorithm: str = "td3"
     seed: int = 42
     action_dim: int = 4
-    projection_dim: int = 256
+    projection_dim: int = 128
     history_window: int = 1
-    train_horizon: int = 20
+    state_tail_layers: int = 2
+    round_phase_tau: float = 100.0
+
+    # TD3 training
+    train_horizon: int = 500
     train_steps: int = 500
     train_freq_steps: int = 1
-    replay_capacity: int = 50_000
+    replay_capacity: int = 200_000
     batch_size: int = 128
     policy_lr: float = 3e-4
     critic_lr: float = 3e-4
-    gamma: float = 0.95
+    gamma: float = 1.0
     tau: float = 0.005
     exploration_noise: float = 0.15
     policy_noise: float = 0.2
@@ -33,13 +42,29 @@ class BackdoorRLConfig:
     gradient_clip_norm: float = 1.0
     hidden_sizes: tuple[int, ...] = (256, 256)
     recency_tau: float = 48.0
-    reward_clean_weight: float = 1.0
-    reward_norm_weight: float = 0.05
+
+    # Grey-box simulator
+    defense_mode: str = "known"  # {"known", "randomized"}
+    simulator_lr: float = 0.01
+    simulator_local_epochs: int = 1
+    # 0 → fall back to the live FL ``num_clients`` (no sub-partition override).
+    # >0 → sub-partition the attacker's data into this many shadow benign
+    # client shards, with ``samples_per_client`` samples each.
+    simulator_shadow_clients: int = 10
+    simulator_shadow_samples_per_client: int = 200
+
+    # Reward
+    reward_mode: str = "paper"  # {"paper"/"henger_li", "delta"/"asr_delta", "stealth"}
+    reward_clean_lambda: float = 0.5  # paper mode: lambda in F' = lambda*F(U)+(1-lambda)*F(U')
+    reward_clean_weight: float = 1.0  # only consulted when reward_mode == "stealth"
+    reward_norm_weight: float = 0.1   # only consulted when reward_mode == "stealth"
+
+    # Checkpoint / deployment
     policy_checkpoint_path: str = ""
     policy_checkpoint_dir: str = ""
+    freeze_policy: bool = False
 
-    # PPO fields are present so the shared trainer protocol can still be used
-    # if experiments explicitly switch algorithms later.
+    # PPO fields kept so build_trainer can dispatch if explicitly switched
     ppo_epochs: int = 4
     ppo_minibatch_size: int = 64
     ppo_clip_ratio: float = 0.2
@@ -50,7 +75,9 @@ class BackdoorRLConfig:
 
     @property
     def per_step_observation_dim(self) -> int:
-        return 2 * int(self.projection_dim) + int(self.action_dim) + 5
+        # round_phase + att_frac_atk + att_frac_cli + local_bd_success
+        # + delta_lognorm + proj(tail dir) + proj(delta tail dir) + last_action
+        return 5 + 2 * int(self.projection_dim) + int(self.action_dim)
 
     @property
     def observation_dim(self) -> int:
@@ -75,18 +102,18 @@ class BackdoorRLConfig:
             return ""
         best_round = -1
         best_path: Path | None = None
-        prefix = "rl_backdoor_td3_round_"
-        for path in directory.glob(f"{prefix}*.pt"):
-            suffix = path.stem.removeprefix(prefix)
-            if suffix == path.stem:
-                continue
-            try:
-                checkpoint_round = int(suffix)
-            except ValueError:
-                continue
-            if checkpoint_round <= int(round_idx) and checkpoint_round > best_round:
-                best_round = checkpoint_round
-                best_path = path
+        for prefix in ("rl_policy_round_", "rl_backdoor_td3_round_"):
+            for path in directory.glob(f"{prefix}*.pt"):
+                suffix = path.stem.removeprefix(prefix)
+                if suffix == path.stem:
+                    continue
+                try:
+                    checkpoint_round = int(suffix)
+                except ValueError:
+                    continue
+                if checkpoint_round <= int(round_idx) and checkpoint_round > best_round:
+                    best_round = checkpoint_round
+                    best_path = path
         return str(best_path) if best_path is not None else ""
 
     @classmethod
@@ -95,12 +122,18 @@ class BackdoorRLConfig:
             algorithm=str(getattr(attacker_config, "rl_algorithm", "td3")),
             policy_lr=float(getattr(attacker_config, "rl_policy_lr", 3e-4)),
             critic_lr=float(getattr(attacker_config, "rl_critic_lr", 3e-4)),
-            gamma=float(getattr(attacker_config, "rl_gamma", 0.95)),
-            replay_capacity=int(getattr(attacker_config, "rl_replay_capacity", 50_000)),
+            gamma=float(getattr(attacker_config, "rl_gamma", 1.0)),
+            train_horizon=max(1, int(getattr(attacker_config, "rl_simulator_horizon", 500))),
+            replay_capacity=int(getattr(attacker_config, "rl_replay_capacity", 200_000)),
             batch_size=int(getattr(attacker_config, "rl_batch_size", 128)),
             hidden_sizes=tuple(getattr(attacker_config, "rl_hidden_sizes", (256, 256))),
             exploration_noise=float(getattr(attacker_config, "rl_exploration_noise", 0.15)),
             train_freq_steps=int(getattr(attacker_config, "rl_train_freq_steps", 1)),
             policy_checkpoint_path=str(getattr(attacker_config, "rl_policy_checkpoint_path", "")),
             policy_checkpoint_dir=str(getattr(attacker_config, "rl_policy_checkpoint_dir", "")),
+            freeze_policy=bool(getattr(attacker_config, "rl_freeze_policy", False)),
+            reward_mode=str(getattr(attacker_config, "rl_backdoor_reward_mode", "paper")),
+            reward_clean_lambda=float(
+                getattr(attacker_config, "rl_backdoor_reward_clean_lambda", 0.5)
+            ),
         )

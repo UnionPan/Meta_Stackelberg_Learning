@@ -157,3 +157,37 @@ class DatasetSplit(Dataset):
 
     def __getitem__(self, item):
         return self.dataset[self.idxs[item]]
+
+
+class PoisonRateBlend(Dataset):
+    """Index-routed blend of a clean dataset and a fully-poisoned copy.
+
+    Absolute indices in ``poisoned_idxs`` resolve to the poisoned sample; every
+    other index falls through to the clean dataset. This lets a poison-rate
+    grid share a single poisoned copy across all rates (each rate is just a
+    different ``poisoned_idxs`` subset) instead of deep-copying the dataset
+    once per rate.
+    """
+
+    def __init__(self, clean, poisoned, poisoned_idxs):
+        self.clean = clean
+        self.poisoned = poisoned
+        self.poisoned_idxs = {int(idx) for idx in poisoned_idxs}
+        clean_targets = clean.targets
+        if isinstance(clean_targets, torch.Tensor):
+            blended = clean_targets.clone()
+            for idx in self.poisoned_idxs:
+                blended[idx] = poisoned.targets[idx]
+        else:
+            blended = list(clean_targets)
+            for idx in self.poisoned_idxs:
+                blended[idx] = poisoned.targets[idx]
+        self.targets = blended
+
+    def __len__(self):
+        return len(self.clean)
+
+    def __getitem__(self, item):
+        if int(item) in self.poisoned_idxs:
+            return self.poisoned[item]
+        return self.clean[item]

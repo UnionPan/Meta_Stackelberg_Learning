@@ -22,7 +22,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
-from fl_sandbox.federation.runner import SandboxConfig
+from meta_sg.simulation.fl_sandbox_adapter import SandboxConfig
 from meta_sg.games.bsmg_env import BSMGConfig, BSMGEnv
 from meta_sg.games.observations import obs_dim_for
 from meta_sg.learning.collector import TrajectoryCollector

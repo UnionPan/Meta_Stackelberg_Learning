@@ -15,7 +15,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from fl_sandbox.config.schema import RunConfig
-from fl_sandbox.data import DatasetSplit, get_datasets, poison_dataset
+from fl_sandbox.data import DatasetSplit, PoisonRateBlend, get_datasets, poison_dataset
 from fl_sandbox.evaluation import test_model
 from fl_sandbox.federation.client import ClientTrainer
 from fl_sandbox.models import build_model
@@ -169,7 +169,9 @@ class MinimalFLRunner:
                 sub_trigger_train_loaders=self.poisoned_train_loaders.get("sub_triggers"),
                 poisoned_train_iters=self.poisoned_train_loaders,
                 attacker_action=np.asarray(
-                    attacker_action if attacker_action is not None else self.config.attacker.attacker_action,
+                    attacker_action
+                    if attacker_action is not None
+                    else self.config.attacker.default_action_for_type(),
                     dtype=float,
                 ),
                 trusted_reference_weights=trusted_weights,
@@ -213,6 +215,7 @@ class MinimalFLRunner:
                 clean_acc_before=clean_acc_before,
                 clean_loss=clean_loss,
                 clean_acc=clean_acc,
+                backdoor_acc=backdoor_acc,
                 num_byzantine=num_byzantine,
             ) or {}
 
@@ -419,7 +422,59 @@ class MinimalFLRunner:
                     batch_size=self.config.runtime.batch_size, **self.loader_kwargs,
                 ))
             loaders["sub_triggers_by_attacker"][attacker_id] = local_sub_trigger_loaders
+
+        grid, trigger_eval = self._build_global_poison_grid()
+        loaders["global_grid_by_attacker"] = grid
+        loaders["trigger_eval_by_attacker"] = trigger_eval
         return loaders
+
+    def _build_global_poison_grid(self) -> tuple[Dict[int, List[DataLoader]], Dict[int, DataLoader]]:
+        """Per-attacker poison-rate grid: 11 loaders at trigger rates 0.0..1.0.
+
+        Each attacker gets one fully-poisoned copy of its data; the 11 rates
+        are realised as ``PoisonRateBlend`` views over that copy, each using a
+        nested prefix of the attacker's base-class indices. The RL backdoor
+        action can then pick a poison rate per round (``action[0]``) without
+        deep-copying the dataset 11 times. Built after the fixed-rate loaders
+        so existing RNG consumption — and therefore reproducibility of the
+        other poisoned loaders — is unchanged.
+        """
+        grid: Dict[int, List[DataLoader]] = {}
+        trigger_eval: Dict[int, DataLoader] = {}
+        targets = self._dataset_targets()
+        base_class = self.config.attacker.base_class
+        for attacker_id in self.attacker_ids:
+            local_indices = sorted(self.client_data_idxs[attacker_id])
+            if not local_indices:
+                continue
+            local_base_idxs = [idx for idx in local_indices if targets[idx] == base_class]
+            poisoned = copy.deepcopy(self.train_dataset)
+            poison_dataset(
+                poisoned, self.config.data.dataset, base_class, self.config.attacker.target_class,
+                poison_frac=1.0, pattern_type=self.config.attacker.pattern_type,
+                data_idxs=local_indices, poison_all=True,
+            )
+            rate_loaders: List[DataLoader] = []
+            for level in range(11):
+                cut = int(round(level / 10.0 * len(local_base_idxs)))
+                blend = PoisonRateBlend(self.train_dataset, poisoned, local_base_idxs[:cut])
+                rate_loaders.append(DataLoader(
+                    DatasetSplit(blend, local_indices),
+                    batch_size=self.config.runtime.batch_size, **self.loader_kwargs,
+                ))
+            grid[attacker_id] = rate_loaders
+            # Trigger eval: only the attacker's triggered base-class samples,
+            # labels relabeled to ``target_class``. Lets the attacker measure a
+            # local-only trigger accuracy/loss for simulator reward and the
+            # ``local_bd_success`` observation component on the live path,
+            # without ever touching the FL system's clean test set.
+            if local_base_idxs:
+                trigger_eval[attacker_id] = DataLoader(
+                    DatasetSplit(poisoned, local_base_idxs),
+                    batch_size=self.config.runtime.eval_batch_size,
+                    **self.eval_loader_kwargs,
+                )
+        return grid, trigger_eval
 
     def _prepare_poisoned_eval_loader(self) -> Optional[DataLoader]:
         targets = self.test_dataset.targets

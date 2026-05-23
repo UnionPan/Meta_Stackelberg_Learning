@@ -111,7 +111,9 @@ def _pairwise_sq_dists(updates: np.ndarray) -> np.ndarray:
     num_updates = updates.shape[0]
     dists = np.zeros((num_updates, num_updates), dtype=np.float64)
     for i in range(num_updates):
-        diff = updates[i + 1 :] - updates[i]
+        diff = updates[i + 1 :].astype(np.float64, copy=False) - updates[i].astype(
+            np.float64, copy=False
+        )
         sq = np.sum(diff * diff, axis=1)
         dists[i, i + 1 :] = sq
         dists[i + 1 :, i] = sq

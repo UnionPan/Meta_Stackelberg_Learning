@@ -16,7 +16,8 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from fl_sandbox.attacks import create_attack
-from fl_sandbox.federation.runner import MinimalFLRunner, SandboxConfig
+from fl_sandbox.federation.runner import MinimalFLRunner
+from meta_sg.simulation.fl_sandbox_adapter import SandboxConfig
 
 
 @dataclass(frozen=True)

@@ -52,7 +52,7 @@ python fl_sandbox/run/run_experiment.py --config fl_sandbox/config/run_experimen
 python fl_sandbox/scripts/run_rlfl_benchmark.py
 ```
 
-**Attack types:** `clean`, `ipm`, `lmp`, `bfl`, `dba`, `rl`, `brl`
+**Attack types:** `clean`, `ipm`, `lmp`, `alie`, `signflip`, `gaussian`, `bfl`, `dba`, `rl`, `rl_backdoor`
 **Defense types:** `fedavg`, `krum`, `multi_krum`, `median`, `clipped_median`, `trimmed_mean`, `geometric_median`, `fltrust`
 **Datasets:** `mnist`, `fmnist`, `cifar10`
 

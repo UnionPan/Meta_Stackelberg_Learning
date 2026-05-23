@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from torch.utils.tensorboard import SummaryWriter
 
-from fl_sandbox.federation.runner import SandboxConfig
+from meta_sg.simulation.fl_sandbox_adapter import SandboxConfig
 from meta_sg.games.observations import obs_dim_for
 from meta_sg.learning.config import MetaSGConfig, TD3Config
 from meta_sg.learning.evaluation import PolicyEvaluator, assess_convergence

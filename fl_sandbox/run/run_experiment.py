@@ -184,6 +184,16 @@ def _build_parser(
         **_default_kwargs(defaults.attacker.rl_freeze_policy, use_defaults),
     )
     parser.add_argument(
+        '--rl_backdoor_reward_mode',
+        choices=('paper', 'henger_li', 'delta', 'asr_delta', 'poi_delta', 'stealth'),
+        **_default_kwargs(defaults.attacker.rl_backdoor_reward_mode, use_defaults),
+    )
+    parser.add_argument(
+        '--rl_backdoor_reward_clean_lambda',
+        type=float,
+        **_default_kwargs(defaults.attacker.rl_backdoor_reward_clean_lambda, use_defaults),
+    )
+    parser.add_argument(
         '--rl_checkpoint_interval',
         type=int,
         **_default_kwargs(defaults.attacker.rl_checkpoint_interval, use_defaults),

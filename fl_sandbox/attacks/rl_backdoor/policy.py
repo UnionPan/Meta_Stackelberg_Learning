@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -10,42 +9,6 @@ import numpy as np
 
 from fl_sandbox.attacks.rl_backdoor.config import BackdoorRLConfig
 from fl_sandbox.attacks.rl_attacker.trainer import build_trainer
-
-
-class EliteBackdoorPolicy:
-    """Legacy baseline that keeps the best observed action by scalar reward."""
-
-    def __init__(self, default_action=(1.0, 0.0, -1.0, 0.0)) -> None:
-        self.default_action = np.asarray(default_action, dtype=np.float32)
-        self.best_action = self.default_action.copy()
-        self.best_reward = float("-inf")
-
-    def act(self) -> np.ndarray:
-        return self.best_action.copy()
-
-    def observe(self, *, action, reward: float) -> None:
-        reward = float(reward)
-        if reward > self.best_reward:
-            self.best_reward = reward
-            self.best_action = np.asarray(action, dtype=np.float32).reshape(-1)[:4].copy()
-
-    def save(self, path: str | Path) -> None:
-        path = Path(path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {
-            "best_action": [float(value) for value in self.best_action],
-            "best_reward": float(self.best_reward),
-            "default_action": [float(value) for value in self.default_action],
-        }
-        path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-
-    @classmethod
-    def load(cls, path: str | Path) -> "EliteBackdoorPolicy":
-        payload = json.loads(Path(path).read_text(encoding="utf-8"))
-        policy = cls(default_action=payload.get("default_action", (1.0, 0.0, -1.0, 0.0)))
-        policy.best_action = np.asarray(payload["best_action"], dtype=np.float32)
-        policy.best_reward = float(payload["best_reward"])
-        return policy
 
 
 @dataclass

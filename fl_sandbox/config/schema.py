@@ -66,6 +66,7 @@ class AttackerSection:
     dba_num_sub_triggers: int = 4
     attacker_action: tuple[float, float, float] = (0.0, 0.0, 0.0)
     rl_backdoor_default_action: tuple[float, float, float, float] = (1.0, 0.0, -1.0, 0.0)
+    rl_backdoor_stealth_norm_cap: bool = False
     rl_algorithm: str = "td3"
     rl_attacker_semantics: str = "canonical"
     rl_policy_lr: float = 3e-4
@@ -80,6 +81,8 @@ class AttackerSection:
     rl_policy_checkpoint_path: str = ""
     rl_policy_checkpoint_dir: str = ""
     rl_freeze_policy: bool = False
+    rl_backdoor_reward_mode: str = "paper"
+    rl_backdoor_reward_clean_lambda: float = 0.5
     rl_checkpoint_interval: int = 0
     rl_save_final_checkpoint: bool = True
     rl_strict_reproduction_initial_samples: int = 200
@@ -92,6 +95,19 @@ class AttackerSection:
     rl_policy_train_episodes_per_round: int = 2
     rl_simulator_horizon: int = 12
     rl_ppo_real_rollout_steps: int = 64
+
+    def default_action_for_type(self) -> tuple[float, ...]:
+        """Canonical default action with the dimensionality this attack expects.
+
+        ``rl_backdoor`` uses a 4-dim action (poison-rate grid index, local lr,
+        local epochs, malicious scaling); every other attacker uses the 3-dim
+        ``attacker_action``. Returning the correctly-sized default here lets the
+        runner seed ``ctx.attacker_action`` without the 3-dim default silently
+        shadowing the 4-dim backdoor default in ``SandboxAttack.resolve_action``.
+        """
+        if str(self.type) == "rl_backdoor":
+            return tuple(float(v) for v in self.rl_backdoor_default_action)
+        return tuple(float(v) for v in self.attacker_action)
 
 
 @dataclass
@@ -150,6 +166,13 @@ class RunConfig:
         # and paper-aligned analysis stay comparable across runs.
         self.runtime.eval_every = 1
 
+        # Discriminated action dimensionality: the 3-dim model-poisoning action
+        # and the 4-dim rl_backdoor action must not be silently interchanged.
+        if len(self.attacker.attacker_action) != 3:
+            raise ValueError("attacker.attacker_action must have exactly 3 dimensions")
+        if len(self.attacker.rl_backdoor_default_action) != 4:
+            raise ValueError("attacker.rl_backdoor_default_action must have exactly 4 dimensions")
+
         if self.protocol.name != 'rlfl':
             return self
 
@@ -158,6 +181,18 @@ class RunConfig:
             self.attacker.rl_distribution_steps = self.attacker.rl_distribution_steps or warmup_rounds
             self.attacker.rl_policy_train_end_round = self.attacker.rl_policy_train_end_round or warmup_rounds
             self.attacker.rl_attack_start_round = self.attacker.rl_attack_start_round or (warmup_rounds + 1)
+            return self
+
+        if self.attacker.type == 'rl_backdoor':
+            # Mirror the ``rl`` schedule under ``rlfl``: warmup observes the FL
+            # state, training fires from round 1 through end_round, deployment
+            # starts at attack_start_round.
+            self.attacker.rl_policy_train_end_round = (
+                self.attacker.rl_policy_train_end_round or warmup_rounds
+            )
+            self.attacker.rl_attack_start_round = (
+                self.attacker.rl_attack_start_round or (warmup_rounds + 1)
+            )
             return self
 
         self.attacker.rl_distribution_steps = self.attacker.rl_distribution_steps or 10
@@ -220,6 +255,7 @@ class RunConfig:
             "dba_num_sub_triggers": self.attacker.dba_num_sub_triggers,
             "attacker_action": list(self.attacker.attacker_action),
             "rl_backdoor_default_action": list(self.attacker.rl_backdoor_default_action),
+            "rl_backdoor_stealth_norm_cap": self.attacker.rl_backdoor_stealth_norm_cap,
             "rl_algorithm": self.attacker.rl_algorithm,
             "rl_attacker_semantics": self.attacker.rl_attacker_semantics,
             "rl_policy_lr": self.attacker.rl_policy_lr,
@@ -234,6 +270,8 @@ class RunConfig:
             "rl_policy_checkpoint_path": self.attacker.rl_policy_checkpoint_path,
             "rl_policy_checkpoint_dir": self.attacker.rl_policy_checkpoint_dir,
             "rl_freeze_policy": self.attacker.rl_freeze_policy,
+            "rl_backdoor_reward_mode": self.attacker.rl_backdoor_reward_mode,
+            "rl_backdoor_reward_clean_lambda": self.attacker.rl_backdoor_reward_clean_lambda,
             "rl_checkpoint_interval": self.attacker.rl_checkpoint_interval,
             "rl_save_final_checkpoint": self.attacker.rl_save_final_checkpoint,
             "rl_strict_reproduction_initial_samples": self.attacker.rl_strict_reproduction_initial_samples,
@@ -304,6 +342,7 @@ def _set_flat_value(config: RunConfig, key: str, value: Any) -> None:
         "dba_num_sub_triggers": (config.attacker, "dba_num_sub_triggers"),
         "attacker_action": (config.attacker, "attacker_action"),
         "rl_backdoor_default_action": (config.attacker, "rl_backdoor_default_action"),
+        "rl_backdoor_stealth_norm_cap": (config.attacker, "rl_backdoor_stealth_norm_cap"),
         "rl_algorithm": (config.attacker, "rl_algorithm"),
         "rl_attacker_semantics": (config.attacker, "rl_attacker_semantics"),
         "rl_policy_lr": (config.attacker, "rl_policy_lr"),
@@ -318,6 +357,8 @@ def _set_flat_value(config: RunConfig, key: str, value: Any) -> None:
         "rl_policy_checkpoint_path": (config.attacker, "rl_policy_checkpoint_path"),
         "rl_policy_checkpoint_dir": (config.attacker, "rl_policy_checkpoint_dir"),
         "rl_freeze_policy": (config.attacker, "rl_freeze_policy"),
+        "rl_backdoor_reward_mode": (config.attacker, "rl_backdoor_reward_mode"),
+        "rl_backdoor_reward_clean_lambda": (config.attacker, "rl_backdoor_reward_clean_lambda"),
         "rl_checkpoint_interval": (config.attacker, "rl_checkpoint_interval"),
         "rl_save_final_checkpoint": (config.attacker, "rl_save_final_checkpoint"),
         "rl_strict_reproduction_initial_samples": (config.attacker, "rl_strict_reproduction_initial_samples"),

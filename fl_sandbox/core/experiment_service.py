@@ -48,6 +48,17 @@ RL_TRAINING_TENSORBOARD_TAGS = {
     "rl_trainer_reward_mean": "rl_training/reward_mean",
     "rl_real_reward": "rl_training/real_reward",
     "rl_simulated_reward": "rl_training/simulated_reward",
+    "rl_simulated_poi_acc": "rl_simulator/poi_acc",
+    "rl_simulated_clean_acc": "rl_simulator/clean_acc",
+    "rl_simulated_clean_loss": "rl_simulator/clean_loss",
+    "rl_simulated_backdoor_loss": "rl_simulator/backdoor_loss",
+    "rl_simulated_attack_objective": "rl_simulator/attack_objective",
+    "rl_simulated_mal_norm": "rl_simulator/malicious_norm",
+    "rl_simulated_benign_norm": "rl_simulator/benign_norm",
+    "rl_simulated_sampled_attackers": "rl_simulator/sampled_attackers",
+    "rl_simulated_sampled_clients": "rl_simulator/sampled_clients",
+    "rl_simulated_decoded_poison_grid_index": "rl_simulator/decoded_poison_grid_index",
+    "rl_simulated_decoded_boost": "rl_simulator/decoded_boost",
     "rl_sim2real_gap": "rl_training/sim2real_gap",
     "rl_trainer_replay_size": "rl_training/replay_size",
     "rl_trainer_update_steps": "rl_training/update_steps",
@@ -309,7 +320,7 @@ class ExperimentCheckpointManager:
         self.checkpoint_dir = output_dir / "checkpoints"
 
     def maybe_save(self, *, round_idx: int) -> list[Path]:
-        if self.run_config.attacker.type != "rl":
+        if self.run_config.attacker.type not in {"rl", "rl_backdoor"}:
             return []
         if not self._should_save(round_idx):
             return []
@@ -330,6 +341,8 @@ class ExperimentCheckpointManager:
 
     def _save_rl_policy(self, round_idx: int) -> list[Path]:
         trainer = getattr(self.attack, "trainer", None)
+        if trainer is None:
+            trainer = getattr(self.attack, "_trainer", None)
         if trainer is None or not hasattr(trainer, "save"):
             return []
 
@@ -506,6 +519,8 @@ def build_payload(
         "rl_policy_checkpoint_path": run_config.attacker.rl_policy_checkpoint_path,
         "rl_policy_checkpoint_dir": run_config.attacker.rl_policy_checkpoint_dir,
         "rl_freeze_policy": run_config.attacker.rl_freeze_policy,
+        "rl_backdoor_reward_mode": run_config.attacker.rl_backdoor_reward_mode,
+        "rl_backdoor_reward_clean_lambda": run_config.attacker.rl_backdoor_reward_clean_lambda,
         "rl_strict_reproduction_initial_samples": run_config.attacker.rl_strict_reproduction_initial_samples,
         "rl_strict_reproduction_samples_per_epoch": run_config.attacker.rl_strict_reproduction_samples_per_epoch,
         "defense_type": run_config.defender.type,
@@ -695,11 +710,16 @@ def execute_experiment(
 
     timer = ExperimentTimer.start()
     from fl_sandbox.attacks import RLAttack
-    # For RL attacks let the internal policy pick the action (pass None).  For all other
-    # parameterised attacks (e.g. BRL) pass the configured default action so it is used
-    # as a fallback when no per-round override is provided.
+    from fl_sandbox.attacks.rl_backdoor import RLBackdoorAttack
+
+    # For RL attacks let the internal policy pick the action (pass None).  For
+    # all other parameterised attacks pass the configured default action so it
+    # is used as a fallback when no per-round override is provided.
+    # RLBackdoorAttack owns its trainer + simulator just like RLAttack — if the
+    # outer caller forces an action here, the trained policy is silently
+    # bypassed at deploy time.
     attacker_action_arg = None
-    if attack is not None and not isinstance(attack, RLAttack):
+    if attack is not None and not isinstance(attack, (RLAttack, RLBackdoorAttack)):
         attacker_action_arg = tuple(run_config.attacker.attacker_action)
     completed = False
     try:

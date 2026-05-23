@@ -203,9 +203,10 @@ class BaseTianshouTrainer:
         self.ensure_initialized(env.observation_space, env.action_space)
         obs, _ = env.reset()
         rewards: list[float] = []
+        info_values: dict[str, list[float]] = {}
         for _ in range(max(1, int(steps))):
             act = self.act(obs, deterministic=False)
-            obs_next, rew, terminated, truncated, _ = env.step(act)
+            obs_next, rew, terminated, truncated, info = env.step(act)
             self.add_transition(
                 obs,
                 act,
@@ -215,12 +216,25 @@ class BaseTianshouTrainer:
                 truncated=bool(truncated),
             )
             rewards.append(float(rew))
+            if isinstance(info, dict):
+                for key, value in info.items():
+                    if isinstance(value, (int, float, np.number)) and np.isfinite(value):
+                        info_values.setdefault(str(key), []).append(float(value))
             obs = obs_next
             if terminated or truncated:
                 obs, _ = env.reset()
         self.collect_steps += max(1, int(steps))
         self.last_reward_mean = float(np.mean(rewards)) if rewards else 0.0
-        return CollectStats(steps=max(1, int(steps)), reward_mean=self.last_reward_mean)
+        info_means = {
+            key: float(np.mean(values))
+            for key, values in info_values.items()
+            if values
+        }
+        return CollectStats(
+            steps=max(1, int(steps)),
+            reward_mean=self.last_reward_mean,
+            info_means=info_means,
+        )
 
     def add_transition(
         self,

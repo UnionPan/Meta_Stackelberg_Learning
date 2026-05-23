@@ -1,0 +1,55 @@
+# Quick smoke config for the RL backdoor attacker — mirrors rlfl_quick.yaml
+# proportions (warmup ≈ 1/3, attack starts post-warmup, training ends mid-run)
+# but swaps in ``rl_backdoor`` against Krum, and pins the policy training
+# budget the rebuild's Phase 3 default refers to.
+data:
+  dataset: mnist
+  split_mode: paper_q
+  noniid_q: 0.1
+
+fl:
+  num_clients: 20
+  num_attackers: 4
+  subsample_rate: 0.25
+  local_epochs: 1
+
+protocol:
+  name: rlfl
+  warmup_rounds: 10
+
+runtime:
+  rounds: 30
+  device: auto
+  lr: 0.05
+  batch_size: 128
+  eval_batch_size: 1024
+  num_workers: 0
+  parallel_clients: 1
+  seed: 42
+
+attacker:
+  type: rl_backdoor
+  rl_backdoor_default_action: [1.0, 0.0, -1.0, 0.0]
+  rl_backdoor_stealth_norm_cap: false
+  rl_algorithm: td3
+  rl_attack_start_round: 11
+  rl_policy_train_end_round: 20
+  rl_policy_train_steps_per_round: 50
+  rl_policy_lr: 3.0e-4
+  rl_critic_lr: 3.0e-4
+  rl_gamma: 1.0
+  rl_batch_size: 128
+  rl_hidden_sizes: [256, 256]
+  rl_exploration_noise: 0.15
+  rl_train_freq_steps: 1
+  rl_backdoor_reward_mode: paper
+  rl_backdoor_reward_clean_lambda: 0.375
+  rl_save_final_checkpoint: true
+
+defender:
+  type: krum
+  krum_attackers: 4
+
+output:
+  output_root: fl_sandbox/outputs/rl_backdoor_quick
+  tb_root: fl_sandbox/runs/rl_backdoor_quick

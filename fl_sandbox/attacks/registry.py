@@ -103,8 +103,22 @@ def create_attack(attacker_config) -> Optional[SandboxAttack]:
             ),
         )
     if attack_type == "rl_backdoor":
+        from fl_sandbox.attacks.rl_backdoor.config import BackdoorRLConfig
+
+        # ``rl_policy_train_steps_per_round=0`` in the schema means "not set"
+        # (same convention as the ``rl`` attacker), so fall back to the
+        # dataclass default rather than passing 0 — otherwise training would
+        # collapse to a single gradient step per round.
+        steps_per_round = (
+            int(getattr(attacker_config, "rl_policy_train_steps_per_round", 0)) or 50
+        )
         return RLBackdoorAttack(
             default_action=tuple(getattr(attacker_config, "rl_backdoor_default_action", (1.0, 0.0, -1.0, 0.0))),
+            stealth_norm_cap=bool(getattr(attacker_config, "rl_backdoor_stealth_norm_cap", False)),
+            config=BackdoorRLConfig.from_attacker_config(attacker_config),
+            attack_start_round=int(getattr(attacker_config, "rl_attack_start_round", 10) or 10),
+            policy_train_end_round=int(getattr(attacker_config, "rl_policy_train_end_round", 30) or 30),
+            policy_train_steps_per_round=steps_per_round,
         )
     raise AssertionError(f"Unreachable attack type branch: {attack_type}")
 

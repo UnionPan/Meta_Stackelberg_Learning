@@ -1,0 +1,56 @@
+# Paper-aligned config for the RL backdoor attacker — mirrors rlfl_paper.yaml
+# proportions (warmup_rounds=100, attack_start_round=101, training to 400 of
+# 1000) but swaps in ``rl_backdoor`` against Krum.  Heavy: 300 training rounds
+# at 50 simulator steps each on CPU is a multi-hour run.
+data:
+  dataset: mnist
+  split_mode: paper_q
+  noniid_q: 0.1
+
+fl:
+  num_clients: 100
+  num_attackers: 20
+  subsample_rate: 0.1
+  local_epochs: 1
+
+protocol:
+  name: rlfl
+  warmup_rounds: 100
+
+runtime:
+  rounds: 1000
+  device: auto
+  lr: 0.01
+  batch_size: 128
+  eval_batch_size: 4096
+  num_workers: 0
+  parallel_clients: 1
+  seed: 1001
+
+attacker:
+  type: rl_backdoor
+  rl_backdoor_default_action: [1.0, 0.0, -1.0, 0.0]
+  rl_backdoor_stealth_norm_cap: false
+  rl_algorithm: td3
+  rl_attack_start_round: 101
+  rl_policy_train_end_round: 400
+  rl_policy_train_steps_per_round: 50
+  rl_policy_lr: 3.0e-4
+  rl_critic_lr: 3.0e-4
+  rl_gamma: 1.0
+  rl_replay_capacity: 200000
+  rl_batch_size: 128
+  rl_hidden_sizes: [256, 256]
+  rl_exploration_noise: 0.15
+  rl_train_freq_steps: 1
+  rl_backdoor_reward_mode: paper
+  rl_backdoor_reward_clean_lambda: 0.375
+  rl_save_final_checkpoint: true
+
+defender:
+  type: krum
+  krum_attackers: 20
+
+output:
+  output_root: fl_sandbox/outputs/rl_backdoor_paper
+  tb_root: fl_sandbox/runs/rl_backdoor_paper
