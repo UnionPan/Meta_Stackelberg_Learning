@@ -7,7 +7,7 @@ from typing import Sequence
 
 import numpy as np
 
-from fl_sandbox.core.runtime import Weights
+from fl_sandbox.runtime import Weights
 from fl_sandbox.utils.weights import vector_to_weights, weights_to_vector
 
 EPS = 1e-12

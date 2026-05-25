@@ -11,12 +11,12 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from fl_sandbox.core.experiment_builders import split_suffix
-from fl_sandbox.core.postprocess.tensorboard_utils import (
+from fl_sandbox.experiments.builders import split_suffix
+from fl_sandbox.postprocess.tensorboard_utils import (
     build_summary_writer,
     coerce_series,
     payload_to_series,
@@ -60,7 +60,7 @@ def build_postprocess_hint_lines(
     if attack_type == "clean":
         return [
             "Run postprocess with: "
-            f"python fl_sandbox/core/postprocess/postprocess.py --input_dir {output_dir} "
+            f"python fl_sandbox/postprocess/postprocess.py --input_dir {output_dir} "
             f"--tb_dir {tb_dir}"
         ]
 
@@ -68,7 +68,7 @@ def build_postprocess_hint_lines(
     suggested_clean_dir = Path(f"fl_sandbox/outputs/clean_{defense_type}_{suffix}_benchmark")
     return [
         "Run postprocess with: "
-        "python fl_sandbox/core/postprocess/postprocess.py "
+        "python fl_sandbox/postprocess/postprocess.py "
         f"--clean_input_dir {suggested_clean_dir} "
         f"--attack_input_dir {output_dir} --tb_dir {tb_dir}_compare"
     ]

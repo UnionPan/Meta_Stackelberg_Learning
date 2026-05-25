@@ -36,7 +36,7 @@ from fl_sandbox.attacks.rl_attacker.simulator.fl_dynamics import (
     update_norm,
 )
 from fl_sandbox.attacks.rl_attacker.trainer import Trainer, build_trainer
-from fl_sandbox.core.runtime import Weights
+from fl_sandbox.runtime import Weights
 
 
 @dataclass

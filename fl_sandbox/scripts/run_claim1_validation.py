@@ -37,8 +37,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from fl_sandbox.config import RunConfig
-from fl_sandbox.core.experiment_builders import build_run_name
-from fl_sandbox.core.experiment_service import (
+from fl_sandbox.experiments.builders import build_run_name
+from fl_sandbox.experiments.service import (
     execute_experiment,
     persist_experiment_artifacts,
 )

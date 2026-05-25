@@ -84,11 +84,11 @@ The sandbox follows a layered design (see `fl_sandbox/docs/OUTER_ARCHITECTURE.md
 
 ```
 fl_sandbox/run/run_experiment.py        ← CLI entry point (thin shell)
-    └── fl_sandbox/core/experiment_service.py   ← Orchestrates one experiment run
-            ├── experiment_builders.py           ← Factories: build_attack(), build_config()
-            ├── fl_runner.py (MinimalFLRunner)   ← Core FL round execution loop
-            ├── runtime.py                       ← Shared data structures (RoundContext, RoundSummary, etc.)
-            └── postprocess/                     ← TensorBoard/CSV/JSON output helpers
+    └── fl_sandbox/experiments/service.py   ← Orchestrates one experiment run
+            ├── fl_sandbox/experiments/builders.py   ← Factories and run naming helpers
+            ├── fl_sandbox/federation/runner.py      ← FL round execution loop
+            ├── fl_sandbox/runtime/                 ← Shared data structures and update metrics
+            └── fl_sandbox/postprocess/              ← TensorBoard/CSV/JSON output helpers
 ```
 
 ### Configuration Flow
@@ -104,20 +104,20 @@ Config sources, in priority order:
 
 ### Attacker Interface
 
-All attackers extend `SandboxAttack` (`fl_sandbox/core/attacks/base.py`) and implement `execute(ctx: RoundContext, attacker_action) -> List[Weights]`. The `RoundContext` carries everything an attacker needs: old weights, benign client weights, data loaders, device, etc.
+All attackers extend `SandboxAttack` (`fl_sandbox/attacks/base.py`) and implement `execute(ctx: RoundContext, attacker_action) -> List[Weights]`. The `RoundContext` carries everything an attacker needs: old weights, benign client weights, data loaders, device, etc.
 
 Implemented attackers:
 - **IPM / LMP** (`attacks/poisoning.py`) — model poisoning
 - **BFL / DBA / BRL** (`attacks/backdoor.py`) — backdoor attacks
-- **RL** (`attacks/rl.py` + `core/rl/attacker.py`) — paper-style adaptive attacker with TD3 policy, distribution learning, and FL simulator
+- **RL** (`fl_sandbox/attacks/rl_attacker/` and `fl_sandbox/attacks/rl_backdoor/`) — adaptive attackers with policy learning and simulator support
 
 ### Defender Interface
 
-All defenders extend `SandboxDefender` → `AggregationDefender` and expose `aggregate(old_weights, client_weights_list) -> Weights`. The concrete aggregation math lives in `core/defender/aggregation_runtime.py`.
+All defenders extend `SandboxDefender` → `AggregationDefender` and expose `aggregate(old_weights, client_weights_list) -> Weights`. The concrete aggregation math lives in `fl_sandbox/aggregators/`.
 
 ### Round Execution
 
-`MinimalFLRunner.run_many_rounds()` in `fl_runner.py` orchestrates:
+`MinimalFLRunner.run_many_rounds()` in `fl_sandbox/federation/runner.py` orchestrates:
 1. Client sampling and data partitioning
 2. Benign client local training
 3. Attacker `observe_round()` then `execute()` to produce malicious weights
@@ -128,7 +128,7 @@ Output per run: `summary.json`, `client_metrics.csv`, TensorBoard logs under `fl
 
 ## Key Conventions
 
-- `fl_sandbox/` is fully independent from `src/` and `train_meta_fl.py` — do not import between them (except `fl_runner.py` imports `src/models` and `src/utils` for model/dataset utilities).
+- `fl_sandbox/` is fully independent from `src/` and `train_meta_fl.py` — do not import between them (except `fl_sandbox/federation/runner.py` imports `src/models` and `src/utils` for model/dataset utilities).
 - `RunConfig.normalize()` is called after every config construction; ensure it is not bypassed.
 - `eval_every` is always forced to `1` by `normalize()` to keep round-wise metrics comparable.
 - Run names follow the pattern `{dataset}_{attack}_{defense}_{split_suffix}_{rounds}r`.

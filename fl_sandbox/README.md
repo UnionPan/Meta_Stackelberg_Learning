@@ -37,10 +37,10 @@ fl_sandbox/
   data/                    sandbox-local dataset loading and poisoning helpers
   models/                  model registry and state helpers
   evaluation/              evaluation helpers
-  application/             batch and experiment-service orchestration layer
-  core/                    runtime glue, metrics, builders, and postprocess tools
+  runtime/                 shared runtime dataclasses, timers, weight aliases, and update metrics
+  experiments/             experiment orchestration, builders, and batch helpers
+  postprocess/             result export, TensorBoard, and visualization helpers
   run/                     Python entry points for single-run experiments
-  apps/                    app-facing wrappers around run entry points
   scripts/                 shell helpers and benchmark presets
   docs/                    usage guides, specs, and implementation plans
   assets/                  static inspection/doc assets

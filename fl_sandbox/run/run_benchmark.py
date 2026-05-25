@@ -10,8 +10,8 @@ from typing import Iterable
 import yaml
 
 from fl_sandbox.config import RunConfig
-from fl_sandbox.core.experiment_builders import build_run_name
-from fl_sandbox.core.experiment_service import completion_lines, execute_experiment, persist_experiment_artifacts
+from fl_sandbox.experiments.builders import build_run_name
+from fl_sandbox.experiments.service import completion_lines, execute_experiment, persist_experiment_artifacts
 
 
 def _preset_payload(path: Path) -> dict:

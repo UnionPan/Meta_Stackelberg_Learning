@@ -4,7 +4,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 VENV_DIR="${ROOT_DIR}/.venv"
-SCRIPT_PATH="${ROOT_DIR}/fl_sandbox/core/postprocess/postprocess.py"
+SCRIPT_PATH="${ROOT_DIR}/fl_sandbox/postprocess/postprocess.py"
 OUTPUT_ROOT="${ROOT_DIR}/fl_sandbox/outputs"
 RUN_ROOT="${ROOT_DIR}/fl_sandbox/runs"
 CLEAN_DIR="${OUTPUT_ROOT}/mnist_clean_20c_30r"

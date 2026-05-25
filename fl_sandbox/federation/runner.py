@@ -23,8 +23,8 @@ from fl_sandbox.utils import resolve_device, set_parameters
 
 from fl_sandbox.attacks.base import SandboxAttack
 from fl_sandbox.aggregators.rules import AggregationDefender, PaperActionDefender
-from fl_sandbox.core.metrics import update_norm
-from fl_sandbox.core.runtime import (
+from fl_sandbox.runtime.metrics import update_norm
+from fl_sandbox.runtime import (
     RoundRuntimeState,
     RoundSummary,
     RoundTimer,

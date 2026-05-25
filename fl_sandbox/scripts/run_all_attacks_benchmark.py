@@ -32,8 +32,8 @@ if str(ROOT) not in sys.path:
 
 from fl_sandbox.config import RunConfig
 from fl_sandbox.attacks import ATTACK_CHOICES
-from fl_sandbox.core.experiment_builders import build_run_name
-from fl_sandbox.core.experiment_service import (
+from fl_sandbox.experiments.builders import build_run_name
+from fl_sandbox.experiments.service import (
     execute_experiment,
     persist_experiment_artifacts,
 )

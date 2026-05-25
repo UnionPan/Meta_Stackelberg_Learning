@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from fl_sandbox.core.postprocess.tensorboard_utils import build_summary_writer
+from fl_sandbox.postprocess.tensorboard_utils import build_summary_writer
 
 
 DEFAULT_CONFIG = Path("fl_sandbox/config/presets/rlfl_paper.yaml")
@@ -213,7 +213,7 @@ def _summary_exists(run_dir: Path) -> bool:
 def _postprocess_compare(*, clean_dir: Path, eval_dir: Path, tb_dir: Path, log_path: Path) -> None:
     cmd = [
         sys.executable,
-        "fl_sandbox/core/postprocess/postprocess.py",
+        "fl_sandbox/postprocess/postprocess.py",
         "--clean_input_dir",
         str(clean_dir),
         "--attack_input_dir",

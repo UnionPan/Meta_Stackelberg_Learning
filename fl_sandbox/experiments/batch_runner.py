@@ -10,7 +10,7 @@ from typing import Callable
 
 from fl_sandbox.config import RunConfig
 
-from .experiment_service import ExperimentRunResult, execute_experiment
+from fl_sandbox.experiments.service import ExperimentRunResult, execute_experiment
 
 
 @dataclass

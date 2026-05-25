@@ -220,7 +220,7 @@ def summarize_round_updates(
 ) -> RoundUpdateStats:
     """Calculate round-level update stats in a single runtime helper."""
 
-    from .metrics import summarize_norms, update_cosine_to_benign_mean
+    from fl_sandbox.runtime.metrics import summarize_norms, update_cosine_to_benign_mean
 
     malicious_cosines = [
         update_cosine_to_benign_mean(old_weights, weights, benign_weights)

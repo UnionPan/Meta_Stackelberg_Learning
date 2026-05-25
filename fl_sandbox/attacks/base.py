@@ -13,7 +13,7 @@ try:
 except ImportError:  # pragma: no cover
     torch = None
 
-from fl_sandbox.core.runtime import RoundContext, Weights
+from fl_sandbox.runtime import RoundContext, Weights
 
 
 class SandboxAttack(ABC):

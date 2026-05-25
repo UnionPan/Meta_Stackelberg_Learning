@@ -12,7 +12,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from fl_sandbox.attacks.rl_attacker.action_decoder import AttackParameters
-from fl_sandbox.core.runtime import Weights
+from fl_sandbox.runtime import Weights
 
 
 def capture_weights(model: nn.Module) -> Weights:

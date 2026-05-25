@@ -9,7 +9,7 @@ from typing import List, Optional
 import numpy as np
 
 from fl_sandbox.attacks.base import SandboxAttack, Weights, train_on_loader
-from fl_sandbox.core.metrics import update_norm
+from fl_sandbox.runtime.metrics import update_norm
 
 
 def _weights_to_vector(weights: Weights) -> np.ndarray:

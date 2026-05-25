@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from fl_sandbox.core.postprocess.tensorboard_utils import build_summary_writer, payload_to_series
+from fl_sandbox.postprocess.tensorboard_utils import build_summary_writer, payload_to_series
 
 
 CORE_METRICS = (

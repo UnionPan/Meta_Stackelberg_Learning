@@ -10,11 +10,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .experiment_builders import build_attack, default_output_dir, default_tb_dir
-from .postprocess import build_postprocess_hint_lines
-from .postprocess.tensorboard_utils import build_summary_writer
-from .runtime import ExperimentTimer, client_metrics_to_rows, summaries_to_dict
 from fl_sandbox.config import RunConfig
+from fl_sandbox.experiments.builders import build_attack, default_output_dir, default_tb_dir
+from fl_sandbox.postprocess import build_postprocess_hint_lines
+from fl_sandbox.postprocess.tensorboard_utils import build_summary_writer
+from fl_sandbox.runtime import ExperimentTimer, client_metrics_to_rows, summaries_to_dict
 
 
 CLIENT_METRICS_FIELDNAMES = [
@@ -691,7 +691,7 @@ def execute_experiment(
     output_dir: str | Path | None = None,
     tb_dir: str | Path | None = None,
 ) -> ExperimentRunResult:
-    from fl_sandbox.core.fl_runner import MinimalFLRunner
+    from fl_sandbox.federation.runner import MinimalFLRunner
 
     run_config = run_config.normalize()
     attack = build_attack(run_config.attacker)

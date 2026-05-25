@@ -36,7 +36,7 @@ from fl_sandbox.attacks.rl_backdoor.action import BackdoorAction, decode_backdoo
 from fl_sandbox.attacks.rl_backdoor.config import BackdoorRLConfig
 from fl_sandbox.attacks.rl_backdoor.observation import BackdoorObservationBuilder
 from fl_sandbox.attacks.rl_backdoor.simulator import SimulatedBackdoorFLEnv
-from fl_sandbox.core.metrics import update_norm
+from fl_sandbox.runtime.metrics import update_norm
 
 
 def _fl_value(fl_config, section: str, name: str, fallback):
@@ -96,7 +96,7 @@ class RLBackdoorAttack(SandboxAttack):
         # Per-round training counters must not bleed into the next round's
         # diagnostics — clear them up front so ``after_round`` reports zero
         # when training did not actually fire this round. Keys mirror the
-        # ``rl_*`` namespace that ``experiment_service.rl_training_tensorboard_scalars``
+        # ``rl_*`` namespace that ``fl_sandbox.experiments.service`` maps to
         # already maps to TensorBoard so the same dashboards work for both
         # ``rl`` and ``rl_backdoor`` without special-casing.
         for key in list(self._diagnostics):
@@ -184,7 +184,7 @@ class RLBackdoorAttack(SandboxAttack):
         Without this you can't tell whether the policy is producing
         state-dependent actions or has collapsed to a constant. Every key
         here maps to an existing ``rl_action/*`` TB scalar via
-        ``experiment_service.RL_TRAINING_TENSORBOARD_TAGS``, so the dashboard
+        ``fl_sandbox.experiments.service.RL_TRAINING_TENSORBOARD_TAGS``, so the dashboard
         wiring is free.
         """
         action = np.asarray(self._last_action, dtype=np.float32).reshape(-1)

@@ -19,7 +19,7 @@ from fl_sandbox.attacks.registry import ATTACK_CHOICES, create_attack, supported
 from fl_sandbox.attacks.rl_attacker import RLAttack
 from fl_sandbox.attacks.rl_backdoor import BackdoorRLConfig, RLBackdoorAttack, TD3BackdoorPolicy
 from fl_sandbox.attacks.signflip import SignFlipAttack
-from fl_sandbox.core.runtime import Weights
+from fl_sandbox.runtime import Weights
 
 __all__ = [
     "ATTACK_CHOICES",
