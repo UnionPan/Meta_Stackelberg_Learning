@@ -1,4 +1,4 @@
-"""Simulator environment for Tianshou-backed RL attacker training."""
+"""Phase 1 simulator construction: proxy distribution and denoiser assets."""
 
 from fl_sandbox.attacks.rl_attacker.simulator.distribution_learning.denoiser import (
     ConvDenoisingAutoencoder,
@@ -15,22 +15,16 @@ from fl_sandbox.attacks.rl_attacker.simulator.distribution_learning.core import 
     estimate_aggregate_gradient,
     write_distribution_artifacts,
 )
-from fl_sandbox.attacks.rl_attacker.simulator.env import AttackerPolicyGymEnv, AttackerRLEnv, SimulatedFLEnv
-from fl_sandbox.attacks.rl_attacker.simulator.fl_dynamics import local_search_update
 
 __all__ = [
-    "AttackerPolicyGymEnv",
-    "AttackerRLEnv",
     "ConvDenoisingAutoencoder",
     "KerasMnistAutoencoder",
     "PaperGradientReconstructor",
     "ReconstructorConfig",
-    "SimulatedFLEnv",
     "build_noisy_images",
     "estimate_aggregate_gradient",
     "load_keras_mnist_autoencoder",
     "load_torch_denoiser",
-    "local_search_update",
     "save_torch_denoiser",
     "train_denoising_autoencoder",
     "write_distribution_artifacts",

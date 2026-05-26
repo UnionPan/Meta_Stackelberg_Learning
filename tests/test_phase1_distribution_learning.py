@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from fl_sandbox.attacks.rl_attacker.paper_distribution import (
+from fl_sandbox.attacks.rl_attacker.simulator.distribution_learning.core import (
     KerasMnistAutoencoder,
     PaperGradientReconstructor,
     ReconstructorConfig,

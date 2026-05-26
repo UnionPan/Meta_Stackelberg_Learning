@@ -21,8 +21,13 @@ from PIL import Image
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, TensorDataset
 
+from fl_sandbox.attacks.rl_attacker.simulator.distribution_learning.denoiser import (
+    ConvDenoisingAutoencoder,
+    KerasMnistAutoencoder,
+    load_keras_mnist_autoencoder,
+    train_denoising_autoencoder,
+)
 from fl_sandbox.runtime import Weights
 
 
@@ -258,106 +263,6 @@ class PaperGradientReconstructor:
         lower = (0.0 - mean) / std
         upper = (1.0 - mean) / std
         images.data = torch.max(torch.min(images.data, upper), lower)
-
-
-class ConvDenoisingAutoencoder(nn.Module):
-    """Small MNIST-style denoising autoencoder."""
-
-    def __init__(self, channels: int = 1) -> None:
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Conv2d(channels, 16, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(16, 16, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(16, channels, kernel_size=3, padding=1),
-            nn.Sigmoid(),
-        )
-
-    def forward(self, images: torch.Tensor) -> torch.Tensor:
-        return self.net(images)
-
-
-class KerasMnistAutoencoder(nn.Module):
-    """PyTorch inference equivalent of the original Keras MNIST autoencoder."""
-
-    layer_names = ("conv2d", "conv2d_1", "conv2d_2", "conv2d_3", "conv2d_4")
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.conv2d = nn.Conv2d(1, 32, kernel_size=3, padding=1)
-        self.conv2d_1 = nn.Conv2d(32, 32, kernel_size=3, padding=1)
-        self.conv2d_2 = nn.Conv2d(32, 32, kernel_size=3, padding=1)
-        self.conv2d_3 = nn.Conv2d(32, 32, kernel_size=3, padding=1)
-        self.conv2d_4 = nn.Conv2d(32, 1, kernel_size=3, padding=1)
-
-    def forward(self, images: torch.Tensor) -> torch.Tensor:
-        x = F.relu(self.conv2d(images))
-        x = F.max_pool2d(x, kernel_size=2, stride=2)
-        x = F.relu(self.conv2d_1(x))
-        x = F.max_pool2d(x, kernel_size=2, stride=2)
-        x = F.relu(self.conv2d_2(x))
-        x = F.interpolate(x, scale_factor=2, mode="nearest")
-        x = F.relu(self.conv2d_3(x))
-        x = F.interpolate(x, scale_factor=2, mode="nearest")
-        return torch.sigmoid(self.conv2d_4(x))
-
-
-def load_keras_mnist_autoencoder(path: Path | str) -> KerasMnistAutoencoder:
-    """Load the original Keras ``autoencoder_mnist.h5`` weights without TensorFlow."""
-
-    try:
-        import h5py
-    except ImportError as exc:  # pragma: no cover - h5py is present in the project env
-        raise RuntimeError("h5py is required to load autoencoder_mnist.h5") from exc
-
-    h5_path = Path(path)
-    if not h5_path.is_file():
-        raise FileNotFoundError(f"Keras autoencoder checkpoint not found: {h5_path}")
-    model = KerasMnistAutoencoder()
-    with h5py.File(h5_path, "r") as handle:
-        for layer_name in model.layer_names:
-            layer = getattr(model, layer_name)
-            group = handle[f"model_weights/{layer_name}/{layer_name}"]
-            kernel = torch.as_tensor(group["kernel:0"][()], dtype=layer.weight.dtype)
-            bias = torch.as_tensor(group["bias:0"][()], dtype=layer.bias.dtype)
-            # Keras Conv2D stores HWIO; PyTorch Conv2d expects OIHW.
-            layer.weight.data.copy_(kernel.permute(3, 2, 0, 1).contiguous())
-            layer.bias.data.copy_(bias)
-    model.eval()
-    return model
-
-
-def train_denoising_autoencoder(
-    clean_images: torch.Tensor,
-    *,
-    noise_std: float = 0.3,
-    epochs: int = 2,
-    batch_size: int = 32,
-    lr: float = 1e-3,
-    device: torch.device | None = None,
-) -> ConvDenoisingAutoencoder:
-    """Train a paper-style denoiser from clean/noisy image pairs."""
-
-    if clean_images.ndim != 4:
-        raise ValueError("clean_images must be shaped as NCHW")
-    device = device or torch.device("cpu")
-    clean = clean_images.detach().float().clamp(0.0, 1.0)
-    model = ConvDenoisingAutoencoder(channels=int(clean.shape[1])).to(device)
-    loader = DataLoader(TensorDataset(clean), batch_size=max(1, int(batch_size)), shuffle=True)
-    optimizer = torch.optim.Adam(model.parameters(), lr=float(lr))
-    model.train()
-    for _ in range(max(0, int(epochs))):
-        for (batch,) in loader:
-            batch = batch.to(device)
-            noisy = (batch + float(noise_std) * torch.randn_like(batch)).clamp(0.0, 1.0)
-            decoded = model(noisy)
-            loss = F.binary_cross_entropy(decoded, batch)
-            optimizer.zero_grad(set_to_none=True)
-            loss.backward()
-            optimizer.step()
-    model.eval()
-    return model.cpu()
 
 
 def denormalize_images(images: torch.Tensor, mean: Sequence[float], std: Sequence[float]) -> torch.Tensor:

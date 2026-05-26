@@ -18,22 +18,24 @@ import sys
 
 import torch
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[5]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from fl_sandbox.config.schema import RunConfig
 from fl_sandbox.federation.runner import MinimalFLRunner
-from fl_sandbox.attacks.rl_attacker.paper_distribution import (
+from fl_sandbox.attacks.rl_attacker.simulator.distribution_learning.core import (
     PaperGradientReconstructor,
     ReconstructorConfig,
     config_as_metadata,
     denormalize_images,
     estimate_aggregate_gradient,
-    load_keras_mnist_autoencoder,
     sample_seed_batch,
-    train_denoising_autoencoder,
     write_distribution_artifacts,
+)
+from fl_sandbox.attacks.rl_attacker.simulator.distribution_learning.denoiser import (
+    load_keras_mnist_autoencoder,
+    train_denoising_autoencoder,
 )
 
 
@@ -71,7 +73,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--max-iterations", type=int, default=10000)
     parser.add_argument("--inversion-lr", type=float, default=0.05)
     parser.add_argument("--total-variation", type=float, default=2e-2)
-    parser.add_argument("--init", choices=("zeros", "rand", "randn"), default="zeros")
+    parser.add_argument("--init", choices=("zeros", "rand", "randn", "pre"), default="zeros")
     parser.add_argument(
         "--denoiser-mode",
         choices=("h5", "pytorch", "none"),
@@ -113,6 +115,59 @@ def build_run_config(args: argparse.Namespace) -> RunConfig:
     config.defender.type = "clipped_median"
     config.defender.clipped_median_norm = 2.0
     return config.normalize()
+
+
+def sample_pre_initial_images(
+    image_pool: torch.Tensor,
+    *,
+    num_images: int,
+    device: torch.device,
+    generator: torch.Generator | None = None,
+) -> torch.Tensor:
+    """Sample existing proxy images to initialize the next inversion batch."""
+
+    images, _ = sample_pre_initial_batch(
+        image_pool,
+        None,
+        num_images=num_images,
+        device=device,
+        generator=generator,
+    )
+    return images
+
+
+def sample_pre_initial_batch(
+    image_pool: torch.Tensor,
+    label_pool: torch.Tensor | None,
+    *,
+    num_images: int,
+    device: torch.device,
+    generator: torch.Generator | None = None,
+) -> tuple[torch.Tensor, torch.Tensor | None]:
+    """Sample existing proxy images and their labels using shared indices."""
+
+    if image_pool.ndim != 4:
+        raise ValueError("image_pool must be shaped as NCHW")
+    if int(image_pool.shape[0]) <= 0:
+        raise ValueError("image_pool must contain at least one image")
+    labels = None
+    if label_pool is not None:
+        labels = label_pool.detach().cpu().long().reshape(-1)
+        if int(labels.shape[0]) != int(image_pool.shape[0]):
+            raise ValueError("image_pool and label_pool must have the same first dimension")
+    count = int(num_images)
+    if count <= 0:
+        raise ValueError("num_images must be positive")
+    indices = torch.randint(
+        int(image_pool.shape[0]),
+        (count,),
+        generator=generator,
+        device=torch.device("cpu"),
+    )
+    images = image_pool.detach().cpu().index_select(0, indices).to(device=device, dtype=torch.float32)
+    if labels is None:
+        return images, None
+    return images, labels.index_select(0, indices).to(device=device)
 
 
 def generate_distribution(args: argparse.Namespace):
@@ -178,7 +233,16 @@ def generate_distribution(args: argparse.Namespace):
             image_shape=image_shape,
             device=runner.device,
         )
-        result = reconstructor.reconstruct(input_gradient, labels=None)
+        initial_images = None
+        initial_labels = None
+        if str(args.init) == "pre":
+            initial_images, initial_labels = sample_pre_initial_batch(
+                torch.cat(all_images, dim=0),
+                torch.cat(all_labels, dim=0),
+                num_images=int(args.reconstruction_batch_size),
+                device=runner.device,
+            )
+        result = reconstructor.reconstruct(input_gradient, labels=initial_labels, initial_images=initial_images)
         all_images.append(result.images)
         all_labels.append(result.labels)
         round_losses.append(float(result.loss_history[-1]))
