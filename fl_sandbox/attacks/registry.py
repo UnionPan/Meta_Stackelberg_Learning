@@ -65,11 +65,19 @@ def create_attack(attacker_config) -> Optional[SandboxAttack]:
     if attack_type == "rl":
         from fl_sandbox.attacks.rl_attacker.config import RLAttackerConfig
 
+        distribution_dir = getattr(attacker_config, "rl_distribution_dir", "")
+        if not distribution_dir:
+            raise ValueError("attack_type='rl' requires rl_distribution_dir / --distribution_dir")
         return RLAttack(
-            default_action=tuple(attacker_config.attacker_action),
+            default_action=tuple(getattr(attacker_config, "attacker_action", (0.0, 0.0))[:2]),
             config=RLAttackerConfig(
-                algorithm=getattr(attacker_config, "rl_algorithm", "td3"),
-                attacker_semantics=getattr(attacker_config, "rl_attacker_semantics", "canonical"),
+                algorithm="td3",
+                attacker_semantics="paper_clipped_median",
+                distribution_dir=distribution_dir,
+                distribution_split=getattr(attacker_config, "rl_distribution_split", "train"),
+                policy_warmup_steps=getattr(attacker_config, "rl_policy_warmup_steps", 80_000),
+                policy_warmup_random_steps=getattr(attacker_config, "rl_policy_warmup_random_steps", 2_000),
+                distribution_growth_mode=getattr(attacker_config, "rl_distribution_growth_mode", "paper_growth"),
                 policy_lr=getattr(attacker_config, "rl_policy_lr", 3e-4),
                 critic_lr=getattr(attacker_config, "rl_critic_lr", 3e-4),
                 gamma=getattr(attacker_config, "rl_gamma", 0.95),
@@ -81,7 +89,7 @@ def create_attack(attacker_config) -> Optional[SandboxAttack]:
                 policy_train_steps_per_round=getattr(attacker_config, "rl_policy_train_steps_per_round", 0),
                 policy_checkpoint_path=getattr(attacker_config, "rl_policy_checkpoint_path", ""),
                 policy_checkpoint_dir=getattr(attacker_config, "rl_policy_checkpoint_dir", ""),
-                freeze_policy=getattr(attacker_config, "rl_freeze_policy", False),
+                freeze_policy=True,
                 strict_reproduction_initial_samples=getattr(
                     attacker_config,
                     "rl_strict_reproduction_initial_samples",
@@ -95,11 +103,9 @@ def create_attack(attacker_config) -> Optional[SandboxAttack]:
                 distribution_steps=attacker_config.rl_distribution_steps,
                 attack_start_round=attacker_config.rl_attack_start_round,
                 policy_train_end_round=attacker_config.rl_policy_train_end_round,
-                inversion_steps=attacker_config.rl_inversion_steps,
                 reconstruction_batch_size=attacker_config.rl_reconstruction_batch_size,
                 episodes_per_observation=max(2, attacker_config.rl_policy_train_episodes_per_round),
-                simulator_horizon=max(12, attacker_config.rl_simulator_horizon),
-                ppo_real_rollout_steps=getattr(attacker_config, "rl_ppo_real_rollout_steps", 64),
+                simulator_horizon=max(1, attacker_config.rl_simulator_horizon),
             ),
         )
     if attack_type == "rl_backdoor":

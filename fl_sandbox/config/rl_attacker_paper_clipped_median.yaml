@@ -31,7 +31,7 @@ runtime:
 attacker:
   type: rl
   rl_algorithm: td3
-  rl_attacker_semantics: legacy_clipped_median_strict
+  rl_attacker_semantics: paper_clipped_median
   rl_distribution_steps: 100
   rl_attack_start_round: 101
   rl_policy_train_end_round: 400

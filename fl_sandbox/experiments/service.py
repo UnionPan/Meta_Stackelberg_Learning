@@ -64,7 +64,15 @@ RL_TRAINING_TENSORBOARD_TAGS = {
     "rl_trainer_replay_size": "rl_training/replay_size",
     "rl_trainer_update_steps": "rl_training/update_steps",
     "rl_trainer_collect_steps": "rl_training/collect_steps",
+    "rl_trainer_warmup_done": "rl_training/trainer_warmup_done",
     "rl_trainer_train_time": "rl_training/train_time_seconds",
+    "rl_proxy_source": "rl_proxy/source",
+    "rl_proxy_buffer_size": "rl_proxy/buffer_size",
+    "rl_policy_warmup_done": "rl_policy/warmup_done",
+    "rl_policy_frozen": "rl_policy/frozen",
+    "rl_action_gamma": "rl_action/gamma",
+    "rl_action_dim": "rl_action/dim",
+    "rl_action_norm": "rl_action/norm",
     "rl_action_gamma_scale": "rl_action/gamma_scale",
     "rl_action_local_steps": "rl_action/local_steps",
     "rl_action_lambda_stealth": "rl_action/lambda_stealth",
@@ -89,25 +97,6 @@ RL_TRAINING_TENSORBOARD_TAGS = {
     "rl_gap_bypass_mean": "rl_reward/bypass_mean",
     "rl_gap_smoothness_mean": "rl_reward/smoothness_mean",
     "rl_gap_oob_mean": "rl_reward/action_saturation_mean",
-    "rl_bypass_score": "rl_krum/bypass_score",
-    "rl_krum_projection_applied": "rl_krum/projection_applied",
-    "rl_krum_raw_selected": "rl_krum/raw_selected",
-    "rl_krum_raw_rank": "rl_krum/raw_rank",
-    "rl_krum_raw_score_ratio": "rl_krum/raw_score_ratio",
-    "rl_krum_projected_selected": "rl_krum/projected_selected",
-    "rl_krum_projected_rank": "rl_krum/projected_rank",
-    "rl_krum_projected_score_ratio": "rl_krum/projected_score_ratio",
-    "rl_krum_projection_alpha": "rl_krum/projection_alpha",
-    "rl_krum_projection_max_alpha": "rl_krum/projection_max_alpha",
-    "rl_krum_raw_delta_norm": "rl_krum/raw_delta_norm",
-    "rl_krum_projected_delta_norm": "rl_krum/projected_delta_norm",
-    "rl_krum_mean_benign_norm": "rl_krum/mean_benign_norm",
-    "rl_krum_selected_attackers": "rl_krum/selected_attackers",
-    "rl_krum_num_byzantine": "rl_krum/num_byzantine",
-    "rl_krum_feasible_byzantine": "rl_krum/feasible_byzantine",
-    "rl_krum_neighbor_count": "rl_krum/neighbor_count",
-    "rl_krum_actual_selected": "rl_krum/actual_selected",
-    "rl_krum_actual_best_rank": "rl_krum/actual_best_rank",
     "rl_krum_actual_score_ratio": "rl_krum/actual_score_ratio",
     "rl_krum_actual_feasible_byzantine": "rl_krum/actual_feasible_byzantine",
     "rl_krum_actual_neighbor_count": "rl_krum/actual_neighbor_count",
@@ -137,8 +126,14 @@ LIVE_ATTACK_METRICS_FIELDNAMES = [
     "rl_trainer_loss",
     "rl_trainer_last_update_loss",
     "rl_trainer_reward_mean",
+    "rl_trainer_warmup_done",
     "rl_trainer_train_time",
+    "rl_proxy_source",
+    "rl_proxy_buffer_size",
+    "rl_policy_warmup_done",
+    "rl_policy_frozen",
     "rl_simulated_reward",
+    "rl_real_reward",
     "rl_simulated_poi_acc",
     "rl_simulated_clean_acc",
     "rl_simulated_clean_loss",
@@ -152,6 +147,17 @@ LIVE_ATTACK_METRICS_FIELDNAMES = [
     "rl_simulated_decoded_boost_raw",
     "rl_simulated_effective_boost",
     "rl_sim2real_gap",
+    "rl_action_gamma",
+    "rl_action_local_steps",
+    "rl_action_dim",
+    "rl_action_norm",
+    "rl_observation_dim",
+    "rl_observation_norm",
+    "rl_observation_mean",
+    "rl_observation_std",
+    "rl_observation_min",
+    "rl_observation_max",
+    "rl_real_benign_update_norm_mean",
 ]
 
 
@@ -383,7 +389,8 @@ class ExperimentCheckpointManager:
     def _should_save(self, round_idx: int) -> bool:
         interval = max(0, int(self.run_config.attacker.rl_checkpoint_interval or 0))
         is_interval_round = interval > 0 and int(round_idx) % interval == 0
-        is_final_round = int(round_idx) == int(self.run_config.runtime.rounds)
+        final_round = int(self.run_config.runtime.start_round_idx or 1) + int(self.run_config.runtime.rounds) - 1
+        is_final_round = int(round_idx) == final_round
         return is_interval_round or (bool(self.run_config.attacker.rl_save_final_checkpoint) and is_final_round)
 
     def _save_rl_policy(self, round_idx: int) -> list[Path]:
@@ -586,8 +593,13 @@ def build_payload(
         "split_mode": run_config.data.split_mode,
         "noniid_q": run_config.data.noniid_q,
         "rl_distribution_steps": run_config.attacker.rl_distribution_steps,
+        "rl_distribution_dir": run_config.attacker.rl_distribution_dir,
+        "rl_distribution_split": run_config.attacker.rl_distribution_split,
+        "rl_distribution_growth_mode": run_config.attacker.rl_distribution_growth_mode,
         "rl_attack_start_round": run_config.attacker.rl_attack_start_round,
         "rl_policy_train_end_round": run_config.attacker.rl_policy_train_end_round,
+        "rl_policy_warmup_steps": run_config.attacker.rl_policy_warmup_steps,
+        "rl_policy_warmup_random_steps": run_config.attacker.rl_policy_warmup_random_steps,
         "rl_inversion_steps": run_config.attacker.rl_inversion_steps,
         "rl_reconstruction_batch_size": run_config.attacker.rl_reconstruction_batch_size,
         "rl_policy_train_episodes_per_round": run_config.attacker.rl_policy_train_episodes_per_round,
@@ -596,6 +608,7 @@ def build_payload(
         "rl_checkpoint_interval": run_config.attacker.rl_checkpoint_interval,
         "rl_save_final_checkpoint": run_config.attacker.rl_save_final_checkpoint,
         "rounds": run_config.runtime.rounds,
+        "start_round_idx": run_config.runtime.start_round_idx,
     }
     benchmark_protocol = run_config.benchmark_protocol_payload()
     if benchmark_protocol is not None:
@@ -616,13 +629,13 @@ def build_payload(
                 "backdoor_acc": summary.backdoor_acc,
                 "asr": summary.backdoor_acc,
                 "round_seconds": summary.round_seconds,
-                "mean_benign_norm": series["mean_benign_norm"][summary.round_idx - 1],
-                "mean_malicious_norm": series["mean_malicious_norm"][summary.round_idx - 1],
-                "mean_malicious_cosine": series["mean_malicious_cosine"][summary.round_idx - 1],
+                "mean_benign_norm": series["mean_benign_norm"][idx],
+                "mean_malicious_norm": series["mean_malicious_norm"][idx],
+                "mean_malicious_cosine": series["mean_malicious_cosine"][idx],
                 "attack_metrics": summary.attack_metrics,
                 "evaluated": not math.isnan(summary.clean_acc),
             }
-            for summary in summaries
+            for idx, summary in enumerate(summaries)
         ],
         "final": {
             "clean_acc": final_clean_acc,
@@ -706,6 +719,7 @@ def execute_experiment(
         "attack_type": run_config.attacker.type,
         "defense_type": run_config.defender.type,
         "rounds": run_config.runtime.rounds,
+        "start_round_idx": run_config.runtime.start_round_idx,
         "num_clients": run_config.fl.num_clients,
         "num_attackers": run_config.resolved_num_attackers(),
         "subsample_rate": run_config.fl.subsample_rate,
@@ -716,8 +730,13 @@ def execute_experiment(
         "split_mode": run_config.data.split_mode,
         "noniid_q": run_config.data.noniid_q,
         "rl_distribution_steps": run_config.attacker.rl_distribution_steps,
+        "rl_distribution_dir": run_config.attacker.rl_distribution_dir,
+        "rl_distribution_split": run_config.attacker.rl_distribution_split,
+        "rl_distribution_growth_mode": run_config.attacker.rl_distribution_growth_mode,
         "rl_attack_start_round": run_config.attacker.rl_attack_start_round,
         "rl_policy_train_end_round": run_config.attacker.rl_policy_train_end_round,
+        "rl_policy_warmup_steps": run_config.attacker.rl_policy_warmup_steps,
+        "rl_policy_warmup_random_steps": run_config.attacker.rl_policy_warmup_random_steps,
         "rl_backdoor_stealth_norm_cap": run_config.attacker.rl_backdoor_stealth_norm_cap,
         "rl_backdoor_reward_mode": run_config.attacker.rl_backdoor_reward_mode,
         "rl_backdoor_reward_clean_lambda": run_config.attacker.rl_backdoor_reward_clean_lambda,
@@ -786,6 +805,7 @@ def execute_experiment(
     try:
         summaries = runner.run_many_rounds(
             run_config.runtime.rounds,
+            start_round_idx=run_config.runtime.start_round_idx,
             attack=attack,
             show_progress=True,
             progress_desc=progress_desc or f"{run_config.attacker.type} ({run_config.data.dataset})",

@@ -25,6 +25,7 @@ class UpdateStats:
 
 class Trainer(Protocol):
     def ensure_initialized(self, obs_space, action_space) -> None: ...
+    def warmup_collect(self, env, random_steps: int) -> CollectStats: ...
     def collect(self, env, steps: int) -> CollectStats: ...
     def add_transition(
         self,
@@ -50,13 +51,9 @@ def build_trainer(config: RLAttackerConfig) -> Trainer:
             from fl_sandbox.attacks.rl_attacker.tianshou_backend.td3 import TianshouTD3Trainer
 
             return TianshouTD3Trainer(config)
-        if algorithm == "ppo":
-            from fl_sandbox.attacks.rl_attacker.tianshou_backend.ppo import TianshouPPOTrainer
-
-            return TianshouPPOTrainer(config)
     except ImportError as exc:
         raise RuntimeError(
             "Tianshou and Gymnasium are required for the RL attacker trainer. "
             "Install with: python -m pip install tianshou gymnasium"
         ) from exc
-    raise ValueError(f"Unsupported RL attacker algorithm: {config.algorithm}")
+    raise ValueError(f"Paper RL attacker requires TD3, got: {config.algorithm}")

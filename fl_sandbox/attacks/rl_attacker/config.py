@@ -8,15 +8,7 @@ from pathlib import Path
 import numpy as np
 
 
-LEGACY_CLIPPED_MEDIAN = "legacy_clipped_median"
-LEGACY_CLIPPED_MEDIAN_STRICT = "legacy_clipped_median_strict"
-LEGACY_CLIPPED_MEDIAN_SCALEAWARE = "legacy_clipped_median_scaleaware"
-LEGACY_CLIPPED_MEDIAN_SEMANTICS = frozenset(
-    {LEGACY_CLIPPED_MEDIAN, LEGACY_CLIPPED_MEDIAN_STRICT, LEGACY_CLIPPED_MEDIAN_SCALEAWARE}
-)
-LEGACY_KRUM_STRICT = "legacy_krum_strict"
-LEGACY_KRUM_GEOMETRY = "legacy_krum_geometry"
-LEGACY_KRUM_SEMANTICS = frozenset({LEGACY_KRUM_STRICT, LEGACY_KRUM_GEOMETRY})
+PAPER_CLIPPED_MEDIAN = "paper_clipped_median"
 
 
 @dataclass
@@ -24,8 +16,13 @@ class RLAttackerConfig:
     """Config for proxy learning, simulation, and Tianshou policy training."""
 
     algorithm: str = "td3"
-    attacker_semantics: str = "canonical"
+    attacker_semantics: str = PAPER_CLIPPED_MEDIAN
     seed: int = 42
+    distribution_dir: str = ""
+    distribution_split: str = "train"
+    policy_warmup_steps: int = 80_000
+    policy_warmup_random_steps: int = 2_000
+    distribution_growth_mode: str = "paper_growth"
     distribution_steps: int = 10
     attack_start_round: int = 10
     policy_train_end_round: int = 30
@@ -37,7 +34,6 @@ class RLAttackerConfig:
     denoiser_noise_std: float = 0.3
     denoiser_epochs: int = 2
     seed_samples: int = 128
-    proxy_buffer_limit: int = 2048
     state_tail_layers: int = 2
     state_include_num_attacker: bool = True
     projection_dim: int = 256
@@ -65,14 +61,6 @@ class RLAttackerConfig:
     warmup_steps: int = 1000
     update_to_data_ratio: int = 1
     recency_tau: float = 48.0
-    ppo_epochs: int = 4
-    ppo_minibatch_size: int = 64
-    ppo_clip_ratio: float = 0.2
-    ppo_value_coef: float = 0.5
-    ppo_entropy_coef: float = 0.01
-    ppo_gae_lambda: float = 0.95
-    ppo_max_grad_norm: float = 0.5
-    ppo_real_rollout_steps: int = 64
     hybrid_template_dim: int = 5
     hybrid_continuous_dim: int = 7
     local_search_batch_size: int = 200
@@ -92,12 +80,7 @@ class RLAttackerConfig:
     clipped_gamma_scale: float = 14.9
     clipped_steps_center: float = 25.0
     clipped_steps_scale: float = 24.0
-    legacy_clipped_median_lr: float = 0.01
-    legacy_krum_gamma_center: float = 5.0
-    legacy_krum_gamma_scale: float = 4.9
-    legacy_krum_steps_center: float = 11.0
-    legacy_krum_steps_scale: float = 10.0
-    legacy_krum_lr: float = 0.01
+    paper_local_lr: float = 0.01
     strict_reproduction_initial_samples: int = 200
     strict_reproduction_samples_per_epoch: int = 80
     fltrust_lr_center: float = 0.05
@@ -130,31 +113,11 @@ class RLAttackerConfig:
     deploy_guard_max_sim2real_gap: float = 5.0
     deploy_guard_window: int = 20
 
-    def uses_legacy_clipped_median(self) -> bool:
-        return self.attacker_semantics.lower() in LEGACY_CLIPPED_MEDIAN_SEMANTICS
-
-    def uses_legacy_krum(self) -> bool:
-        return self.attacker_semantics.lower() in LEGACY_KRUM_SEMANTICS
-
-    def uses_legacy_krum_geometry(self) -> bool:
-        return self.attacker_semantics.lower() == LEGACY_KRUM_GEOMETRY
-
-    def uses_scaleaware_legacy_observation(self) -> bool:
-        return self.attacker_semantics.lower() == LEGACY_CLIPPED_MEDIAN_SCALEAWARE
-
-    def uses_legacy_reversal_attack(self) -> bool:
-        return self.uses_legacy_clipped_median() or self.uses_legacy_krum()
+    def uses_paper_distribution(self) -> bool:
+        return bool(self.distribution_dir)
 
     def uses_raw_loss_delta_reward(self) -> bool:
-        return self.uses_legacy_reversal_attack()
-
-    def uses_strict_reproduction(self) -> bool:
-        return self.attacker_semantics.lower() in {
-            LEGACY_CLIPPED_MEDIAN_STRICT,
-            LEGACY_CLIPPED_MEDIAN_SCALEAWARE,
-            LEGACY_KRUM_STRICT,
-            LEGACY_KRUM_GEOMETRY,
-        }
+        return True
 
     def strict_reproduction_sample_limit(self, *, epoch: int, buffer_size: int) -> int:
         if buffer_size <= 0:
@@ -203,20 +166,12 @@ class RLAttackerConfig:
 
     def action_dim(self, defense_type: str) -> int:
         del defense_type
-        if self.uses_legacy_reversal_attack():
-            return 2
-        if self.algorithm.lower() == "ppo":
-            return 1 + int(self.hybrid_continuous_dim)
-        return 3
+        return 2
 
     def validate_defense(self, defense_type: str) -> None:
         defense = defense_type.lower()
-        if self.uses_legacy_clipped_median() and defense != "clipped_median":
-            raise ValueError(
-                "legacy_clipped_median attacker semantics only support defense_type='clipped_median'"
-            )
-        if self.uses_legacy_krum() and defense != "krum":
-            raise ValueError("legacy_krum attacker semantics only support defense_type='krum'")
+        if defense != "clipped_median":
+            raise ValueError("paper-aligned RL attacker only supports defense_type='clipped_median'")
 
     def action_bounds(self, defense_type: str) -> tuple[np.ndarray, np.ndarray]:
         dim = self.action_dim(defense_type)

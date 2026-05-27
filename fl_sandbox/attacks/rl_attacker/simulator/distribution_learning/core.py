@@ -2,7 +2,7 @@
 
 This module mirrors the distribution-learning stage described in Li et al.,
 "Learning to Attack Federated Learning", while keeping it independent from the
-online attacker implementation.  It reconstructs batches from estimated
+paper TD3 deployment path. It reconstructs batches from estimated
 aggregate gradients, writes the original reconstructions to ``no_process/``,
 denoises them, and writes the denoised images to ``train/`` with ``data.csv``.
 """

@@ -71,6 +71,7 @@ def _build_parser(
     )
     parser.add_argument('--noniid_q', type=float, **_default_kwargs(defaults.data.noniid_q, use_defaults))
     parser.add_argument('--rounds', type=int, **_default_kwargs(defaults.runtime.rounds, use_defaults))
+    parser.add_argument('--start_round_idx', type=int, **_default_kwargs(defaults.runtime.start_round_idx, use_defaults))
     parser.add_argument('--device', type=str, **_default_kwargs(defaults.runtime.device, use_defaults))
     parser.add_argument('--num_clients', type=int, **_default_kwargs(defaults.fl.num_clients, use_defaults))
     parser.add_argument('--num_attackers', type=int, **_default_kwargs(defaults.fl.num_attackers, use_defaults))
@@ -135,7 +136,7 @@ def _build_parser(
     )
     parser.add_argument(
         '--rl_attacker_semantics',
-        choices=('canonical',),
+        choices=('paper_clipped_median',),
         **_default_kwargs(defaults.attacker.rl_attacker_semantics, use_defaults),
     )
     parser.add_argument('--rl_policy_lr', type=float, **_default_kwargs(defaults.attacker.rl_policy_lr, use_defaults))
@@ -182,6 +183,35 @@ def _build_parser(
         '--rl_freeze_policy',
         action=argparse.BooleanOptionalAction,
         **_default_kwargs(defaults.attacker.rl_freeze_policy, use_defaults),
+    )
+    parser.add_argument(
+        '--distribution_dir',
+        '--rl_distribution_dir',
+        dest='rl_distribution_dir',
+        type=str,
+        **_default_kwargs(defaults.attacker.rl_distribution_dir, use_defaults),
+    )
+    parser.add_argument(
+        '--distribution_split',
+        '--rl_distribution_split',
+        dest='rl_distribution_split',
+        type=str,
+        **_default_kwargs(defaults.attacker.rl_distribution_split, use_defaults),
+    )
+    parser.add_argument(
+        '--rl_policy_warmup_steps',
+        type=int,
+        **_default_kwargs(defaults.attacker.rl_policy_warmup_steps, use_defaults),
+    )
+    parser.add_argument(
+        '--rl_policy_warmup_random_steps',
+        type=int,
+        **_default_kwargs(defaults.attacker.rl_policy_warmup_random_steps, use_defaults),
+    )
+    parser.add_argument(
+        '--rl_distribution_growth_mode',
+        choices=('paper_growth', 'full'),
+        **_default_kwargs(defaults.attacker.rl_distribution_growth_mode, use_defaults),
     )
     parser.add_argument(
         '--rl_backdoor_reward_mode',

@@ -235,6 +235,7 @@ class MinimalFLRunner:
     def run_many_rounds(
         self,
         rounds: int,
+        start_round_idx: int = 1,
         attack: Optional[SandboxAttack] = None,
         show_progress: bool = False,
         progress_desc: Optional[str] = None,
@@ -246,13 +247,15 @@ class MinimalFLRunner:
         summaries = []
         progress_label = progress_desc or "FL rounds"
         use_tqdm = show_progress and tqdm is not None and self._supports_live_progress()
-        iterator = range(1, rounds + 1)
+        start = int(start_round_idx or 1)
+        stop = start + int(rounds)
+        iterator = range(start, stop)
         if use_tqdm:
             iterator = tqdm(iterator, total=rounds, desc=progress_label, unit="round", file=sys.stdout, dynamic_ncols=True)
         elif show_progress:
             print(f"{progress_label}: starting {rounds} rounds", flush=True)
         for round_idx in iterator:
-            should_evaluate = eval_every <= 1 or round_idx % eval_every == 0 or round_idx == rounds
+            should_evaluate = eval_every <= 1 or round_idx % eval_every == 0 or round_idx == stop - 1
             summary = self.run_round(
                 round_idx,
                 attack=attack,
@@ -272,7 +275,7 @@ class MinimalFLRunner:
                 self._print_progress_line(
                     progress_label=progress_label,
                     round_idx=round_idx,
-                    rounds=rounds,
+                    rounds=stop - 1,
                     summary=summary,
                     evaluated=should_evaluate,
                 )

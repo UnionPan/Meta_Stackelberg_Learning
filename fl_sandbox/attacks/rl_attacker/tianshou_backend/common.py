@@ -73,6 +73,7 @@ class BaseTianshouTrainer:
         self.last_loss = 0.0
         self.last_reward_mean = 0.0
         self.last_training_stats: dict[str, float] = {}
+        self.warmup_done = False
 
     def ensure_initialized(self, obs_space, action_space) -> None:
         self.action_low = np.asarray(action_space.low, dtype=np.float32).reshape(-1)
@@ -82,56 +83,18 @@ class BaseTianshouTrainer:
             self.policy = self.algorithm.policy
 
     def _build_algorithm(self, obs_space, action_space):
-        from tianshou.algorithm import PPO, TD3
+        from tianshou.algorithm import TD3
         from tianshou.algorithm.modelfree.ddpg import ContinuousDeterministicPolicy
-        from tianshou.algorithm.modelfree.reinforce import ProbabilisticActorPolicy
         from tianshou.algorithm.optim import AdamOptimizerFactory
         from tianshou.utils.net.common import Net
         from tianshou.utils.net.continuous import (
             ContinuousActorDeterministic,
-            ContinuousActorProbabilistic,
             ContinuousCritic,
         )
 
         obs_shape = obs_space.shape
         action_shape = action_space.shape
         hidden_sizes = tuple(int(size) for size in self.config.hidden_sizes)
-        if self.algorithm_name == "ppo":
-            policy_preprocess = Net(state_shape=obs_shape, hidden_sizes=hidden_sizes)
-            policy_actor = ContinuousActorProbabilistic(
-                preprocess_net=policy_preprocess,
-                action_shape=action_shape,
-                hidden_sizes=(),
-                max_action=1.0,
-                unbounded=True,
-            )
-            policy = ProbabilisticActorPolicy(
-                actor=policy_actor,
-                dist_fn=lambda logits: torch.distributions.Independent(
-                    torch.distributions.Normal(logits[0], torch.clamp(logits[1], min=1e-3, max=1.0)),
-                    1,
-                ),
-                action_space=action_space,
-                observation_space=obs_space,
-                deterministic_eval=True,
-                action_scaling=False,
-                action_bound_method=None,
-            )
-            return PPO(
-                policy=policy,
-                critic=self._value_critic(Net, ContinuousCritic, obs_shape, hidden_sizes),
-                optim=AdamOptimizerFactory(lr=self.config.policy_lr),
-                eps_clip=self.config.ppo_clip_ratio,
-                value_clip=True,
-                advantage_normalization=True,
-                recompute_advantage=True,
-                vf_coef=self.config.ppo_value_coef,
-                ent_coef=self.config.ppo_entropy_coef,
-                max_grad_norm=self.config.ppo_max_grad_norm,
-                gae_lambda=self.config.ppo_gae_lambda,
-                gamma=self.config.gamma,
-            )
-
         policy_preprocess = Net(state_shape=obs_shape, hidden_sizes=hidden_sizes)
         policy_actor = ContinuousActorDeterministic(
             preprocess_net=policy_preprocess,
@@ -166,14 +129,6 @@ class BaseTianshouTrainer:
                 action_shape=action_shape,
                 hidden_sizes=hidden_sizes,
                 concat=True,
-            )
-        )
-
-    def _value_critic(self, net_cls, critic_cls, obs_shape, hidden_sizes):
-        return critic_cls(
-            preprocess_net=net_cls(
-                state_shape=obs_shape,
-                hidden_sizes=hidden_sizes,
             )
         )
 
@@ -236,6 +191,37 @@ class BaseTianshouTrainer:
             info_means=info_means,
         )
 
+    def warmup_collect(self, env, random_steps: int) -> CollectStats:
+        """Random-action exploration to fill replay before TD3 updates."""
+
+        self.ensure_initialized(env.observation_space, env.action_space)
+        steps = max(0, int(random_steps))
+        if steps <= 0:
+            return CollectStats(steps=0, reward_mean=0.0, info_means={})
+        obs, _ = env.reset()
+        rewards: list[float] = []
+        for _ in range(steps):
+            if self.action_low is None or self.action_high is None:
+                raise RuntimeError("Trainer action bounds unavailable after initialization")
+            act = np.random.uniform(self.action_low, self.action_high).astype(np.float32)
+            obs_next, rew, terminated, truncated, _ = env.step(act)
+            self.add_transition(
+                obs,
+                act,
+                reward=float(rew),
+                obs_next=obs_next,
+                terminated=bool(terminated),
+                truncated=bool(truncated),
+            )
+            rewards.append(float(rew))
+            obs = obs_next
+            if terminated or truncated:
+                obs, _ = env.reset()
+        self.collect_steps += steps
+        self.warmup_done = True
+        self.last_reward_mean = float(np.mean(rewards)) if rewards else 0.0
+        return CollectStats(steps=steps, reward_mean=self.last_reward_mean, info_means={})
+
     def add_transition(
         self,
         obs: np.ndarray,
@@ -271,20 +257,10 @@ class BaseTianshouTrainer:
         for _ in range(steps):
             sample_size = min(self.config.batch_size, len(self.replay))
             with policy_within_training_step(self.policy):
-                if self.algorithm_name == "ppo":
-                    stats = self.algorithm.update(
-                        self.replay,
-                        batch_size=min(self.config.ppo_minibatch_size, len(self.replay)),
-                        repeat=self.config.ppo_epochs,
-                    )
-                else:
-                    stats = self.algorithm.update(self.replay, sample_size=sample_size)
+                stats = self.algorithm.update(self.replay, sample_size=sample_size)
             self.last_training_stats = self._stats_to_float_dict(stats)
             last_loss = self._loss_from_stats(self.last_training_stats)
             self.update_steps += 1
-            if self.algorithm_name == "ppo":
-                self.replay.reset()
-                break
         self.last_loss = float(last_loss)
         return UpdateStats(gradient_steps=steps, loss=self.last_loss)
 
@@ -302,12 +278,13 @@ class BaseTianshouTrainer:
 
     def diagnostics(self) -> dict[str, float]:
         return {
-            "trainer_algorithm_id": {"td3": 1.0, "ppo": 2.0}.get(self.algorithm_name, 0.0),
+            "trainer_algorithm_id": {"td3": 1.0}.get(self.algorithm_name, 0.0),
             "trainer_collect_steps": float(self.collect_steps),
             "trainer_update_steps": float(self.update_steps),
             "trainer_loss": float(self.last_loss),
             "trainer_reward_mean": float(self.last_reward_mean),
             "trainer_replay_size": float(len(self.replay)),
+            "trainer_warmup_done": float(self.warmup_done),
             **{f"trainer_{key}": value for key, value in self.last_training_stats.items()},
         }
 

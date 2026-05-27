@@ -1,52 +1,38 @@
-"""Adaptive RL attacker package."""
+"""Paper-aligned RL attacker package."""
 
 from importlib import import_module
 
 __all__ = [
-    "AttackerPolicyGymEnv",
     "AttackerRLEnv",
-    "AttackParameters",
-    "ConvDenoiser",
-    "DecodedAction",
-    "GradientDistributionLearner",
-    "ProxyDatasetBuffer",
+    "PaperAttackerPolicyGymEnv",
+    "PaperDistributionDataset",
+    "PaperDistributionSampler",
+    "PaperFLSimulator",
+    "PaperRLAttack",
     "RLAttack",
     "RLAttackerConfig",
-    "RLSim2RealDiagnostics",
-    "SimulatedFLEnv",
-    "TianshouPPOTrainer",
     "TianshouTD3Trainer",
     "build_trainer",
-    "decode_action",
-    "decode_hybrid_action",
-    "deploy_guard_allows",
-    "local_search_update",
-    "project_krum_malicious_update",
+    "craft_paper_malicious_update",
+    "decode_paper_action",
 ]
 
 _EXPORTS = {
-    "RLAttack": ("fl_sandbox.attacks.rl_attacker.attack", "RLAttack"),
+    "RLAttack": ("fl_sandbox.attacks.rl_attacker.paper_attack", "PaperRLAttack"),
+    "PaperRLAttack": ("fl_sandbox.attacks.rl_attacker.paper_attack", "PaperRLAttack"),
     "AttackerRLEnv": ("fl_sandbox.attacks.rl_attacker.simulator", "AttackerRLEnv"),
-    "AttackerPolicyGymEnv": ("fl_sandbox.attacks.rl_attacker.simulator", "AttackerPolicyGymEnv"),
-    "AttackParameters": ("fl_sandbox.attacks.rl_attacker.action_decoder", "AttackParameters"),
-    "ConvDenoiser": ("fl_sandbox.attacks.rl_attacker.proxy", "ConvDenoiser"),
-    "DecodedAction": ("fl_sandbox.attacks.rl_attacker.action_decoder", "DecodedAction"),
-    "GradientDistributionLearner": ("fl_sandbox.attacks.rl_attacker.proxy", "GradientDistributionLearner"),
-    "ProxyDatasetBuffer": ("fl_sandbox.attacks.rl_attacker.proxy", "ProxyDatasetBuffer"),
+    "PaperAttackerPolicyGymEnv": ("fl_sandbox.attacks.rl_attacker.simulator", "PaperAttackerPolicyGymEnv"),
+    "PaperFLSimulator": ("fl_sandbox.attacks.rl_attacker.simulator", "PaperFLSimulator"),
+    "PaperDistributionDataset": ("fl_sandbox.attacks.rl_attacker.proxy.paper_dataset", "PaperDistributionDataset"),
+    "PaperDistributionSampler": ("fl_sandbox.attacks.rl_attacker.proxy.paper_dataset", "PaperDistributionSampler"),
     "RLAttackerConfig": ("fl_sandbox.attacks.rl_attacker.config", "RLAttackerConfig"),
-    "RLSim2RealDiagnostics": ("fl_sandbox.attacks.rl_attacker.diagnostics", "RLSim2RealDiagnostics"),
-    "SimulatedFLEnv": ("fl_sandbox.attacks.rl_attacker.simulator", "SimulatedFLEnv"),
-    "TianshouPPOTrainer": ("fl_sandbox.attacks.rl_attacker.tianshou_backend", "TianshouPPOTrainer"),
     "TianshouTD3Trainer": ("fl_sandbox.attacks.rl_attacker.tianshou_backend", "TianshouTD3Trainer"),
     "build_trainer": ("fl_sandbox.attacks.rl_attacker.trainer", "build_trainer"),
-    "decode_action": ("fl_sandbox.attacks.rl_attacker.action_decoder", "decode_action"),
-    "decode_hybrid_action": ("fl_sandbox.attacks.rl_attacker.action_decoder", "decode_hybrid_action"),
-    "deploy_guard_allows": ("fl_sandbox.attacks.rl_attacker.diagnostics", "deploy_guard_allows"),
-    "local_search_update": ("fl_sandbox.attacks.rl_attacker.simulator", "local_search_update"),
-    "project_krum_malicious_update": (
-        "fl_sandbox.attacks.rl_attacker.krum_projection",
-        "project_krum_malicious_update",
+    "craft_paper_malicious_update": (
+        "fl_sandbox.attacks.rl_attacker.simulator.paper_env",
+        "craft_paper_malicious_update",
     ),
+    "decode_paper_action": ("fl_sandbox.attacks.rl_attacker.simulator.paper_env", "decode_paper_action"),
 }
 
 

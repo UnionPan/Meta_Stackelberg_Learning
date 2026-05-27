@@ -33,6 +33,7 @@ class ProtocolSection:
 @dataclass
 class RuntimeSection:
     rounds: int = 30
+    start_round_idx: int = 1
     device: str = "auto"
     lr: float = 0.05
     batch_size: int = 256
@@ -68,7 +69,7 @@ class AttackerSection:
     rl_backdoor_default_action: tuple[float, float, float, float] = (1.0, 0.0, -1.0, 0.0)
     rl_backdoor_stealth_norm_cap: bool = False
     rl_algorithm: str = "td3"
-    rl_attacker_semantics: str = "canonical"
+    rl_attacker_semantics: str = "paper_clipped_median"
     rl_policy_lr: float = 3e-4
     rl_critic_lr: float = 3e-4
     rl_gamma: float = 0.95
@@ -77,10 +78,15 @@ class AttackerSection:
     rl_hidden_sizes: tuple[int, ...] = (256, 256)
     rl_exploration_noise: float = 0.1
     rl_train_freq_steps: int = 1
-    rl_policy_train_steps_per_round: int = 0
+    rl_policy_train_steps_per_round: int = 200
     rl_policy_checkpoint_path: str = ""
     rl_policy_checkpoint_dir: str = ""
     rl_freeze_policy: bool = False
+    rl_distribution_dir: str = ""
+    rl_distribution_split: str = "train"
+    rl_policy_warmup_steps: int = 80_000
+    rl_policy_warmup_random_steps: int = 2_000
+    rl_distribution_growth_mode: str = "paper_growth"
     rl_backdoor_reward_mode: str = "paper"
     rl_backdoor_reward_clean_lambda: float = 0.5
     rl_backdoor_reward_norm_lambda: float = 0.1
@@ -93,8 +99,8 @@ class AttackerSection:
     rl_strict_reproduction_initial_samples: int = 200
     rl_strict_reproduction_samples_per_epoch: int = 80
     rl_distribution_steps: int | None = 10
-    rl_attack_start_round: int | None = 10
-    rl_policy_train_end_round: int | None = 30
+    rl_attack_start_round: int | None = 101
+    rl_policy_train_end_round: int | None = 400
     rl_inversion_steps: int = 50
     rl_reconstruction_batch_size: int = 8
     rl_policy_train_episodes_per_round: int = 2
@@ -163,6 +169,8 @@ class RunConfig:
     def from_flat_dict(cls, values: Mapping[str, Any]) -> 'RunConfig':
         config = cls()
         for key, value in values.items():
+            if key == "config":
+                continue
             _set_flat_value(config, key, value)
         return config.normalize()
 
@@ -179,10 +187,13 @@ class RunConfig:
             raise ValueError("attacker.rl_backdoor_default_action must have exactly 4 dimensions")
 
         if self.protocol.name != 'rlfl':
+            if self.attacker.type == 'rl':
+                self._normalize_paper_rl()
             return self
 
         warmup_rounds = int(self.protocol.warmup_rounds or 0)
         if self.attacker.type == 'rl':
+            self._normalize_paper_rl()
             self.attacker.rl_distribution_steps = self.attacker.rl_distribution_steps or warmup_rounds
             self.attacker.rl_policy_train_end_round = self.attacker.rl_policy_train_end_round or warmup_rounds
             self.attacker.rl_attack_start_round = self.attacker.rl_attack_start_round or (warmup_rounds + 1)
@@ -214,6 +225,13 @@ class RunConfig:
         self.attacker.rl_attack_start_round = self.attacker.rl_attack_start_round or 10
         return self
 
+    def _normalize_paper_rl(self) -> None:
+        self.attacker.rl_algorithm = "td3"
+        self.attacker.rl_attacker_semantics = "paper_clipped_median"
+        self.attacker.rl_freeze_policy = True
+        if not self.attacker.rl_simulator_horizon:
+            self.attacker.rl_simulator_horizon = max(1, int(self.runtime.rounds or 1))
+
     def resolved_num_attackers(self) -> int:
         if self.fl.num_attackers is not None:
             return self.fl.num_attackers
@@ -241,6 +259,7 @@ class RunConfig:
             "noniid_q": self.data.noniid_q,
             "warmup_rounds": self.protocol.warmup_rounds,
             "rounds": self.runtime.rounds,
+            "start_round_idx": self.runtime.start_round_idx,
             "device": self.runtime.device,
             "num_clients": self.fl.num_clients,
             "num_attackers": self.fl.num_attackers,
@@ -284,6 +303,11 @@ class RunConfig:
             "rl_policy_checkpoint_path": self.attacker.rl_policy_checkpoint_path,
             "rl_policy_checkpoint_dir": self.attacker.rl_policy_checkpoint_dir,
             "rl_freeze_policy": self.attacker.rl_freeze_policy,
+            "rl_distribution_dir": self.attacker.rl_distribution_dir,
+            "rl_distribution_split": self.attacker.rl_distribution_split,
+            "rl_policy_warmup_steps": self.attacker.rl_policy_warmup_steps,
+            "rl_policy_warmup_random_steps": self.attacker.rl_policy_warmup_random_steps,
+            "rl_distribution_growth_mode": self.attacker.rl_distribution_growth_mode,
             "rl_backdoor_reward_mode": self.attacker.rl_backdoor_reward_mode,
             "rl_backdoor_reward_clean_lambda": self.attacker.rl_backdoor_reward_clean_lambda,
             "rl_backdoor_reward_norm_lambda": self.attacker.rl_backdoor_reward_norm_lambda,
@@ -333,6 +357,7 @@ def _set_flat_value(config: RunConfig, key: str, value: Any) -> None:
         "noniid_q": (config.data, "noniid_q"),
         "warmup_rounds": (config.protocol, "warmup_rounds"),
         "rounds": (config.runtime, "rounds"),
+        "start_round_idx": (config.runtime, "start_round_idx"),
         "device": (config.runtime, "device"),
         "num_clients": (config.fl, "num_clients"),
         "num_attackers": (config.fl, "num_attackers"),
@@ -376,6 +401,13 @@ def _set_flat_value(config: RunConfig, key: str, value: Any) -> None:
         "rl_policy_checkpoint_path": (config.attacker, "rl_policy_checkpoint_path"),
         "rl_policy_checkpoint_dir": (config.attacker, "rl_policy_checkpoint_dir"),
         "rl_freeze_policy": (config.attacker, "rl_freeze_policy"),
+        "distribution_dir": (config.attacker, "rl_distribution_dir"),
+        "distribution_split": (config.attacker, "rl_distribution_split"),
+        "rl_distribution_dir": (config.attacker, "rl_distribution_dir"),
+        "rl_distribution_split": (config.attacker, "rl_distribution_split"),
+        "rl_policy_warmup_steps": (config.attacker, "rl_policy_warmup_steps"),
+        "rl_policy_warmup_random_steps": (config.attacker, "rl_policy_warmup_random_steps"),
+        "rl_distribution_growth_mode": (config.attacker, "rl_distribution_growth_mode"),
         "rl_backdoor_reward_mode": (config.attacker, "rl_backdoor_reward_mode"),
         "rl_backdoor_reward_clean_lambda": (config.attacker, "rl_backdoor_reward_clean_lambda"),
         "rl_backdoor_reward_norm_lambda": (config.attacker, "rl_backdoor_reward_norm_lambda"),
