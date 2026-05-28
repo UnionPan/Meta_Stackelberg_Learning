@@ -106,6 +106,27 @@ def test_registry_builds_paper_rl_attack_from_phase1_distribution(tmp_path):
     assert len(attack.distribution) == 8
 
 
+def test_paper_rl_defaults_match_author_td3_training_setup(tmp_path):
+    _write_distribution(tmp_path)
+    config = RunConfig.from_flat_dict(
+        {
+            "attack_type": "rl",
+            "rl_distribution_dir": str(tmp_path),
+        }
+    )
+
+    attack = create_attack(config.attacker)
+
+    assert attack.config.policy_lr == pytest.approx(1e-7)
+    assert attack.config.critic_lr == pytest.approx(1e-7)
+    assert attack.config.gamma == pytest.approx(1.0)
+    assert attack.config.hidden_sizes == (256, 128)
+    assert attack.config.train_freq_steps == 5
+    assert attack.config.replay_capacity == 100_000
+    assert attack.config.simulator_horizon == 1000
+    assert attack.config.local_search_batch_size == 128
+
+
 def test_paper_action_decoding_matches_clipped_median_formula():
     gamma, local_steps = decode_paper_action(np.asarray([0.0, 0.0], dtype=np.float32))
 
@@ -113,7 +134,33 @@ def test_paper_action_decoding_matches_clipped_median_formula():
     assert local_steps == 25
 
 
-def test_paper_rl_trains_incrementally_and_deploys_deterministically(tmp_path, monkeypatch):
+def test_policy_simulator_resets_to_first_initial_weights_not_latest_round(tmp_path):
+    _write_distribution(tmp_path)
+    model = nn.Sequential(nn.Flatten(), nn.Linear(28 * 28, 2))
+    initial_weights = [value.detach().numpy().copy() for value in model.state_dict().values()]
+    later_weights = [value + 3.0 for value in initial_weights]
+    run_config = RunConfig.from_flat_dict(
+        {
+            "attack_type": "rl",
+            "defense_type": "clipped_median",
+            "num_clients": 2,
+            "num_attackers": 1,
+            "subsample_rate": 1.0,
+            "rl_distribution_dir": str(tmp_path),
+            "rl_hidden_sizes": [8],
+        }
+    )
+    attack = create_attack(run_config.attacker)
+
+    env1 = attack._build_policy_env(_ctx(101, model, initial_weights, run_config))
+    env2 = attack._build_policy_env(_ctx(102, model, later_weights, run_config))
+
+    assert all(np.array_equal(a, b) for a, b in zip(env1.initial_weights, initial_weights))
+    assert all(np.array_equal(a, b) for a, b in zip(env2.initial_weights, initial_weights))
+    assert not all(np.array_equal(a, b) for a, b in zip(env2.initial_weights, later_weights))
+
+
+def test_paper_rl_trains_offline_once_and_deploys_deterministically(tmp_path, monkeypatch):
     _write_distribution(tmp_path)
     model = nn.Sequential(nn.Flatten(), nn.Linear(28 * 28, 2))
     weights = [value.detach().numpy().copy() for value in model.state_dict().values()]
@@ -161,10 +208,10 @@ def test_paper_rl_trains_incrementally_and_deploys_deterministically(tmp_path, m
     assert metrics["rl_proxy_source"] == 1.0
     assert metrics["rl_proxy_buffer_size"] == 8.0
     assert metrics["rl_policy_warmup_done"] == 1.0
-    assert metrics["rl_policy_frozen"] == 0.0
+    assert metrics["rl_policy_frozen"] == 1.0
 
 
-def test_paper_rl_trains_per_round_until_policy_end_then_freezes(tmp_path, monkeypatch):
+def test_paper_rl_runs_author_style_offline_train_once(tmp_path, monkeypatch):
     _write_distribution(tmp_path)
     model = nn.Sequential(nn.Flatten(), nn.Linear(28 * 28, 2))
     weights = [value.detach().numpy().copy() for value in model.state_dict().values()]
@@ -177,10 +224,10 @@ def test_paper_rl_trains_per_round_until_policy_end_then_freezes(tmp_path, monke
             "subsample_rate": 1.0,
             "rl_distribution_dir": str(tmp_path),
             "rl_attack_start_round": 0,
-            "rl_policy_warmup_steps": 4,
+            "rl_policy_warmup_steps": 20,
             "rl_policy_warmup_random_steps": 2,
-            "rl_policy_train_steps_per_round": 3,
-            "rl_policy_train_end_round": 2,
+            "rl_policy_train_steps_per_round": 0,
+            "rl_policy_train_end_round": 400,
             "rl_simulator_horizon": 2,
             "rl_batch_size": 2,
             "rl_hidden_sizes": [8],
@@ -191,6 +238,7 @@ def test_paper_rl_trains_per_round_until_policy_end_then_freezes(tmp_path, monke
     calls = {"warmup": [], "collect": [], "update": []}
 
     class FakeStats:
+        steps = 0
         reward_mean = 0.25
 
     class FakeTrainer:
@@ -200,11 +248,11 @@ def test_paper_rl_trains_per_round_until_policy_end_then_freezes(tmp_path, monke
 
         def warmup_collect(self, env, random_steps):
             calls["warmup"].append(random_steps)
-            return FakeStats()
+            return SimpleNamespace(steps=random_steps, reward_mean=0.25)
 
         def collect(self, env, steps):
             calls["collect"].append(steps)
-            return FakeStats()
+            return SimpleNamespace(steps=steps, reward_mean=0.25)
 
         def update(self, gradient_steps):
             calls["update"].append(gradient_steps)
@@ -223,10 +271,82 @@ def test_paper_rl_trains_per_round_until_policy_end_then_freezes(tmp_path, monke
 
     assert calls == {
         "warmup": [2],
-        "collect": [2, 1, 2, 1],
-        "update": [2, 1, 2, 1],
+        "collect": [5, 5, 5, 3],
+        "update": [5, 5, 5, 3],
     }
     assert attack._policy_warmup_done is True
+    assert attack._policy_training_frozen is True
+
+
+def test_paper_policy_training_uses_proxy_eval_not_real_eval_loader(tmp_path):
+    _write_distribution(tmp_path)
+    model = nn.Sequential(nn.Flatten(), nn.Linear(28 * 28, 2))
+    weights = [value.detach().numpy().copy() for value in model.state_dict().values()]
+    run_config = RunConfig.from_flat_dict(
+        {
+            "attack_type": "rl",
+            "defense_type": "clipped_median",
+            "num_clients": 2,
+            "num_attackers": 1,
+            "subsample_rate": 1.0,
+            "rl_distribution_dir": str(tmp_path),
+        }
+    )
+    attack = create_attack(run_config.attacker)
+    ctx = _ctx(1, model, weights, run_config)
+    ctx.eval_loader = object()
+
+    env = attack._build_policy_env(ctx)
+
+    assert env.simulator.eval_loader is None
+
+
+def test_paper_policy_budget_includes_random_warmup(tmp_path, monkeypatch):
+    _write_distribution(tmp_path)
+    model = nn.Sequential(nn.Flatten(), nn.Linear(28 * 28, 2))
+    weights = [value.detach().numpy().copy() for value in model.state_dict().values()]
+    run_config = RunConfig.from_flat_dict(
+        {
+            "attack_type": "rl",
+            "defense_type": "clipped_median",
+            "num_clients": 2,
+            "num_attackers": 1,
+            "subsample_rate": 1.0,
+            "rl_distribution_dir": str(tmp_path),
+            "rl_policy_warmup_steps": 5,
+            "rl_policy_warmup_random_steps": 2,
+            "rl_policy_train_steps_per_round": 10,
+            "rl_policy_train_end_round": 4,
+        }
+    )
+    attack = create_attack(run_config.attacker)
+    calls = {"warmup": [], "collect": [], "update": []}
+
+    class FakeTrainer:
+        def ensure_initialized(self, obs_space, action_space):
+            pass
+
+        def warmup_collect(self, env, random_steps):
+            calls["warmup"].append(random_steps)
+            return SimpleNamespace(steps=random_steps, reward_mean=0.0)
+
+        def collect(self, env, steps):
+            calls["collect"].append(steps)
+            return SimpleNamespace(steps=steps, reward_mean=0.0)
+
+        def update(self, gradient_steps):
+            calls["update"].append(gradient_steps)
+
+        def diagnostics(self):
+            return {}
+
+    monkeypatch.setattr(paper_attack_module, "build_trainer", lambda config: FakeTrainer())
+
+    attack.observe_round(_ctx(1, model, weights, run_config))
+    attack.observe_round(_ctx(2, model, weights, run_config))
+
+    assert calls == {"warmup": [2], "collect": [3], "update": [3]}
+    assert attack._policy_train_steps_completed == 5
     assert attack._policy_training_frozen is True
 
 

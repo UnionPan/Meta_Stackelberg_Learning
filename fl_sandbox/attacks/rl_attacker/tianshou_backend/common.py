@@ -74,6 +74,8 @@ class BaseTianshouTrainer:
         self.last_reward_mean = 0.0
         self.last_training_stats: dict[str, float] = {}
         self.warmup_done = False
+        self._rollout_env_id: int | None = None
+        self._rollout_obs = None
 
     def ensure_initialized(self, obs_space, action_space) -> None:
         self.action_low = np.asarray(action_space.low, dtype=np.float32).reshape(-1)
@@ -154,9 +156,9 @@ class BaseTianshouTrainer:
             action = np.clip(action, self.action_low, self.action_high)
         return action.astype(np.float32)
 
-    def collect(self, env, steps: int) -> CollectStats:
+    def collect(self, env, steps: int, *, reset_on_start: bool = True) -> CollectStats:
         self.ensure_initialized(env.observation_space, env.action_space)
-        obs, _ = env.reset()
+        obs = self._starting_observation(env, reset_on_start=reset_on_start)
         rewards: list[float] = []
         info_values: dict[str, list[float]] = {}
         for _ in range(max(1, int(steps))):
@@ -178,6 +180,8 @@ class BaseTianshouTrainer:
             obs = obs_next
             if terminated or truncated:
                 obs, _ = env.reset()
+        self._rollout_env_id = id(env)
+        self._rollout_obs = obs
         self.collect_steps += max(1, int(steps))
         self.last_reward_mean = float(np.mean(rewards)) if rewards else 0.0
         info_means = {
@@ -191,14 +195,14 @@ class BaseTianshouTrainer:
             info_means=info_means,
         )
 
-    def warmup_collect(self, env, random_steps: int) -> CollectStats:
+    def warmup_collect(self, env, random_steps: int, *, reset_on_start: bool = True) -> CollectStats:
         """Random-action exploration to fill replay before TD3 updates."""
 
         self.ensure_initialized(env.observation_space, env.action_space)
         steps = max(0, int(random_steps))
         if steps <= 0:
             return CollectStats(steps=0, reward_mean=0.0, info_means={})
-        obs, _ = env.reset()
+        obs = self._starting_observation(env, reset_on_start=reset_on_start)
         rewards: list[float] = []
         for _ in range(steps):
             if self.action_low is None or self.action_high is None:
@@ -217,10 +221,20 @@ class BaseTianshouTrainer:
             obs = obs_next
             if terminated or truncated:
                 obs, _ = env.reset()
+        self._rollout_env_id = id(env)
+        self._rollout_obs = obs
         self.collect_steps += steps
         self.warmup_done = True
         self.last_reward_mean = float(np.mean(rewards)) if rewards else 0.0
         return CollectStats(steps=steps, reward_mean=self.last_reward_mean, info_means={})
+
+    def _starting_observation(self, env, *, reset_on_start: bool):
+        if reset_on_start or self._rollout_env_id != id(env) or self._rollout_obs is None:
+            obs, _ = env.reset()
+            self._rollout_env_id = id(env)
+            self._rollout_obs = obs
+            return obs
+        return self._rollout_obs
 
     def add_transition(
         self,
@@ -249,6 +263,8 @@ class BaseTianshouTrainer:
 
     def update(self, gradient_steps: int) -> UpdateStats:
         if self.algorithm is None or self.policy is None or len(self.replay) == 0:
+            return UpdateStats(gradient_steps=0, loss=0.0)
+        if len(self.replay) < int(self.config.batch_size):
             return UpdateStats(gradient_steps=0, loss=0.0)
         from tianshou.algorithm.algorithm_base import policy_within_training_step
 

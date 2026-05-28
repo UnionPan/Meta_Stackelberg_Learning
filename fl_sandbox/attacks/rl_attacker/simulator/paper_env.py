@@ -84,8 +84,6 @@ class PaperFLSimulator:
         self.current_num_attackers = 1
 
     def reset(self, initial_weights):
-        if self.current_weights is not None and hasattr(self.distribution, "advance_episode"):
-            self.distribution.advance_episode()
         self.current_weights = [layer.copy() for layer in initial_weights]
         self.round_idx = 0
         self.current_num_attackers = self._sample_num_attackers(require_positive=True)
@@ -109,6 +107,8 @@ class PaperFLSimulator:
         self.current_acc = new_acc
         self.round_idx += 1
         done = self.round_idx >= max(1, int(self.config.simulator_horizon))
+        if done and hasattr(self.distribution, "advance_episode"):
+            self.distribution.advance_episode()
         self.current_num_attackers = self._sample_num_attackers(require_positive=True)
         return self._get_state(), reward, done
 

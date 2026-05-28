@@ -64,18 +64,18 @@ class PaperRLAttack(SandboxAttack):
         self._last_real_reward = 0.0
         self._last_action_metrics: dict[str, float] = {}
         self._last_observation_metrics: dict[str, float] = {}
+        self._policy_initial_weights: Optional[Weights] = None
 
     def observe_round(self, ctx) -> None:
         self._last_ctx = ctx
         self.config.validate_defense(ctx.defense_type)
+        self._remember_policy_initial_weights(ctx)
         if not self._policy_warmup_done:
             checkpoint_path = self.config.policy_checkpoint_for_round(int(ctx.round_idx))
             if checkpoint_path:
                 self._load_policy_checkpoint(ctx, checkpoint_path)
             else:
-                self._train_policy_for_round(ctx)
-        elif not self._policy_training_frozen:
-            self._train_policy_for_round(ctx)
+                self._train_policy_offline(ctx)
 
     def execute(self, ctx, attacker_action: Optional[np.ndarray] = None) -> list[Weights]:
         del attacker_action
@@ -143,63 +143,75 @@ class PaperRLAttack(SandboxAttack):
             )
         return payload
 
-    def _train_policy_for_round(self, ctx) -> None:
-        train_end = int(self.config.policy_train_end_round or 0)
-        if train_end > 0 and int(ctx.round_idx) > train_end:
-            self._policy_training_frozen = True
-            return
-
+    def _train_policy_offline(self, ctx) -> None:
         env = self._build_policy_env(ctx)
         self.trainer = self.trainer or build_trainer(self.config)
         self.trainer.ensure_initialized(env.observation_space, env.action_space)
+        started = time.perf_counter()
+        total_steps = max(0, int(self.config.policy_warmup_steps))
+        train_freq = max(1, int(self.config.train_freq_steps or 1))
+        print(
+            f"RL paper TD3 offline training starting: total_steps={total_steps}, "
+            f"random_steps={int(self.config.policy_warmup_random_steps)}, "
+            f"train_freq={train_freq}, horizon={int(self.config.simulator_horizon)}",
+            flush=True,
+        )
 
-        horizon = max(1, int(self.config.simulator_horizon))
         if not self._policy_random_warmup_done:
             random_steps = min(
                 max(0, int(self.config.policy_warmup_random_steps)),
-                max(0, int(self.config.policy_warmup_steps)),
+                total_steps,
             )
             if random_steps > 0:
-                started = time.perf_counter()
-                remaining = random_steps
-                while remaining > 0:
-                    steps = min(horizon, remaining)
-                    stats = self.trainer.warmup_collect(env, random_steps=steps)
-                    self._last_simulated_reward = float(stats.reward_mean)
-                    self._policy_train_steps_completed += steps
-                    remaining -= steps
-                    self._log_warmup_progress("random", random_steps - remaining, random_steps, started)
+                stats = self._trainer_warmup_collect(env, random_steps=random_steps, reset_on_start=True)
+                self._last_simulated_reward = float(stats.reward_mean)
+                self._policy_train_steps_completed += int(stats.steps)
+                self._log_warmup_progress("random", self._policy_train_steps_completed, total_steps, started)
             self._policy_random_warmup_done = True
 
-        steps_remaining = self._policy_steps_this_round()
-        started = time.perf_counter()
-        round_budget = steps_remaining
-        while steps_remaining > 0:
-            steps = min(horizon, steps_remaining)
-            collect_stats = self.trainer.collect(env, steps=steps)
+        while self._policy_train_steps_completed < total_steps:
+            remaining = total_steps - self._policy_train_steps_completed
+            steps = min(train_freq, remaining)
+            collect_stats = self._trainer_collect(env, steps=steps, reset_on_start=False)
             self.trainer.update(gradient_steps=steps)
             self._last_simulated_reward = float(collect_stats.reward_mean)
-            self._policy_train_steps_completed += steps
-            steps_remaining -= steps
-            self._log_warmup_progress(
-                f"round-{int(ctx.round_idx)}",
-                round_budget - steps_remaining,
-                round_budget,
-                started,
-            )
+            self._policy_train_steps_completed += int(collect_stats.steps)
+            if (
+                self._policy_train_steps_completed == total_steps
+                or self._policy_train_steps_completed % max(1000, train_freq) == 0
+            ):
+                self._log_warmup_progress("td3", self._policy_train_steps_completed, total_steps, started)
         self._policy_warmup_done = True
-        if train_end > 0 and int(ctx.round_idx) >= train_end:
-            self._policy_training_frozen = True
+        self._policy_training_frozen = True
+        self._log_warmup_progress("done", self._policy_train_steps_completed, total_steps, started)
+
+    def _trainer_warmup_collect(self, env, *, random_steps: int, reset_on_start: bool):
+        try:
+            return self.trainer.warmup_collect(env, random_steps=random_steps, reset_on_start=reset_on_start)
+        except TypeError:
+            return self.trainer.warmup_collect(env, random_steps=random_steps)
+
+    def _trainer_collect(self, env, *, steps: int, reset_on_start: bool):
+        try:
+            return self.trainer.collect(env, steps=steps, reset_on_start=reset_on_start)
+        except TypeError:
+            return self.trainer.collect(env, steps=steps)
 
     def _policy_steps_this_round(self) -> int:
         configured = int(self.config.policy_train_steps_per_round or 0)
+        total_budget = max(0, int(self.config.policy_warmup_steps or 0))
+        remaining_budget = max(0, total_budget - int(self._policy_train_steps_completed))
+        if remaining_budget <= 0:
+            self._policy_training_frozen = True
+            return 0
         if configured > 0:
-            return configured
+            return min(configured, remaining_budget)
         train_end = max(1, int(self.config.policy_train_end_round or 1))
         total = max(1, int(self.config.policy_warmup_steps or 1))
-        return max(1, total // train_end)
+        return min(max(1, total // train_end), remaining_budget)
 
     def _build_policy_env(self, ctx) -> PaperAttackerPolicyGymEnv:
+        self._remember_policy_initial_weights(ctx)
         defender = self._build_defender(ctx)
         simulator = PaperFLSimulator(
             model_template=ctx.model,
@@ -208,49 +220,13 @@ class PaperRLAttack(SandboxAttack):
             config=self.config,
             fl_config=ctx.fl_config,
             device=ctx.device,
-            eval_loader=ctx.eval_loader,
+            eval_loader=None,
         )
-        return PaperAttackerPolicyGymEnv(simulator, self.config, ctx.defense_type, ctx.old_weights)
+        return PaperAttackerPolicyGymEnv(simulator, self.config, ctx.defense_type, self._policy_initial_weights)
 
-    def _offline_warmup_policy(self, ctx) -> None:
-        env = self._build_policy_env(ctx)
-        self.trainer = self.trainer or build_trainer(self.config)
-        self.trainer.ensure_initialized(env.observation_space, env.action_space)
-        started = time.perf_counter()
-        total_steps = max(0, int(self.config.policy_warmup_steps))
-        completed = 0
-        print(
-            f"RL paper TD3 warmup starting: total_steps={total_steps}, "
-            f"random_steps={int(self.config.policy_warmup_random_steps)}, "
-            f"horizon={int(self.config.simulator_horizon)}",
-            flush=True,
-        )
-        random_steps = min(
-            max(0, int(self.config.policy_warmup_random_steps)),
-            total_steps,
-        )
-        horizon = max(1, int(self.config.simulator_horizon))
-        random_remaining = random_steps
-        while random_remaining > 0:
-            steps = min(horizon, random_remaining)
-            stats = self.trainer.warmup_collect(env, random_steps=steps)
-            completed += steps
-            random_remaining -= steps
-            self._last_simulated_reward = float(stats.reward_mean)
-            self._log_warmup_progress("random", completed, total_steps, started)
-        remaining = max(0, total_steps - random_steps)
-        while remaining > 0:
-            steps = min(horizon, remaining)
-            collect_stats = self.trainer.collect(env, steps=steps)
-            self.trainer.update(gradient_steps=steps)
-            self._last_simulated_reward = float(collect_stats.reward_mean)
-            completed += steps
-            remaining -= steps
-            self._log_warmup_progress("td3", completed, total_steps, started)
-        if remaining == 0 and self.trainer is not None:
-            self._last_simulated_reward = float(getattr(self.trainer, "last_reward_mean", 0.0))
-        self._policy_warmup_done = True
-        self._log_warmup_progress("done", completed, total_steps, started)
+    def _remember_policy_initial_weights(self, ctx) -> None:
+        if self._policy_initial_weights is None:
+            self._policy_initial_weights = [layer.copy() for layer in ctx.old_weights]
 
     def _load_policy_checkpoint(self, ctx, checkpoint_path: str) -> None:
         self.trainer = self.trainer or build_trainer(self.config)

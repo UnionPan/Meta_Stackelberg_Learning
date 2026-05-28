@@ -70,22 +70,22 @@ class AttackerSection:
     rl_backdoor_stealth_norm_cap: bool = False
     rl_algorithm: str = "td3"
     rl_attacker_semantics: str = "paper_clipped_median"
-    rl_policy_lr: float = 3e-4
-    rl_critic_lr: float = 3e-4
-    rl_gamma: float = 0.95
-    rl_replay_capacity: int = 50_000
+    rl_policy_lr: float = 1e-7
+    rl_critic_lr: float = 1e-7
+    rl_gamma: float = 1.0
+    rl_replay_capacity: int = 100_000
     rl_batch_size: int = 256
-    rl_hidden_sizes: tuple[int, ...] = (256, 256)
+    rl_hidden_sizes: tuple[int, ...] = (256, 128)
     rl_exploration_noise: float = 0.1
-    rl_train_freq_steps: int = 1
-    rl_policy_train_steps_per_round: int = 200
+    rl_train_freq_steps: int = 5
+    rl_policy_train_steps_per_round: int = 0
     rl_policy_checkpoint_path: str = ""
     rl_policy_checkpoint_dir: str = ""
     rl_freeze_policy: bool = False
     rl_distribution_dir: str = ""
     rl_distribution_split: str = "train"
     rl_policy_warmup_steps: int = 80_000
-    rl_policy_warmup_random_steps: int = 2_000
+    rl_policy_warmup_random_steps: int = 100
     rl_distribution_growth_mode: str = "paper_growth"
     rl_backdoor_reward_mode: str = "paper"
     rl_backdoor_reward_clean_lambda: float = 0.5
@@ -104,7 +104,7 @@ class AttackerSection:
     rl_inversion_steps: int = 50
     rl_reconstruction_batch_size: int = 8
     rl_policy_train_episodes_per_round: int = 2
-    rl_simulator_horizon: int = 12
+    rl_simulator_horizon: int = 1000
     rl_ppo_real_rollout_steps: int = 64
 
     def default_action_for_type(self) -> tuple[float, ...]:
