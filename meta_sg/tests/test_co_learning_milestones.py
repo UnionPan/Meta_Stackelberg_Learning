@@ -85,6 +85,10 @@ def test_run_m1_episode_populates_attacker_buffer_and_diagnostics():
     assert 1.0 <= result.mean_local_steps <= 49.0
     assert -1.0 <= result.mean_survival <= 1.0
     assert np.isfinite(result.mean_attacker_reward)
+    assert any(
+        transition.info["malicious_cosines_to_benign"]
+        for transition in result.trajectory.transitions
+    )
 
 
 def test_run_m1_episode_can_update_attacker_policy_from_collected_buffer():

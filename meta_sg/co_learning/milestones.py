@@ -208,7 +208,7 @@ class _EnvFixedDefenderPolicy:
 
 
 def _transition_survival(info: dict) -> float:
-    values = getattr(info.get("summary", None), "malicious_cosines_to_benign", None)
+    values = info.get("malicious_cosines_to_benign", [])
     if values:
         return float(np.mean(values))
     return 0.0

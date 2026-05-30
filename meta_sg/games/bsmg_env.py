@@ -155,6 +155,9 @@ class BSMGEnv:
             "evaluated": should_evaluate,
             "defense_decision": defense_decision,
             "attack_decision": attack_decision,
+            "benign_update_norms": list(getattr(summary, "benign_update_norms", [])),
+            "malicious_update_norms": list(getattr(summary, "malicious_update_norms", [])),
+            "malicious_cosines_to_benign": list(getattr(summary, "malicious_cosines_to_benign", [])),
         }
 
         return next_obs, r_D, r_A, done, info

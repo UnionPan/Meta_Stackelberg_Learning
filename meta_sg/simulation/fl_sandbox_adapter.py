@@ -7,12 +7,15 @@ from typing import Optional
 import numpy as np
 
 from fl_sandbox.attacks import create_attack
+from fl_sandbox.attacks.base import SandboxAttack
 from fl_sandbox.config import RunConfig
 from fl_sandbox.federation.runner import MinimalFLRunner
+from fl_sandbox.runtime import RoundContext
 from fl_sandbox.utils import set_parameters
 
 from meta_sg.simulation.interface import FLCoordinator
 from meta_sg.simulation.types import InitialState, RoundSummary, SimulationSnapshot, SimulationSpec, Weights
+from meta_sg.strategies.types import AttackDecision
 
 
 def SandboxConfig(**values) -> RunConfig:
@@ -64,7 +67,7 @@ class FLSandboxCoordinatorAdapter(FLCoordinator):
     ) -> RoundSummary:
         self._round_idx += 1
         attack_name = _attack_name(attack)
-        sandbox_attack = self._build_attack(attack_name, attack_decision)
+        sandbox_attack = self._build_attack(attack, attack_name, attack_decision)
         should_evaluate = evaluate or self._last_summary is None
         summary = self.runner.run_round(
             self._round_idx,
@@ -98,7 +101,9 @@ class FLSandboxCoordinatorAdapter(FLCoordinator):
         self.runner.current_weights = [w.copy() for w in snapshot.weights]
         set_parameters(self.runner.model, self.runner.current_weights)
 
-    def _build_attack(self, attack_name: str, attack_decision):
+    def _build_attack(self, attack, attack_name: str, attack_decision):
+        if _is_meta_sg_attack_strategy(attack):
+            return MetaSGSandboxAttack(attack, attack_decision)
         cfg = _attack_config_from_sandbox(self.config, attack_name, attack_decision)
         return create_attack(cfg)
 
@@ -131,6 +136,29 @@ def _attack_name(attack) -> str:
     if attack_type is not None:
         return str(getattr(attack_type, "name", "clean")).lower()
     return str(getattr(attack, "name", "clean")).lower()
+
+
+class MetaSGSandboxAttack(SandboxAttack):
+    """Bridge a ``meta_sg`` AttackStrategy into ``fl_sandbox`` runner calls."""
+
+    def __init__(self, strategy, decision: AttackDecision) -> None:
+        self.strategy = strategy
+        self.decision = decision
+        self.attack_type = str(getattr(getattr(strategy, "attack_type", None), "name", "meta_sg"))
+        self.name = self.attack_type
+
+    def execute(self, ctx: RoundContext, attacker_action: Optional[np.ndarray] = None) -> list[Weights]:
+        del attacker_action
+        return self.strategy.execute(
+            ctx.old_weights,
+            ctx.benign_weights,
+            self.decision,
+            num_malicious=self.selected_attacker_count(ctx),
+        )
+
+
+def _is_meta_sg_attack_strategy(attack) -> bool:
+    return attack is not None and hasattr(attack, "execute") and hasattr(attack, "attack_type")
 
 
 def _attack_config_from_sandbox(config: RunConfig, attack_name: str, attack_decision) -> SimpleNamespace:

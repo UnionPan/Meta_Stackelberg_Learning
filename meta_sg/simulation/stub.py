@@ -139,6 +139,7 @@ class StubCoordinator(FLCoordinator):
             clean_loss=1.0 - clean_acc,
             attack_name=attack.attack_type.name if attack else "clean",
             defense_name=defense.__class__.__name__ if defense else "none",
+            **_update_diagnostics(old_weights, benign_weights, malicious_weights),
         )
 
     @property
@@ -208,3 +209,34 @@ def _fedavg(weights_list: List[Weights]) -> Weights:
         np.mean([ws[i] for ws in weights_list], axis=0)
         for i in range(len(weights_list[0]))
     ]
+
+
+def _update_diagnostics(
+    old_weights: Weights,
+    benign_weights: List[Weights],
+    malicious_weights: List[Weights],
+) -> dict:
+    old_vec = _weights_to_vec(old_weights)
+    benign_updates = [_weights_to_vec(weights) - old_vec for weights in benign_weights]
+    malicious_updates = [_weights_to_vec(weights) - old_vec for weights in malicious_weights]
+    benign_norms = [float(np.linalg.norm(update)) for update in benign_updates]
+    malicious_norms = [float(np.linalg.norm(update)) for update in malicious_updates]
+    if benign_updates:
+        benign_mean = np.mean(np.stack(benign_updates), axis=0)
+    else:
+        benign_mean = np.zeros_like(old_vec)
+    benign_norm = float(np.linalg.norm(benign_mean))
+    malicious_cosines = []
+    for update in malicious_updates:
+        denom = float(np.linalg.norm(update) * benign_norm)
+        cosine = float(np.dot(update, benign_mean) / denom) if denom > 1e-12 else 0.0
+        malicious_cosines.append(float(np.clip(cosine, -1.0, 1.0)))
+    return {
+        "benign_update_norms": benign_norms,
+        "malicious_update_norms": malicious_norms,
+        "malicious_cosines_to_benign": malicious_cosines,
+    }
+
+
+def _weights_to_vec(weights: Weights) -> np.ndarray:
+    return np.concatenate([w.ravel() for w in weights])
