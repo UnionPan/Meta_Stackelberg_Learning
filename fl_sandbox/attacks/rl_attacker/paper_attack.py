@@ -197,19 +197,6 @@ class PaperRLAttack(SandboxAttack):
         except TypeError:
             return self.trainer.collect(env, steps=steps)
 
-    def _policy_steps_this_round(self) -> int:
-        configured = int(self.config.policy_train_steps_per_round or 0)
-        total_budget = max(0, int(self.config.policy_warmup_steps or 0))
-        remaining_budget = max(0, total_budget - int(self._policy_train_steps_completed))
-        if remaining_budget <= 0:
-            self._policy_training_frozen = True
-            return 0
-        if configured > 0:
-            return min(configured, remaining_budget)
-        train_end = max(1, int(self.config.policy_train_end_round or 1))
-        total = max(1, int(self.config.policy_warmup_steps or 1))
-        return min(max(1, total // train_end), remaining_budget)
-
     def _build_policy_env(self, ctx) -> PaperAttackerPolicyGymEnv:
         self._remember_policy_initial_weights(ctx)
         defender = self._build_defender(ctx)
