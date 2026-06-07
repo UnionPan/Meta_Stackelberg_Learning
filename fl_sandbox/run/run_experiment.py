@@ -165,6 +165,16 @@ def _build_parser(
         **_default_kwargs(defaults.attacker.rl_train_freq_steps, use_defaults),
     )
     parser.add_argument(
+        '--rl_reward_transform',
+        choices=('raw', 'tanh_delta'),
+        **_default_kwargs(defaults.attacker.rl_reward_transform, use_defaults),
+    )
+    parser.add_argument(
+        '--rl_reward_scale',
+        type=float,
+        **_default_kwargs(defaults.attacker.rl_reward_scale, use_defaults),
+    )
+    parser.add_argument(
         '--rl_policy_train_steps_per_round',
         type=int,
         **_default_kwargs(defaults.attacker.rl_policy_train_steps_per_round, use_defaults),
@@ -207,6 +217,16 @@ def _build_parser(
         '--rl_policy_warmup_random_steps',
         type=int,
         **_default_kwargs(defaults.attacker.rl_policy_warmup_random_steps, use_defaults),
+    )
+    parser.add_argument(
+        '--rl_policy_warmup_checkpoint_interval',
+        type=int,
+        **_default_kwargs(defaults.attacker.rl_policy_warmup_checkpoint_interval, use_defaults),
+    )
+    parser.add_argument(
+        '--rl_policy_warmup_checkpoint_dir',
+        type=str,
+        **_default_kwargs(defaults.attacker.rl_policy_warmup_checkpoint_dir, use_defaults),
     )
     parser.add_argument(
         '--rl_distribution_growth_mode',

@@ -219,7 +219,7 @@ class MinimalFLRunner:
                 num_byzantine=num_byzantine,
             ) or {}
 
-        update_stats = summarize_round_updates(old_weights, benign_weights, malicious_weights)
+        update_stats = summarize_round_updates(old_weights, self.current_weights, benign_weights, malicious_weights)
         return build_round_summary(
             state=round_state,
             attack_name=attack_name,
@@ -231,6 +231,27 @@ class MinimalFLRunner:
             update_stats=update_stats,
             attack_metrics=attack_metrics,
         )
+
+    def evaluate_weights(self, weights: List[np.ndarray]) -> dict[str, float]:
+        return self.evaluate_model(self.model, weights)
+
+    def evaluate_model(self, model: torch.nn.Module, weights: List[np.ndarray]) -> dict[str, float]:
+        original_weights = [layer.copy() for layer in self.current_weights]
+        try:
+            eval_weights = [layer.copy() for layer in weights]
+            set_parameters(self.model, eval_weights)
+            clean_loss, clean_acc = test_model(model, self.test_loader, device=self.device)
+            if self.poisoned_eval_loader is not None:
+                _, backdoor_acc = test_model(model, self.poisoned_eval_loader, device=self.device)
+            else:
+                backdoor_acc = float("nan")
+            return {
+                "clean_loss": float(clean_loss),
+                "clean_acc": float(clean_acc),
+                "backdoor_acc": float(backdoor_acc),
+            }
+        finally:
+            set_parameters(self.model, original_weights)
 
     def run_many_rounds(
         self,

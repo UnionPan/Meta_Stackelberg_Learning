@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 import time
 from typing import Optional
 
@@ -65,6 +66,7 @@ class PaperRLAttack(SandboxAttack):
         self._last_action_metrics: dict[str, float] = {}
         self._last_observation_metrics: dict[str, float] = {}
         self._policy_initial_weights: Optional[Weights] = None
+        self._saved_policy_warmup_steps: set[int] = set()
 
     def observe_round(self, ctx) -> None:
         self._last_ctx = ctx
@@ -181,9 +183,32 @@ class PaperRLAttack(SandboxAttack):
                 or self._policy_train_steps_completed % max(1000, train_freq) == 0
             ):
                 self._log_warmup_progress("td3", self._policy_train_steps_completed, total_steps, started)
+            self._maybe_save_policy_warmup_checkpoint(self._policy_train_steps_completed)
         self._policy_warmup_done = True
         self._policy_training_frozen = True
+        self._maybe_save_policy_warmup_checkpoint(self._policy_train_steps_completed, force=True)
         self._log_warmup_progress("done", self._policy_train_steps_completed, total_steps, started)
+
+    def _maybe_save_policy_warmup_checkpoint(self, completed_steps: int, *, force: bool = False) -> None:
+        if self.trainer is None or not hasattr(self.trainer, "save"):
+            return
+        directory = str(getattr(self.config, "policy_warmup_checkpoint_dir", "") or "")
+        if not directory:
+            return
+        interval = max(0, int(getattr(self.config, "policy_warmup_checkpoint_interval", 0) or 0))
+        completed_steps = max(0, int(completed_steps))
+        if completed_steps <= 0:
+            return
+        should_save = bool(force)
+        if interval > 0 and completed_steps % interval == 0:
+            should_save = True
+        if not should_save or completed_steps in self._saved_policy_warmup_steps:
+            return
+        path = Path(directory) / f"rl_policy_step_{completed_steps:06d}.pt"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self.trainer.save(str(path))
+        self._saved_policy_warmup_steps.add(completed_steps)
+        print(f"RL paper TD3 warmup checkpoint saved: {path}", flush=True)
 
     def _trainer_warmup_collect(self, env, *, random_steps: int, reset_on_start: bool):
         try:

@@ -56,6 +56,19 @@ def decode_paper_action(action: np.ndarray) -> tuple[float, int]:
     return max(0.1, gamma), max(1, local_steps)
 
 
+def transform_paper_reward(loss_after: float, loss_before: float, config: RLAttackerConfig) -> float:
+    """Map raw clean-loss delta into the reward used for policy learning."""
+
+    raw_delta = float(loss_after) - float(loss_before)
+    transform = str(getattr(config, "reward_transform", "raw") or "raw").lower()
+    if transform == "raw":
+        return raw_delta
+    if transform == "tanh_delta":
+        scale = max(1e-8, abs(float(getattr(config, "reward_scale", 10.0) or 10.0)))
+        return float(np.tanh(raw_delta / scale))
+    raise ValueError(f"Unknown paper RL reward transform: {transform}")
+
+
 class PaperFLSimulator:
     """Explicit simulator for the paper RL attacker, sourced only from Phase 1 data."""
 
@@ -102,7 +115,7 @@ class PaperFLSimulator:
         updates = benign_weights + malicious_weights
         self.current_weights = self.defender.aggregate(old_weights, updates, trusted_weights=None) if updates else old_weights
         new_loss, new_acc = self._evaluate_metrics(self.current_weights)
-        reward = float(new_loss - self.current_loss)
+        reward = transform_paper_reward(new_loss, self.current_loss, self.config)
         self.current_loss = new_loss
         self.current_acc = new_acc
         self.round_idx += 1

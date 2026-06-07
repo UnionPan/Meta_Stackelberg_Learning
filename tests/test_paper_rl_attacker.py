@@ -14,7 +14,11 @@ from fl_sandbox.attacks.rl_attacker import RLAttack
 from fl_sandbox.attacks.rl_attacker import paper_attack as paper_attack_module
 from fl_sandbox.attacks.rl_attacker.config import RLAttackerConfig
 from fl_sandbox.attacks.rl_attacker.paper_attack import PaperRLAttack
-from fl_sandbox.attacks.rl_attacker.simulator.paper_env import PaperFLSimulator, decode_paper_action
+from fl_sandbox.attacks.rl_attacker.simulator.paper_env import (
+    PaperFLSimulator,
+    decode_paper_action,
+    transform_paper_reward,
+)
 from fl_sandbox.config import RunConfig
 from fl_sandbox.run.run_experiment import parse_args
 from fl_sandbox.runtime import RoundContext
@@ -81,6 +85,25 @@ def test_cli_maps_distribution_dir_to_config(tmp_path):
     assert config.runtime.start_round_idx == 101
 
 
+def test_cli_maps_paper_reward_transform_to_config(tmp_path):
+    args = parse_args(
+        [
+            "--attack_type",
+            "rl",
+            "--distribution_dir",
+            str(tmp_path),
+            "--rl_reward_transform",
+            "tanh_delta",
+            "--rl_reward_scale",
+            "10.0",
+        ]
+    )
+    config = RunConfig.from_flat_dict(vars(args))
+
+    assert config.attacker.rl_reward_transform == "tanh_delta"
+    assert config.attacker.rl_reward_scale == pytest.approx(10.0)
+
+
 def test_rl_attack_requires_phase1_distribution_dir():
     config = RunConfig.from_flat_dict({"attack_type": "rl"})
 
@@ -132,6 +155,26 @@ def test_paper_action_decoding_matches_clipped_median_formula():
 
     assert gamma == pytest.approx(15.0)
     assert local_steps == 25
+
+
+def test_paper_reward_transform_defaults_to_raw_loss_delta():
+    config = RLAttackerConfig()
+
+    assert transform_paper_reward(12.0, 2.0, config) == pytest.approx(10.0)
+
+
+def test_paper_reward_transform_tanh_delta_scales_and_bounds_reward():
+    config = RLAttackerConfig(reward_transform="tanh_delta", reward_scale=10.0)
+
+    assert transform_paper_reward(12.0, 2.0, config) == pytest.approx(np.tanh(1.0))
+    assert transform_paper_reward(1002.0, 2.0, config) == pytest.approx(1.0)
+    assert transform_paper_reward(-998.0, 2.0, config) == pytest.approx(-1.0)
+
+
+def test_paper_rl_attacker_accepts_paper_norm_trimmed_mean_defense():
+    config = RLAttackerConfig()
+
+    config.validate_defense("paper_norm_trimmed_mean")
 
 
 def test_policy_simulator_resets_to_first_initial_weights_not_latest_round(tmp_path):
@@ -276,6 +319,61 @@ def test_paper_rl_runs_author_style_offline_train_once(tmp_path, monkeypatch):
     }
     assert attack._policy_warmup_done is True
     assert attack._policy_training_frozen is True
+
+
+def test_paper_policy_training_saves_step_checkpoints(tmp_path, monkeypatch):
+    _write_distribution(tmp_path)
+    checkpoint_dir = tmp_path / "checkpoints"
+    model = nn.Sequential(nn.Flatten(), nn.Linear(28 * 28, 2))
+    weights = [value.detach().numpy().copy() for value in model.state_dict().values()]
+    run_config = RunConfig.from_flat_dict(
+        {
+            "attack_type": "rl",
+            "defense_type": "clipped_median",
+            "num_clients": 2,
+            "num_attackers": 1,
+            "subsample_rate": 1.0,
+            "rl_distribution_dir": str(tmp_path),
+            "rl_policy_warmup_steps": 10,
+            "rl_policy_warmup_random_steps": 0,
+            "rl_policy_warmup_checkpoint_interval": 5,
+            "rl_policy_warmup_checkpoint_dir": str(checkpoint_dir),
+            "rl_train_freq_steps": 5,
+            "rl_batch_size": 2,
+            "rl_hidden_sizes": [8],
+            "rl_replay_capacity": 32,
+        }
+    )
+    attack = create_attack(run_config.attacker)
+    saved = []
+
+    class FakeTrainer:
+        def ensure_initialized(self, obs_space, action_space):
+            pass
+
+        def warmup_collect(self, env, random_steps):
+            return SimpleNamespace(steps=random_steps, reward_mean=0.0)
+
+        def collect(self, env, steps):
+            return SimpleNamespace(steps=steps, reward_mean=0.0)
+
+        def update(self, gradient_steps):
+            pass
+
+        def save(self, path):
+            saved.append(path)
+
+        def diagnostics(self):
+            return {}
+
+    monkeypatch.setattr(paper_attack_module, "build_trainer", lambda config: FakeTrainer())
+
+    attack.observe_round(_ctx(1, model, weights, run_config))
+
+    assert saved == [
+        str(checkpoint_dir / "rl_policy_step_000005.pt"),
+        str(checkpoint_dir / "rl_policy_step_000010.pt"),
+    ]
 
 
 def test_paper_policy_training_uses_proxy_eval_not_real_eval_loader(tmp_path):

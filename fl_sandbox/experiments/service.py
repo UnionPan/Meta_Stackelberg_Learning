@@ -371,6 +371,7 @@ class ExperimentCheckpointManager:
         self.attack = attack
         self.model = model
         self.checkpoint_dir = output_dir / "checkpoints"
+        self._frozen_policy_saved = False
 
     def maybe_save(self, *, round_idx: int) -> list[Path]:
         if self.run_config.attacker.type not in {"rl", "rl_backdoor"}:
@@ -400,6 +401,18 @@ class ExperimentCheckpointManager:
         if trainer is None or not hasattr(trainer, "save"):
             return []
 
+        if self._uses_frozen_paper_rl_policy():
+            if self._frozen_policy_saved:
+                return []
+            latest_path = self.checkpoint_dir / "rl_policy_latest.pt"
+            warmup_path = self.checkpoint_dir / "rl_policy_after_warmup.pt"
+            paths = [latest_path, warmup_path]
+            for path in paths:
+                trainer.save(str(path))
+                self._annotate_rl_policy_checkpoint(path, round_idx)
+            self._frozen_policy_saved = True
+            return paths
+
         latest_path = self.checkpoint_dir / "rl_policy_latest.pt"
         round_path = self.checkpoint_dir / f"rl_policy_round_{int(round_idx):06d}.pt"
         paths = [latest_path, round_path]
@@ -407,6 +420,14 @@ class ExperimentCheckpointManager:
             trainer.save(str(path))
             self._annotate_rl_policy_checkpoint(path, round_idx)
         return paths
+
+    def _uses_frozen_paper_rl_policy(self) -> bool:
+        attacker = self.run_config.attacker
+        return (
+            attacker.type == "rl"
+            and bool(attacker.rl_freeze_policy)
+            and int(attacker.rl_policy_train_steps_per_round or 0) == 0
+        )
 
     def _annotate_rl_policy_checkpoint(self, path: Path, round_idx: int) -> None:
         try:
@@ -569,6 +590,8 @@ def build_payload(
         "rl_hidden_sizes": list(run_config.attacker.rl_hidden_sizes),
         "rl_exploration_noise": run_config.attacker.rl_exploration_noise,
         "rl_train_freq_steps": run_config.attacker.rl_train_freq_steps,
+        "rl_reward_transform": run_config.attacker.rl_reward_transform,
+        "rl_reward_scale": run_config.attacker.rl_reward_scale,
         "rl_policy_train_steps_per_round": run_config.attacker.rl_policy_train_steps_per_round,
         "rl_policy_checkpoint_path": run_config.attacker.rl_policy_checkpoint_path,
         "rl_policy_checkpoint_dir": run_config.attacker.rl_policy_checkpoint_dir,
@@ -707,11 +730,17 @@ def execute_experiment(
     from fl_sandbox.federation.runner import MinimalFLRunner
 
     run_config = run_config.normalize()
-    attack = build_attack(run_config.attacker)
     output_dir = Path(output_dir or default_output_dir(run_config.attacker, run_config.defender, run_config.data))
     tb_dir = Path(tb_dir or default_tb_dir(run_config.attacker, run_config.defender, run_config.data))
     output_dir.mkdir(parents=True, exist_ok=True)
     tb_dir.mkdir(parents=True, exist_ok=True)
+    if (
+        run_config.attacker.type == "rl"
+        and int(run_config.attacker.rl_policy_warmup_checkpoint_interval or 0) > 0
+        and not run_config.attacker.rl_policy_warmup_checkpoint_dir
+    ):
+        run_config.attacker.rl_policy_warmup_checkpoint_dir = str(output_dir / "checkpoints")
+    attack = build_attack(run_config.attacker)
 
     live_config_payload = {
         "dataset": run_config.data.dataset,
@@ -737,6 +766,8 @@ def execute_experiment(
         "rl_policy_train_end_round": run_config.attacker.rl_policy_train_end_round,
         "rl_policy_warmup_steps": run_config.attacker.rl_policy_warmup_steps,
         "rl_policy_warmup_random_steps": run_config.attacker.rl_policy_warmup_random_steps,
+        "rl_policy_warmup_checkpoint_interval": run_config.attacker.rl_policy_warmup_checkpoint_interval,
+        "rl_policy_warmup_checkpoint_dir": run_config.attacker.rl_policy_warmup_checkpoint_dir,
         "rl_backdoor_stealth_norm_cap": run_config.attacker.rl_backdoor_stealth_norm_cap,
         "rl_backdoor_reward_mode": run_config.attacker.rl_backdoor_reward_mode,
         "rl_backdoor_reward_clean_lambda": run_config.attacker.rl_backdoor_reward_clean_lambda,
@@ -749,6 +780,8 @@ def execute_experiment(
         "rl_simulator_horizon": run_config.attacker.rl_simulator_horizon,
         "rl_ppo_real_rollout_steps": run_config.attacker.rl_ppo_real_rollout_steps,
         "rl_attacker_semantics": run_config.attacker.rl_attacker_semantics,
+        "rl_reward_transform": run_config.attacker.rl_reward_transform,
+        "rl_reward_scale": run_config.attacker.rl_reward_scale,
         "rl_policy_checkpoint_path": run_config.attacker.rl_policy_checkpoint_path,
         "rl_policy_checkpoint_dir": run_config.attacker.rl_policy_checkpoint_dir,
         "rl_freeze_policy": run_config.attacker.rl_freeze_policy,

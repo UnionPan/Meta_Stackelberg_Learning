@@ -96,6 +96,7 @@ class RoundSummary:
     benign_update_norms: List[float] = field(default_factory=list)
     malicious_update_norms: List[float] = field(default_factory=list)
     malicious_cosines_to_benign: List[float] = field(default_factory=list)
+    malicious_cosines_to_aggregate: List[float] = field(default_factory=list)
     attack_metrics: Dict[str, float] = field(default_factory=dict)
 
 
@@ -162,6 +163,7 @@ class RoundUpdateStats:
     benign_update_norms: List[float]
     malicious_update_norms: List[float]
     malicious_cosines_to_benign: List[float]
+    malicious_cosines_to_aggregate: List[float]
 
 
 def build_round_context(
@@ -215,21 +217,30 @@ def build_round_context(
 
 def summarize_round_updates(
     old_weights: Weights,
+    aggregated_weights: Weights,
     benign_weights: List[Weights],
     malicious_weights: List[Weights],
 ) -> RoundUpdateStats:
     """Calculate round-level update stats in a single runtime helper."""
 
-    from fl_sandbox.runtime.metrics import summarize_norms, update_cosine_to_benign_mean
+    from fl_sandbox.runtime.metrics import cosine_similarity, summarize_norms, update_cosine_to_benign_mean
+    from fl_sandbox.utils.weights import weights_to_vector
 
     malicious_cosines = [
         update_cosine_to_benign_mean(old_weights, weights, benign_weights)
         for weights in malicious_weights
     ] if benign_weights and malicious_weights else []
+    old_vec = weights_to_vector(old_weights)
+    aggregate_delta = weights_to_vector(aggregated_weights) - old_vec
+    malicious_aggregate_cosines = [
+        cosine_similarity(weights_to_vector(weights) - old_vec, aggregate_delta)
+        for weights in malicious_weights
+    ] if malicious_weights else []
     return RoundUpdateStats(
         benign_update_norms=summarize_norms(old_weights, benign_weights),
         malicious_update_norms=summarize_norms(old_weights, malicious_weights),
         malicious_cosines_to_benign=malicious_cosines,
+        malicious_cosines_to_aggregate=malicious_aggregate_cosines,
     )
 
 
@@ -262,6 +273,7 @@ def build_round_summary(
         benign_update_norms=update_stats.benign_update_norms,
         malicious_update_norms=update_stats.malicious_update_norms,
         malicious_cosines_to_benign=update_stats.malicious_cosines_to_benign,
+        malicious_cosines_to_aggregate=update_stats.malicious_cosines_to_aggregate,
         attack_metrics=attack_metrics or {},
     )
 

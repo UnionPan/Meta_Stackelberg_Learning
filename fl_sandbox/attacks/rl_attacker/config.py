@@ -22,6 +22,8 @@ class RLAttackerConfig:
     distribution_split: str = "train"
     policy_warmup_steps: int = 80_000
     policy_warmup_random_steps: int = 100
+    policy_warmup_checkpoint_interval: int = 0
+    policy_warmup_checkpoint_dir: str = ""
     distribution_growth_mode: str = "paper_growth"
     distribution_steps: int = 10
     attack_start_round: int = 10
@@ -72,6 +74,8 @@ class RLAttackerConfig:
     reward_action_smoothness_weight: float = 0.01
     reward_action_saturation_weight: float = 0.1
     reward_template_switch_weight: float = 0.1
+    reward_transform: str = "raw"
+    reward_scale: float = 10.0
     robust_gamma_center: float = 5.0
     robust_gamma_scale: float = 4.9
     robust_steps_center: float = 11.0
@@ -170,8 +174,11 @@ class RLAttackerConfig:
 
     def validate_defense(self, defense_type: str) -> None:
         defense = defense_type.lower()
-        if defense != "clipped_median":
-            raise ValueError("paper-aligned RL attacker only supports defense_type='clipped_median'")
+        if defense not in {"clipped_median", "paper_norm_trimmed_mean"}:
+            raise ValueError(
+                "paper-aligned RL attacker only supports defense_type='clipped_median' "
+                "or 'paper_norm_trimmed_mean'"
+            )
 
     def action_bounds(self, defense_type: str) -> tuple[np.ndarray, np.ndarray]:
         dim = self.action_dim(defense_type)

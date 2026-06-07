@@ -78,6 +78,8 @@ class AttackerSection:
     rl_hidden_sizes: tuple[int, ...] = (256, 128)
     rl_exploration_noise: float = 0.1
     rl_train_freq_steps: int = 5
+    rl_reward_transform: str = "raw"
+    rl_reward_scale: float = 10.0
     rl_policy_train_steps_per_round: int = 0
     rl_policy_checkpoint_path: str = ""
     rl_policy_checkpoint_dir: str = ""
@@ -86,6 +88,8 @@ class AttackerSection:
     rl_distribution_split: str = "train"
     rl_policy_warmup_steps: int = 80_000
     rl_policy_warmup_random_steps: int = 100
+    rl_policy_warmup_checkpoint_interval: int = 0
+    rl_policy_warmup_checkpoint_dir: str = ""
     rl_distribution_growth_mode: str = "paper_growth"
     rl_backdoor_reward_mode: str = "paper"
     rl_backdoor_reward_clean_lambda: float = 0.5
@@ -299,6 +303,8 @@ class RunConfig:
             "rl_hidden_sizes": list(self.attacker.rl_hidden_sizes),
             "rl_exploration_noise": self.attacker.rl_exploration_noise,
             "rl_train_freq_steps": self.attacker.rl_train_freq_steps,
+            "rl_reward_transform": self.attacker.rl_reward_transform,
+            "rl_reward_scale": self.attacker.rl_reward_scale,
             "rl_policy_train_steps_per_round": self.attacker.rl_policy_train_steps_per_round,
             "rl_policy_checkpoint_path": self.attacker.rl_policy_checkpoint_path,
             "rl_policy_checkpoint_dir": self.attacker.rl_policy_checkpoint_dir,
@@ -307,6 +313,8 @@ class RunConfig:
             "rl_distribution_split": self.attacker.rl_distribution_split,
             "rl_policy_warmup_steps": self.attacker.rl_policy_warmup_steps,
             "rl_policy_warmup_random_steps": self.attacker.rl_policy_warmup_random_steps,
+            "rl_policy_warmup_checkpoint_interval": self.attacker.rl_policy_warmup_checkpoint_interval,
+            "rl_policy_warmup_checkpoint_dir": self.attacker.rl_policy_warmup_checkpoint_dir,
             "rl_distribution_growth_mode": self.attacker.rl_distribution_growth_mode,
             "rl_backdoor_reward_mode": self.attacker.rl_backdoor_reward_mode,
             "rl_backdoor_reward_clean_lambda": self.attacker.rl_backdoor_reward_clean_lambda,
@@ -397,6 +405,8 @@ def _set_flat_value(config: RunConfig, key: str, value: Any) -> None:
         "rl_hidden_sizes": (config.attacker, "rl_hidden_sizes"),
         "rl_exploration_noise": (config.attacker, "rl_exploration_noise"),
         "rl_train_freq_steps": (config.attacker, "rl_train_freq_steps"),
+        "rl_reward_transform": (config.attacker, "rl_reward_transform"),
+        "rl_reward_scale": (config.attacker, "rl_reward_scale"),
         "rl_policy_train_steps_per_round": (config.attacker, "rl_policy_train_steps_per_round"),
         "rl_policy_checkpoint_path": (config.attacker, "rl_policy_checkpoint_path"),
         "rl_policy_checkpoint_dir": (config.attacker, "rl_policy_checkpoint_dir"),
@@ -407,6 +417,8 @@ def _set_flat_value(config: RunConfig, key: str, value: Any) -> None:
         "rl_distribution_split": (config.attacker, "rl_distribution_split"),
         "rl_policy_warmup_steps": (config.attacker, "rl_policy_warmup_steps"),
         "rl_policy_warmup_random_steps": (config.attacker, "rl_policy_warmup_random_steps"),
+        "rl_policy_warmup_checkpoint_interval": (config.attacker, "rl_policy_warmup_checkpoint_interval"),
+        "rl_policy_warmup_checkpoint_dir": (config.attacker, "rl_policy_warmup_checkpoint_dir"),
         "rl_distribution_growth_mode": (config.attacker, "rl_distribution_growth_mode"),
         "rl_backdoor_reward_mode": (config.attacker, "rl_backdoor_reward_mode"),
         "rl_backdoor_reward_clean_lambda": (config.attacker, "rl_backdoor_reward_clean_lambda"),
