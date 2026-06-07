@@ -20,7 +20,7 @@ from meta_sg.strategies.attacks.adaptive import AdaptiveAttackStrategy
 from meta_sg.strategies.attacks.base import AttackStrategy
 from meta_sg.strategies.attacks.fixed import build_fixed_attack
 from meta_sg.strategies.defenses.paper import PaperDefenseStrategy
-from meta_sg.strategies.types import AttackType
+from meta_sg.strategies.types import AttackDecision, AttackType
 
 
 @dataclass
@@ -106,6 +106,7 @@ class AttackTaskRunner:
         # Phase 1: collect trajectory, then l TD3 gradient updates.
         traj = collector.collect(self.meta_config.H, seed=seed_base)
         action_diag = _action_diagnostics(traj)
+        attacker_action_diag = _attacker_action_diagnostics(traj)
         env_diag    = _env_diagnostics(traj)
         reward_sum_D += sum(t.defender_reward for t in traj.transitions)
         reward_sum_A += sum(t.attacker_reward for t in traj.transitions)
@@ -129,6 +130,12 @@ class AttackTaskRunner:
                 traj2 = collector.collect(self.meta_config.H, seed=seed_base + 10_000)
                 action_diag = _merge_weighted(action_diag, _action_diagnostics(traj2),
                                               trajectory_count, 1)
+                attacker_action_diag = _merge_weighted(
+                    attacker_action_diag,
+                    _attacker_action_diagnostics(traj2),
+                    trajectory_count,
+                    1,
+                )
                 env_diag    = _merge_weighted(env_diag, _env_diagnostics(traj2),
                                               trajectory_count, 1)
                 reward_sum_D += sum(t.defender_reward for t in traj2.transitions)
@@ -164,6 +171,7 @@ class AttackTaskRunner:
                 "buffer_size": len(local_def_buffer),
                 "attacker_buffer_size": len(self.attacker_buffers[attack_type.name]),
                 **action_diag,
+                **attacker_action_diag,
                 **env_diag,
             },
         )
@@ -203,6 +211,24 @@ def _action_diagnostics(traj: Trajectory) -> Dict[str, float]:
         "defender_action_std_0": float(raw_std[0]),
         "defender_action_std_1": float(raw_std[1]),
         "defender_action_std_2": float(raw_std[2]),
+    }
+
+
+def _attacker_action_diagnostics(traj: Trajectory) -> Dict[str, float]:
+    """Per-trajectory decoded adaptive-attacker action statistics."""
+    if not traj.transitions:
+        return {}
+    actions = np.stack([tr.attacker_action for tr in traj.transitions], axis=0)
+    raw_mean = np.mean(actions, axis=0)
+    raw_std = np.std(actions, axis=0)
+    decision = AttackDecision.from_raw(raw_mean)
+    return {
+        "attacker_gamma": float(decision.gamma_scale),
+        "attacker_local_steps": float(decision.local_steps),
+        "attacker_lambda_stealth": float(decision.lambda_stealth),
+        "attacker_action_std_0": float(raw_std[0]) if raw_std.shape[0] > 0 else 0.0,
+        "attacker_action_std_1": float(raw_std[1]) if raw_std.shape[0] > 1 else 0.0,
+        "attacker_action_std_2": float(raw_std[2]) if raw_std.shape[0] > 2 else 0.0,
     }
 
 

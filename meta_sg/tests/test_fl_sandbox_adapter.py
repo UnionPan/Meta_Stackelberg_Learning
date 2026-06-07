@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from meta_sg.simulation.fl_sandbox_adapter import MetaSGSandboxAttack
+from meta_sg.simulation.fl_sandbox_adapter import FLSandboxCoordinatorAdapter, MetaSGSandboxAttack
 from meta_sg.strategies.attacks.fixed import IPMAttack
 from meta_sg.strategies.types import AttackDecision
 
@@ -23,3 +23,22 @@ def test_meta_sg_sandbox_attack_wraps_strategy_execute():
 
     assert len(malicious) == 2
     assert not np.allclose(malicious[0][0], old_weights[0])
+
+
+def test_fl_sandbox_adapter_evaluate_model_delegates_to_runner():
+    adapter = object.__new__(FLSandboxCoordinatorAdapter)
+    adapter.runner = SimpleNamespace(
+        evaluate_model=lambda model, weights: {
+            "clean_loss": 1.25,
+            "clean_acc": 0.5,
+            "backdoor_acc": 0.75,
+        }
+    )
+
+    metrics = adapter.evaluate_model("model", ["weights"])
+
+    assert metrics == {
+        "clean_loss": 1.25,
+        "clean_acc": 0.5,
+        "backdoor_acc": 0.75,
+    }

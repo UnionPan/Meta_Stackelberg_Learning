@@ -27,11 +27,17 @@ from meta_sg.strategies.types import AttackDecision, AttackType, DefenseDecision
 class BSMGConfig:
     horizon: int = 200                # H in paper
     num_tail_layers: int = 2          # layers to include in observation
+    alpha_min: float = 0.0            # min defender norm bound
     alpha_max: float = 5.0            # max defender norm bound
+    beta_min: float = 0.0             # min trimmed mean ratio
     beta_max: float = 0.45            # max trimmed mean ratio
+    eps_min: float = 1.0              # min NeuroClip clip range
     eps_max: float = 10.0             # max NeuroClip clip range
     use_neuroclip: bool = True        # True=NeuroClip, False=Prun
     lambda_bd: float = 1.0            # backdoor penalty in defender reward
+    action_prior_weight: float = 0.0  # penalty for drifting from mid-range defense
+    relative_alpha: bool = False      # decode alpha as fraction of observed update norm scale
+    reward_mode: str = "accuracy"     # "accuracy" or paper-aligned "loss"
     normalise_obs: bool = True        # z-score normalise observations
     eval_every: int = 1               # run expensive full eval every N FL rounds
     history_len: int = 0              # append last-k round feedback/action features
@@ -66,6 +72,7 @@ class BSMGEnv:
         self._obs: Optional[np.ndarray] = None
         self._obs_dim: Optional[int] = None
         self._history: list[np.ndarray] = []
+        self._last_update_norm_scale = float(self.config.alpha_max)
 
     # ------------------------------------------------------------------
     # Gym-like interface
@@ -99,8 +106,11 @@ class BSMGEnv:
         # Decode actions -> decisions
         defense_decision = DefenseDecision.from_raw(
             defender_action,
-            alpha_max=self.config.alpha_max,
+            alpha_min=self.config.alpha_min,
+            alpha_max=self._alpha_max_for_round(),
+            beta_min=self.config.beta_min,
             beta_max=self.config.beta_max,
+            eps_min=self.config.eps_min,
             eps_max=self.config.eps_max,
             use_neuroclip=self.config.use_neuroclip,
         )
@@ -131,7 +141,8 @@ class BSMGEnv:
         # Reward-only summary on post-training weights
         eval_summary = _patch_summary_with_eval(summary, w_eval)
 
-        r_D = defender_reward(eval_summary, lambda_bd=self.config.lambda_bd)
+        action_penalty = self._action_prior_penalty(defender_action)
+        r_D = self._defender_reward(eval_summary) - action_penalty
         r_A = attacker_reward(eval_summary, self.attack_type)
         self._append_history(
             defender_action=defender_action,
@@ -144,6 +155,7 @@ class BSMGEnv:
 
         self._round += 1
         done = self._round >= self.config.horizon
+        self._last_update_norm_scale = self._observed_update_norm_scale(summary)
 
         next_obs = self._make_obs(w_next)
         self._obs = next_obs
@@ -151,14 +163,21 @@ class BSMGEnv:
         info = {
             "round": self._round,
             "clean_acc": summary.clean_acc,
+            "clean_loss": summary.clean_loss,
             "backdoor_acc": summary.backdoor_acc,
             "evaluated": should_evaluate,
             "defense_decision": defense_decision,
             "attack_decision": attack_decision,
+            "action_prior_penalty": action_penalty,
+            "alpha_scale": self._last_update_norm_scale,
             "benign_update_norms": list(getattr(summary, "benign_update_norms", [])),
             "malicious_update_norms": list(getattr(summary, "malicious_update_norms", [])),
             "malicious_cosines_to_benign": list(getattr(summary, "malicious_cosines_to_benign", [])),
+            "malicious_cosines_to_aggregate": list(getattr(summary, "malicious_cosines_to_aggregate", [])),
         }
+        for key in ("post_clean_loss", "post_clean_acc", "post_backdoor_acc"):
+            if hasattr(summary, key):
+                info[key] = getattr(summary, key)
 
         return next_obs, r_D, r_A, done, info
 
@@ -251,6 +270,32 @@ class BSMGEnv:
         self._history.append(features)
         if len(self._history) > self.config.history_len:
             self._history = self._history[-self.config.history_len:]
+
+    def _action_prior_penalty(self, defender_action: np.ndarray) -> float:
+        weight = float(self.config.action_prior_weight)
+        if weight <= 0.0:
+            return 0.0
+        raw = np.clip(np.asarray(defender_action, dtype=np.float32), -1.0, 1.0)
+        return float(weight * np.mean(np.square(raw)))
+
+    def _alpha_max_for_round(self) -> float:
+        if not self.config.relative_alpha:
+            return float(self.config.alpha_max)
+        return max(float(self.config.alpha_min), float(self._last_update_norm_scale))
+
+    def _observed_update_norm_scale(self, summary) -> float:
+        norms = [
+            *getattr(summary, "benign_update_norms", []),
+            *getattr(summary, "malicious_update_norms", []),
+        ]
+        if not norms:
+            return self._last_update_norm_scale
+        return max(float(np.nanmax(norms)), float(self.config.alpha_min))
+
+    def _defender_reward(self, summary) -> float:
+        if self.config.reward_mode == "loss":
+            return float(-_finite(summary.clean_loss) - self.config.lambda_bd * _finite(summary.backdoor_acc))
+        return defender_reward(summary, lambda_bd=self.config.lambda_bd)
 
 
 def _patch_summary_with_eval(summary, w_eval):

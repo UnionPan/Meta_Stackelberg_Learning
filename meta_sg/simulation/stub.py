@@ -139,7 +139,7 @@ class StubCoordinator(FLCoordinator):
             clean_loss=1.0 - clean_acc,
             attack_name=attack.attack_type.name if attack else "clean",
             defense_name=defense.__class__.__name__ if defense else "none",
-            **_update_diagnostics(old_weights, benign_weights, malicious_weights),
+            **_update_diagnostics(old_weights, self._weights, benign_weights, malicious_weights),
         )
 
     @property
@@ -213,10 +213,12 @@ def _fedavg(weights_list: List[Weights]) -> Weights:
 
 def _update_diagnostics(
     old_weights: Weights,
+    aggregated_weights: Weights,
     benign_weights: List[Weights],
     malicious_weights: List[Weights],
 ) -> dict:
     old_vec = _weights_to_vec(old_weights)
+    aggregate_delta = _weights_to_vec(aggregated_weights) - old_vec
     benign_updates = [_weights_to_vec(weights) - old_vec for weights in benign_weights]
     malicious_updates = [_weights_to_vec(weights) - old_vec for weights in malicious_weights]
     benign_norms = [float(np.linalg.norm(update)) for update in benign_updates]
@@ -227,14 +229,20 @@ def _update_diagnostics(
         benign_mean = np.zeros_like(old_vec)
     benign_norm = float(np.linalg.norm(benign_mean))
     malicious_cosines = []
+    malicious_aggregate_cosines = []
+    aggregate_norm = float(np.linalg.norm(aggregate_delta))
     for update in malicious_updates:
         denom = float(np.linalg.norm(update) * benign_norm)
         cosine = float(np.dot(update, benign_mean) / denom) if denom > 1e-12 else 0.0
         malicious_cosines.append(float(np.clip(cosine, -1.0, 1.0)))
+        aggregate_denom = float(np.linalg.norm(update) * aggregate_norm)
+        aggregate_cosine = float(np.dot(update, aggregate_delta) / aggregate_denom) if aggregate_denom > 1e-12 else 0.0
+        malicious_aggregate_cosines.append(float(np.clip(aggregate_cosine, -1.0, 1.0)))
     return {
         "benign_update_norms": benign_norms,
         "malicious_update_norms": malicious_norms,
         "malicious_cosines_to_benign": malicious_cosines,
+        "malicious_cosines_to_aggregate": malicious_aggregate_cosines,
     }
 
 

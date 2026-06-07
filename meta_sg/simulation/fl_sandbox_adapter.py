@@ -6,8 +6,8 @@ from typing import Optional
 
 import numpy as np
 
-from fl_sandbox.attacks import create_attack
 from fl_sandbox.attacks.base import SandboxAttack
+from fl_sandbox.attacks.registry import create_attack
 from fl_sandbox.config import RunConfig
 from fl_sandbox.federation.runner import MinimalFLRunner
 from fl_sandbox.runtime import RoundContext
@@ -85,6 +85,12 @@ class FLSandboxCoordinatorAdapter(FLCoordinator):
     def current_weights(self) -> Weights:
         return [w.copy() for w in self.runner.current_weights]
 
+    def evaluate_weights(self, weights: Weights) -> dict[str, float]:
+        return self.runner.evaluate_weights(weights)
+
+    def evaluate_model(self, model, weights: Weights) -> dict[str, float]:
+        return self.runner.evaluate_model(model, weights)
+
     @property
     def spec(self) -> SimulationSpec:
         return SimulationSpec(layer_shapes=tuple(tuple(w.shape) for w in self.runner.current_weights))
@@ -124,6 +130,7 @@ class FLSandboxCoordinatorAdapter(FLCoordinator):
             benign_update_norms=list(getattr(summary, "benign_update_norms", [])),
             malicious_update_norms=list(getattr(summary, "malicious_update_norms", [])),
             malicious_cosines_to_benign=list(getattr(summary, "malicious_cosines_to_benign", [])),
+            malicious_cosines_to_aggregate=list(getattr(summary, "malicious_cosines_to_aggregate", [])),
             selected_attackers=list(getattr(summary, "selected_attackers", [])),
             sampled_clients=list(getattr(summary, "sampled_clients", [])),
         )

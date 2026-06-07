@@ -17,6 +17,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--hidden-dim", type=int, default=16)
     parser.add_argument("--batch-size", type=int, default=4)
     parser.add_argument("--br-updates", type=int, default=0)
+    parser.add_argument("--br-episodes", type=int, default=1)
+    parser.add_argument("--eval-after-updates", action="store_true")
     return parser.parse_args()
 
 
@@ -39,16 +41,19 @@ def main() -> None:
         td3_config=td3_config,
         seed=int(args.seed),
         br_updates=int(args.br_updates),
+        br_episodes=int(args.br_episodes),
+        eval_after_updates=bool(args.eval_after_updates),
     )
     print(
         "clip_radius,trim_ratio,mean_epsilon,mean_local_steps,"
-        "mean_attacker_reward,mean_survival,attacker_buffer_size"
+        "mean_attacker_reward,mean_survival,mean_stealth_cost,attacker_buffer_size"
     )
     for record in records:
         print(
             f"{record.clip_radius:.6g},{record.trim_ratio:.6g},"
             f"{record.mean_epsilon:.6g},{record.mean_local_steps:.6g},"
             f"{record.mean_attacker_reward:.6g},{record.mean_survival:.6g},"
+            f"{record.mean_stealth_cost:.6g},"
             f"{record.attacker_buffer_size}"
         )
 

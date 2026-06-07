@@ -3,6 +3,7 @@
 from .milestones import (
     FixedClippedMedianPolicy,
     HengerAttackerAction,
+    HengerStyleAdaptiveAttackStrategy,
     M1EpisodeResult,
     M1DefenderAction,
     decode_henger_attacker_action,
@@ -15,6 +16,7 @@ from .milestones import (
 __all__ = [
     "FixedClippedMedianPolicy",
     "HengerAttackerAction",
+    "HengerStyleAdaptiveAttackStrategy",
     "M1EpisodeResult",
     "M1DefenderAction",
     "decode_henger_attacker_action",

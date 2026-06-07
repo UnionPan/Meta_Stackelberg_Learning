@@ -57,19 +57,22 @@ class DefenseDecision:
     def from_raw(
         cls,
         raw: np.ndarray,
+        alpha_min: float = 0.0,
         alpha_max: float = 5.0,
+        beta_min: float = 0.0,
         beta_max: float = 0.45,
+        eps_min: float = 1.0,
         eps_max: float = 10.0,
         use_neuroclip: bool = True,
     ) -> "DefenseDecision":
         """Decode raw ∈ [-1, 1]^3 action to physical defense parameters."""
         a = np.clip(np.asarray(raw, dtype=np.float32), -1.0, 1.0)
-        alpha = float((a[0] + 1) / 2 * alpha_max)
-        beta = float((a[1] + 1) / 2 * beta_max)
-        post = float((a[2] + 1) / 2 * eps_max)
+        alpha = float(alpha_min + (a[0] + 1) / 2 * (alpha_max - alpha_min))
+        beta = float(beta_min + (a[1] + 1) / 2 * (beta_max - beta_min))
+        post = float(eps_min + (a[2] + 1) / 2 * (eps_max - eps_min))
         if use_neuroclip:
             return cls(norm_bound_alpha=alpha, trimmed_mean_beta=beta,
-                       neuroclip_epsilon=max(1.0, post))
+                       neuroclip_epsilon=max(eps_min, post))
         return cls(norm_bound_alpha=alpha, trimmed_mean_beta=beta,
                    prun_mask_rate=float(np.clip(post / eps_max, 0.0, 0.5)))
 

@@ -191,12 +191,15 @@ class MetaSGTrainer:
         w.add_scalar("train/reward_std",       float(np.std(d_rewards)),   t)
         w.add_scalar("train/reward_min",       float(np.min(d_rewards)),   t)
         w.add_scalar("train/reward_max",       float(np.max(d_rewards)),   t)
+        a_rewards = [r.mean_attacker_reward for r in task_results]
+        w.add_scalar("train/attacker_reward_mean", float(np.mean(a_rewards)), t)
         w.add_scalar("train/adaptive_fraction",
                      float(np.mean([xi.adaptive for xi in batch_types])), t)
 
         env_diag = _mean_diag_values(task_results, "clean_acc", "backdoor_acc")
         if "clean_acc" in env_diag:
             w.add_scalar("train/clean_acc",    env_diag["clean_acc"],    t)
+            w.add_scalar("train/attack_success", 1.0 - env_diag["clean_acc"], t)
         if "backdoor_acc" in env_diag:
             w.add_scalar("train/backdoor_acc", env_diag["backdoor_acc"], t)
 
@@ -256,6 +259,22 @@ class MetaSGTrainer:
         ]:
             if diag_key in action_diag:
                 w.add_scalar(tb_key, action_diag[diag_key], t)
+
+        attacker_action_diag = _mean_diag_values(
+            task_results,
+            "attacker_gamma", "attacker_local_steps", "attacker_lambda_stealth",
+            "attacker_action_std_0", "attacker_action_std_1", "attacker_action_std_2",
+        )
+        for diag_key, tb_key in [
+            ("attacker_gamma",          "policy/attacker/gamma_mean"),
+            ("attacker_local_steps",    "policy/attacker/local_steps_mean"),
+            ("attacker_lambda_stealth", "policy/attacker/lambda_stealth_mean"),
+            ("attacker_action_std_0",   "policy/attacker/action_std_0"),
+            ("attacker_action_std_1",   "policy/attacker/action_std_1"),
+            ("attacker_action_std_2",   "policy/attacker/action_std_2"),
+        ]:
+            if diag_key in attacker_action_diag:
+                w.add_scalar(tb_key, attacker_action_diag[diag_key], t)
 
         # ── buffers/ ──────────────────────────────────────────────────
         for name, buf in self.attacker_buffers.items():

@@ -8,6 +8,7 @@ from meta_sg.simulation.types import RoundSummary, SimulationSnapshot
 from meta_sg.strategies.attacks.fixed import IPMAttack
 from meta_sg.strategies.defenses.paper import PaperDefenseStrategy
 from meta_sg.strategies.types import AttackDecision, DefenseDecision, ATTACK_DOMAIN
+from meta_sg.games.bsmg_env import BSMGConfig, BSMGEnv
 
 
 def _make_coord(**kw):
@@ -18,6 +19,15 @@ def _make_decisions():
     d = DefenseDecision.from_raw(np.array([0.0, 0.0, 0.5], dtype=np.float32))
     a = AttackDecision.from_raw(np.array([0.0, 0.0, 0.0], dtype=np.float32))
     return d, a
+
+
+class PostMetricStubCoordinator(StubCoordinator):
+    def run_round(self, *args, **kwargs):
+        summary = super().run_round(*args, **kwargs)
+        summary.post_clean_loss = 1.25
+        summary.post_clean_acc = 0.75
+        summary.post_backdoor_acc = 0.1
+        return summary
 
 
 # ── reset ─────────────────────────────────────────────────────────────────
@@ -151,3 +161,90 @@ def test_snapshot_is_independent_copy():
     snap.weights[0][:] = 888.0
     w = coord.current_weights[0]
     assert not np.allclose(w, 888.0)
+
+
+def test_bsmg_env_can_penalize_extreme_defender_actions():
+    env = BSMGEnv(
+        coordinator=_make_coord(),
+        attack_type=ATTACK_DOMAIN["ipm"],
+        attack_strategy=IPMAttack(),
+        defense_strategy=PaperDefenseStrategy(),
+        config=BSMGConfig(horizon=1, action_prior_weight=0.5),
+    )
+    env.reset(seed=3)
+
+    _, reward, _, _, info = env.step(
+        np.asarray([1.0, 1.0, 1.0], dtype=np.float32),
+        np.zeros(3, dtype=np.float32),
+    )
+
+    assert info["action_prior_penalty"] == pytest.approx(0.5)
+    assert reward == pytest.approx(info["clean_acc"] - info["backdoor_acc"] - 0.5)
+
+
+def test_bsmg_env_can_use_loss_based_defender_reward():
+    env = BSMGEnv(
+        coordinator=_make_coord(),
+        attack_type=ATTACK_DOMAIN["ipm"],
+        attack_strategy=IPMAttack(),
+        defense_strategy=PaperDefenseStrategy(),
+        config=BSMGConfig(horizon=1, reward_mode="loss"),
+    )
+    env.reset(seed=4)
+
+    _, reward, _, _, info = env.step(
+        np.zeros(3, dtype=np.float32),
+        np.zeros(3, dtype=np.float32),
+    )
+
+    assert reward == pytest.approx(-info["clean_loss"] - info["backdoor_acc"])
+
+
+def test_bsmg_env_paper_aligned_state_action_reward():
+    env = BSMGEnv(
+        coordinator=_make_coord(),
+        attack_type=ATTACK_DOMAIN["rl"],
+        attack_strategy=IPMAttack(),
+        defense_strategy=PaperDefenseStrategy(),
+        config=BSMGConfig(
+            horizon=1,
+            num_tail_layers=2,
+            normalise_obs=True,
+            history_len=0,
+            reward_mode="loss",
+            lambda_bd=0.0,
+            action_prior_weight=0.0,
+        ),
+    )
+
+    obs = env.reset(seed=123)
+    next_obs, reward, _, _, info = env.step(
+        np.zeros(3, dtype=np.float32),
+        np.zeros(3, dtype=np.float32),
+    )
+
+    assert env.act_dim == 3
+    assert obs.ndim == 1
+    assert next_obs.shape == obs.shape
+    assert reward == pytest.approx(-info["clean_loss"])
+    assert "defense_decision" in info
+
+
+def test_bsmg_env_includes_post_training_metrics_when_available():
+    env = BSMGEnv(
+        coordinator=PostMetricStubCoordinator(num_clients=6, num_attackers=2, seed=0),
+        attack_type=ATTACK_DOMAIN["ipm"],
+        attack_strategy=IPMAttack(),
+        defense_strategy=PaperDefenseStrategy(),
+        config=BSMGConfig(horizon=1),
+    )
+    env.reset(seed=5)
+
+    _, _, _, _, info = env.step(
+        np.zeros(3, dtype=np.float32),
+        np.zeros(3, dtype=np.float32),
+    )
+
+    assert info["post_clean_loss"] == pytest.approx(1.25)
+    assert info["post_clean_acc"] == pytest.approx(0.75)
+    assert info["post_backdoor_acc"] == pytest.approx(0.1)

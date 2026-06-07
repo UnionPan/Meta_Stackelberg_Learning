@@ -51,6 +51,12 @@ def trimmed_mean(updates: np.ndarray, beta: float) -> np.ndarray:
     return np.mean(sorted_u[k: n - k], axis=0)
 
 
+def apply_neuroclip(weights: Weights, epsilon: float) -> Weights:
+    """Return a clipped copy of weights for post-training reward/evaluation."""
+    eps = max(float(epsilon), 0.0)
+    return [np.clip(w.copy(), -eps, eps) for w in weights]
+
+
 class PaperDefenseStrategy(DefenseStrategy):
     """
     Paper §Appendix C defense:
@@ -98,8 +104,7 @@ class PaperDefenseStrategy(DefenseStrategy):
         w_copy = [w.copy() for w in weights]
 
         if decision.neuroclip_epsilon is not None:
-            eps = decision.neuroclip_epsilon
-            w_copy = [np.clip(w, -eps, eps) for w in w_copy]
+            w_copy = apply_neuroclip(w_copy, decision.neuroclip_epsilon)
 
         elif decision.prun_mask_rate is not None and decision.prun_mask_rate > 0:
             sigma = decision.prun_mask_rate
