@@ -174,10 +174,18 @@ class RLAttackerConfig:
 
     def validate_defense(self, defense_type: str) -> None:
         defense = defense_type.lower()
-        if defense not in {"clipped_median", "paper_norm_trimmed_mean"}:
+        supported = {
+            "fedavg",
+            "median",
+            "trimmed_mean",
+            "krum",
+            "clipped_median",
+            "paper_norm_trimmed_mean",
+        }
+        if defense not in supported:
             raise ValueError(
-                "paper-aligned RL attacker only supports defense_type='clipped_median' "
-                "or 'paper_norm_trimmed_mean'"
+                "RL known-defense evaluation supports defense_type in "
+                f"{sorted(supported)!r}"
             )
 
     def action_bounds(self, defense_type: str) -> tuple[np.ndarray, np.ndarray]:

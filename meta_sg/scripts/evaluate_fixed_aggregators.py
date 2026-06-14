@@ -6,10 +6,12 @@ and related robust aggregators through ``MinimalFLRunner`` directly.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 
@@ -38,6 +40,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--eval-samples", type=int, default=2000)
     parser.add_argument("--seed", type=int, default=201)
     parser.add_argument("--defenses", default="fedavg,krum,median,trimmed_mean,clipped_median")
+    parser.add_argument(
+        "--scenarios",
+        default="clean,paper_ipm,strong_ipm,lmp,bfl,dba",
+        help="Comma-separated scenario names to run, in output order.",
+    )
+    parser.add_argument("--output-json", default="", help="Optional path for machine-readable records.")
     return parser.parse_args()
 
 
@@ -71,7 +79,9 @@ def main() -> None:
         Scenario("bfl", "bfl", {"bfl_poison_frac": 1.0}),
         Scenario("dba", "dba", {"dba_poison_frac": 0.5, "dba_num_sub_triggers": 4}),
     ]
+    scenarios = _filter_scenarios(scenarios, args.scenarios)
     defenses = [item.strip() for item in args.defenses.split(",") if item.strip()]
+    records = []
 
     print("CONFIG", vars(args))
     print("SCENARIO DEFENSE reward clean backdoor attack_damage")
@@ -86,6 +96,23 @@ def main() -> None:
             damage = last.backdoor_acc if scenario.attack_type in {"bfl", "dba"} else 1.0 - last.clean_acc
             if scenario.attack_type == "clean":
                 damage = float("nan")
+            record = {
+                "scenario": scenario.name,
+                "attack_type": scenario.attack_type,
+                "defense": defense,
+                "reward": round(float(reward), 6),
+                "clean_acc": round(float(last.clean_acc), 6),
+                "backdoor_acc": round(float(last.backdoor_acc), 6),
+                "attack_damage": (
+                    round(float(damage), 6) if np.isfinite(damage) else None
+                ),
+                "rounds": int(args.rounds),
+                "num_clients": int(args.num_clients),
+                "num_attackers": int(config.fl.num_attackers),
+                "subsample_rate": float(args.subsample_rate),
+                "seed": int(args.seed),
+            }
+            records.append(record)
             print(
                 scenario.name,
                 defense,
@@ -94,16 +121,30 @@ def main() -> None:
                 round(float(last.backdoor_acc), 4),
                 round(float(damage), 4) if np.isfinite(damage) else "nan",
             )
+    if args.output_json:
+        output_path = Path(args.output_json)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(records, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _filter_scenarios(scenarios: list[Scenario], selected: str) -> list[Scenario]:
+    by_name = {scenario.name: scenario for scenario in scenarios}
+    names = [item.strip() for item in selected.split(",") if item.strip()]
+    unknown = [name for name in names if name not in by_name]
+    if unknown:
+        supported = ", ".join(sorted(by_name))
+        raise ValueError(f"Unknown scenario(s): {', '.join(unknown)}. Supported: {supported}")
+    return [by_name[name] for name in names]
 
 
 def _patched_config(base: SandboxConfig, patch: dict) -> SandboxConfig:
-    values = vars(base).copy()
+    values = base.to_flat_dict()
     values.update(patch)
     return SandboxConfig(**values)
 
 
 def _attack_config(config: SandboxConfig, attack_type: str):
-    values = vars(config).copy()
+    values = config.to_flat_dict()
     values["type"] = attack_type
     return argparse.Namespace(**values)
 

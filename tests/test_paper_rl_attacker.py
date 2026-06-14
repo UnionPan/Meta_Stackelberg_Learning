@@ -171,10 +171,18 @@ def test_paper_reward_transform_tanh_delta_scales_and_bounds_reward():
     assert transform_paper_reward(-998.0, 2.0, config) == pytest.approx(-1.0)
 
 
-def test_paper_rl_attacker_accepts_paper_norm_trimmed_mean_defense():
+def test_paper_rl_attacker_accepts_known_defense_eval_set():
     config = RLAttackerConfig()
 
-    config.validate_defense("paper_norm_trimmed_mean")
+    for defense in [
+        "fedavg",
+        "median",
+        "trimmed_mean",
+        "krum",
+        "clipped_median",
+        "paper_norm_trimmed_mean",
+    ]:
+        config.validate_defense(defense)
 
 
 def test_policy_simulator_resets_to_first_initial_weights_not_latest_round(tmp_path):
