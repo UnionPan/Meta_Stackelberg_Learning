@@ -46,6 +46,7 @@ def parse_args() -> argparse.Namespace:
         help="Comma-separated scenario names to run, in output order.",
     )
     parser.add_argument("--output-json", default="", help="Optional path for machine-readable records.")
+    parser.add_argument("--lambda-bd", type=float, default=1.0)
     return parser.parse_args()
 
 
@@ -78,13 +79,14 @@ def main() -> None:
         Scenario("lmp", "lmp", {"lmp_scale": 2.0}),
         Scenario("bfl", "bfl", {"bfl_poison_frac": 1.0}),
         Scenario("dba", "dba", {"dba_poison_frac": 0.5, "dba_num_sub_triggers": 4}),
+        Scenario("rl_backdoor", "rl_backdoor", _rl_backdoor_patch(args.rounds, args.num_clients)),
     ]
     scenarios = _filter_scenarios(scenarios, args.scenarios)
     defenses = [item.strip() for item in args.defenses.split(",") if item.strip()]
     records = []
 
     print("CONFIG", vars(args))
-    print("SCENARIO DEFENSE reward clean backdoor attack_damage")
+    print("SCENARIO DEFENSE reward clean backdoor defense_score attack_damage")
     for scenario in scenarios:
         for defense in defenses:
             config = _patched_config(base_config, {**scenario.patch, "defense_type": defense})
@@ -92,8 +94,10 @@ def main() -> None:
             attack = create_attack(_attack_config(config, scenario.attack_type))
             summaries = runner.run_many_rounds(args.rounds, attack=attack, eval_every=1)
             last = summaries[-1]
-            reward = _reward(last.clean_acc, last.backdoor_acc, targeted=scenario.attack_type in {"bfl", "dba"})
-            damage = last.backdoor_acc if scenario.attack_type in {"bfl", "dba"} else 1.0 - last.clean_acc
+            targeted = scenario.attack_type in {"bfl", "dba", "rl_backdoor"}
+            reward = _reward(last.clean_acc, last.backdoor_acc, targeted=targeted)
+            defense_score = float(last.clean_acc - float(args.lambda_bd) * last.backdoor_acc)
+            damage = last.backdoor_acc if targeted else 1.0 - last.clean_acc
             if scenario.attack_type == "clean":
                 damage = float("nan")
             record = {
@@ -103,6 +107,7 @@ def main() -> None:
                 "reward": round(float(reward), 6),
                 "clean_acc": round(float(last.clean_acc), 6),
                 "backdoor_acc": round(float(last.backdoor_acc), 6),
+                "defense_score": round(float(defense_score), 6),
                 "attack_damage": (
                     round(float(damage), 6) if np.isfinite(damage) else None
                 ),
@@ -119,6 +124,7 @@ def main() -> None:
                 round(reward, 4),
                 round(float(last.clean_acc), 4),
                 round(float(last.backdoor_acc), 4),
+                round(float(defense_score), 4),
                 round(float(damage), 4) if np.isfinite(damage) else "nan",
             )
     if args.output_json:
@@ -153,6 +159,22 @@ def _reward(clean_acc: float, backdoor_acc: float, *, targeted: bool) -> float:
     if targeted:
         return float(clean_acc - backdoor_acc)
     return float(clean_acc)
+
+
+def _rl_backdoor_patch(rounds: int, num_clients: int) -> dict:
+    return {
+        "rl_backdoor_default_action": (1.0, 0.0, -1.0, 0.0),
+        "rl_backdoor_stealth_norm_cap": True,
+        "rl_backdoor_freeze_boost": 5.0,
+        "rl_backdoor_warmup_fixed_rollouts": 0,
+        "rl_backdoor_simulator_shadow_clients": min(5, int(num_clients)),
+        "rl_backdoor_simulator_shadow_samples_per_client": 50,
+        "rl_backdoor_reward_mode": "paper",
+        "rl_backdoor_reward_clean_lambda": 0.375,
+        "rl_policy_train_steps_per_round": 1,
+        "rl_attack_start_round": max(2, min(6, int(rounds))),
+        "rl_policy_train_end_round": max(2, int(rounds)),
+    }
 
 
 if __name__ == "__main__":

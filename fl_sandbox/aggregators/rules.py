@@ -251,6 +251,7 @@ class PaperActionDefender:
 
     norm_bound_alpha: float
     trimmed_mean_beta: float
+    server_lr: float = 1.0
     defense_type: str = "paper_norm_trimmed_mean"
 
     def aggregate(
@@ -263,10 +264,13 @@ class PaperActionDefender:
         if not new_weights:
             return [layer.copy() for layer in old_weights]
         if len(new_weights) == 1:
-            return [layer.copy() for layer in new_weights[0]]
-        return norm_bounded_trimmed_mean_aggregate(
-            old_weights,
-            new_weights,
-            norm_bound=self.norm_bound_alpha,
-            trim_ratio=self.trimmed_mean_beta,
-        )
+            aggregated = [layer.copy() for layer in new_weights[0]]
+        else:
+            aggregated = norm_bounded_trimmed_mean_aggregate(
+                old_weights,
+                new_weights,
+                norm_bound=self.norm_bound_alpha,
+                trim_ratio=self.trimmed_mean_beta,
+            )
+        scale = float(np.clip(self.server_lr, 0.0, 1.0))
+        return [old + scale * (new - old) for old, new in zip(old_weights, aggregated)]

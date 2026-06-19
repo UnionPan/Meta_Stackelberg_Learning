@@ -9,15 +9,15 @@ Rewards: r_D, r_A computed with post-training defense applied to a weight COPY.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
+from dataclasses import dataclass, replace
+from typing import Any, Callable, Dict, Optional, Tuple
 
 import numpy as np
 
 from meta_sg.games.observations import HISTORY_FEATURE_DIM, compress_weights, normalise_obs, obs_dim_for
 from meta_sg.games.rewards import attacker_reward, defender_reward
 from meta_sg.simulation.interface import FLCoordinator
-from meta_sg.simulation.types import Weights
+from meta_sg.simulation.types import RoundSummary, Weights
 from meta_sg.strategies.attacks.base import AttackStrategy
 from meta_sg.strategies.defenses.base import DefenseStrategy
 from meta_sg.strategies.types import AttackDecision, AttackType, DefenseDecision
@@ -33,6 +33,10 @@ class BSMGConfig:
     beta_max: float = 0.45            # max trimmed mean ratio
     eps_min: float = 1.0              # min NeuroClip clip range
     eps_max: float = 10.0             # max NeuroClip clip range
+    third_action: str = "neuroclip"   # "neuroclip", "server_lr", or "both"
+    server_lr_min: float = 0.0
+    server_lr_max: float = 1.0
+    server_lr_penalty_weight: float = 0.0
     use_neuroclip: bool = True        # True=NeuroClip, False=Prun
     lambda_bd: float = 1.0            # backdoor penalty in defender reward
     action_prior_weight: float = 0.0  # penalty for drifting from mid-range defense
@@ -61,12 +65,14 @@ class BSMGEnv:
         attack_strategy: AttackStrategy,
         defense_strategy: DefenseStrategy,
         config: Optional[BSMGConfig] = None,
+        evaluator: Optional[Callable[[Weights], dict[str, float]]] = None,
     ) -> None:
         self.coordinator = coordinator
         self.attack_type = attack_type
         self.attack_strategy = attack_strategy
         self.defense_strategy = defense_strategy
         self.config = config or BSMGConfig()
+        self._evaluator = evaluator
 
         self._round = 0
         self._obs: Optional[np.ndarray] = None
@@ -113,6 +119,9 @@ class BSMGEnv:
             eps_min=self.config.eps_min,
             eps_max=self.config.eps_max,
             use_neuroclip=self.config.use_neuroclip,
+            third_action=self.config.third_action,
+            server_lr_min=self.config.server_lr_min,
+            server_lr_max=self.config.server_lr_max,
         )
         attack_decision = AttackDecision.from_raw(attacker_action)
 
@@ -139,17 +148,18 @@ class BSMGEnv:
         w_eval = self.defense_strategy.apply_post_training(w_next, defense_decision)
 
         # Reward-only summary on post-training weights
-        eval_summary = _patch_summary_with_eval(summary, w_eval)
+        eval_summary = _patch_summary_with_eval(summary, w_eval, evaluator=self._evaluator)
 
         action_penalty = self._action_prior_penalty(defender_action)
-        r_D = self._defender_reward(eval_summary) - action_penalty
+        server_lr_penalty = self._server_lr_penalty(defense_decision)
+        r_D = self._defender_reward(eval_summary) - action_penalty - server_lr_penalty
         r_A = attacker_reward(eval_summary, self.attack_type)
         self._append_history(
             defender_action=defender_action,
             attacker_action=attacker_action,
             defender_reward=r_D,
             attacker_reward=r_A,
-            summary=summary,
+            summary=eval_summary,
             defense_decision=defense_decision,
         )
 
@@ -162,18 +172,26 @@ class BSMGEnv:
 
         info = {
             "round": self._round,
-            "clean_acc": summary.clean_acc,
-            "clean_loss": summary.clean_loss,
-            "backdoor_acc": summary.backdoor_acc,
+            "pre_clean_acc": summary.clean_acc,
+            "pre_clean_loss": summary.clean_loss,
+            "pre_backdoor_acc": summary.backdoor_acc,
+            "clean_acc": eval_summary.clean_acc,
+            "clean_loss": eval_summary.clean_loss,
+            "backdoor_acc": eval_summary.backdoor_acc,
+            "post_clean_acc": eval_summary.clean_acc,
+            "post_clean_loss": eval_summary.clean_loss,
+            "post_backdoor_acc": eval_summary.backdoor_acc,
             "evaluated": should_evaluate,
             "defense_decision": defense_decision,
             "attack_decision": attack_decision,
             "action_prior_penalty": action_penalty,
+            "server_lr_penalty": server_lr_penalty,
             "alpha_scale": self._last_update_norm_scale,
             "benign_update_norms": list(getattr(summary, "benign_update_norms", [])),
             "malicious_update_norms": list(getattr(summary, "malicious_update_norms", [])),
             "malicious_cosines_to_benign": list(getattr(summary, "malicious_cosines_to_benign", [])),
             "malicious_cosines_to_aggregate": list(getattr(summary, "malicious_cosines_to_aggregate", [])),
+            "attack_metrics": dict(getattr(summary, "attack_metrics", {}) or {}),
         }
         for key in ("post_clean_loss", "post_clean_acc", "post_backdoor_acc"):
             if hasattr(summary, key):
@@ -197,7 +215,11 @@ class BSMGEnv:
 
     @property
     def act_dim(self) -> int:
-        return 3  # paper: 3-dimensional continuous action space
+        return 4 if str(self.config.third_action) == "both" else 3
+
+    @property
+    def attacker_act_dim(self) -> int:
+        return 3  # paper attacker action remains 3-dimensional
 
     # ------------------------------------------------------------------
     # Internal
@@ -278,6 +300,12 @@ class BSMGEnv:
         raw = np.clip(np.asarray(defender_action, dtype=np.float32), -1.0, 1.0)
         return float(weight * np.mean(np.square(raw)))
 
+    def _server_lr_penalty(self, defense_decision: DefenseDecision) -> float:
+        weight = float(self.config.server_lr_penalty_weight)
+        if weight <= 0.0 or defense_decision.server_lr is None:
+            return 0.0
+        return float(weight * (1.0 - float(defense_decision.server_lr)) ** 2)
+
     def _alpha_max_for_round(self) -> float:
         if not self.config.relative_alpha:
             return float(self.config.alpha_max)
@@ -298,12 +326,28 @@ class BSMGEnv:
         return defender_reward(summary, lambda_bd=self.config.lambda_bd)
 
 
-def _patch_summary_with_eval(summary, w_eval):
+def _patch_summary_with_eval(
+    summary: RoundSummary,
+    w_eval: Weights,
+    *,
+    evaluator: Optional[Callable[[Weights], dict[str, float]]] = None,
+) -> RoundSummary:
     """
-    In a real implementation: re-run test() on w_eval model.
-    For stub: return same summary (post-training barely changes stub metrics).
+    Re-evaluate post-training weights for reward/evaluation metrics.
+
+    When no evaluator is provided, preserve legacy behavior by returning the
+    transition summary. When an evaluator is provided, errors propagate so
+    training cannot silently fall back to pre-post-training metrics.
     """
-    return summary
+    if evaluator is None:
+        return summary
+    metrics = evaluator(w_eval)
+    return replace(
+        summary,
+        clean_acc=float(metrics.get("clean_acc", summary.clean_acc)),
+        clean_loss=float(metrics.get("clean_loss", summary.clean_loss)),
+        backdoor_acc=float(metrics.get("backdoor_acc", summary.backdoor_acc)),
+    )
 
 
 def _fixed_len(value: np.ndarray, length: int) -> np.ndarray:

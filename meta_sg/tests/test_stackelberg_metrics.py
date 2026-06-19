@@ -1,8 +1,19 @@
+import json
+import math
 from pathlib import Path
 
 import pytest
 
-from meta_sg.stackelberg.metrics import compare_learned_to_fixed_paper3d, format_progress_line, summarize_rows
+import numpy as np
+
+from meta_sg.stackelberg.metrics import (
+    compare_learned_to_fixed_paper3d,
+    format_progress_line,
+    make_round_row,
+    summarize_rows,
+)
+from meta_sg.stackelberg.paper3d_action import Paper3DAction
+from meta_sg.scripts.evaluate_rl_interaction import json_safe
 
 
 def test_summarize_rows_reports_paper3d_metrics(tmp_path: Path):
@@ -75,3 +86,49 @@ def test_format_progress_line_reports_paper3d_state():
     assert "beta=0.2000" in line
     assert "epsilon=5.0000" in line
     assert "mal_norm=3.5000" in line
+
+
+def test_make_round_row_preserves_rl_attacker_action_metrics():
+    row = make_round_row(
+        global_step=1,
+        episode=0,
+        info={
+            "round": 1,
+            "clean_acc": 0.8,
+            "clean_loss": 1.5,
+            "backdoor_acc": 0.0,
+            "malicious_update_norms": [3.0, 5.0],
+            "attack_metrics": {
+                "rl_action_gamma": 12.5,
+                "rl_action_local_steps": 17.0,
+                "rl_action_norm": 0.75,
+            },
+        },
+        raw_action=np.asarray([-1.0, -0.5, 0.0], dtype=np.float32),
+        action=Paper3DAction(alpha=0.1, beta=0.1125, epsilon=6.0),
+        defender_reward=-0.015,
+        attacker_reward=0.1,
+        episode_return=-0.015,
+        stats={},
+    )
+
+    assert row["attacker_gamma"] == pytest.approx(12.5)
+    assert row["attacker_local_steps"] == pytest.approx(17.0)
+    assert row["attacker_action_norm"] == pytest.approx(0.75)
+
+
+def test_interaction_summary_json_safe_replaces_nonfinite_values():
+    payload = {
+        "correlation": {
+            "alpha_vs_gamma": math.nan,
+            "epsilon_vs_gamma": math.inf,
+            "post_acc_vs_gamma": -0.5,
+        }
+    }
+
+    safe = json_safe(payload)
+    encoded = json.dumps(safe, allow_nan=False)
+
+    assert '"alpha_vs_gamma": null' in encoded
+    assert '"epsilon_vs_gamma": null' in encoded
+    assert '"post_acc_vs_gamma": -0.5' in encoded

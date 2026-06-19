@@ -56,6 +56,13 @@ class Paper3DSandboxCoordinator(FLSandboxCoordinatorAdapter):
         self.runner.defender.trimmed_mean_ratio = float(defense_decision.trimmed_mean_beta)
 
     def _evaluate_post_training_copy(self, defense_decision) -> dict[str, float]:
+        if getattr(defense_decision, "server_lr", None) is not None:
+            metrics = self.evaluate_weights(self.current_weights)
+            return {
+                "post_clean_loss": float(metrics["clean_loss"]),
+                "post_clean_acc": float(metrics["clean_acc"]),
+                "post_backdoor_acc": float(metrics.get("backdoor_acc", 0.0)),
+            }
         epsilon = float(defense_decision.neuroclip_epsilon or 0.0)
         defended_model = apply_post_defense(self.runner.model, "neuroclip", epsilon)
         metrics = self.evaluate_model(defended_model, self.current_weights)

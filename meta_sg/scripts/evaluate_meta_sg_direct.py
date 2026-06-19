@@ -22,10 +22,11 @@ if str(REPO_ROOT) not in sys.path:
 
 from meta_sg.games.bsmg_env import BSMGConfig, BSMGEnv
 from meta_sg.learning.config import TD3Config
+from meta_sg.learning.replay_buffer import ReplayBuffer
 from meta_sg.learning.td3 import TD3Agent
 from meta_sg.simulation.fl_sandbox_adapter import FLSandboxCoordinatorAdapter, SandboxConfig
 from meta_sg.strategies.defenses.paper import PaperDefenseStrategy
-from meta_sg.strategies.types import AttackType
+from meta_sg.strategies.types import AttackType, DefenseDecision
 
 
 @dataclass(frozen=True)
@@ -50,6 +51,12 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--checkpoint", required=True, help="Path to defender_meta.pt or checkpoint directory.")
     parser.add_argument("--output-json", required=True)
     parser.add_argument("--dataset", choices=["mnist", "cifar10"], default="mnist")
+    parser.add_argument(
+        "--scenario-set",
+        choices=["model_poisoning", "backdoor", "mixed"],
+        default="model_poisoning",
+    )
+    parser.add_argument("--lambda-bd", type=float, default=0.0)
     parser.add_argument("--H", type=int, default=20)
     parser.add_argument("--num-clients", type=int, default=20)
     parser.add_argument("--num-attackers", type=int, default=4)
@@ -62,6 +69,20 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--hidden-dim", type=int, default=32)
     parser.add_argument("--seed", type=int, default=502)
     parser.add_argument("--rl-seed", type=int, default=506)
+    parser.add_argument(
+        "--defender-third-action",
+        choices=["neuroclip", "server_lr", "both"],
+        default="neuroclip",
+    )
+    parser.add_argument("--server-lr-min", type=float, default=0.0)
+    parser.add_argument("--server-lr-max", type=float, default=1.0)
+    parser.add_argument("--server-lr-penalty-weight", type=float, default=0.0)
+    parser.add_argument("--few-shot", action="store_true", help="Run per-scenario adaptation from the loaded checkpoint.")
+    parser.add_argument("--adaptation-horizon", type=int, default=5)
+    parser.add_argument("--adaptation-episodes", type=int, default=2)
+    parser.add_argument("--adaptation-updates", type=int, default=10)
+    parser.add_argument("--adaptation-noise", type=float, default=0.05)
+    parser.add_argument("--adaptation-lr-scale", type=float, default=0.25)
     parser.add_argument(
         "--rl-policy-checkpoint",
         default=(
@@ -96,29 +117,46 @@ def main(argv=None) -> None:
 
     defender = TD3Agent(
         obs_dim,
-        3,
+        _defender_action_dim(args),
         TD3Config(hidden_dim=args.hidden_dim, batch_size=16, buffer_capacity=4096, warmup_steps=0),
         device=device,
     )
     defender.load(_checkpoint_path(args.checkpoint))
 
-    scenarios = [
-        Scenario("clean", _attack_type("clean"), "clean", {"num_attackers": 0}, int(args.seed)),
-        Scenario("ipm", _attack_type("ipm"), "ipm", {"ipm_scaling": 2.0}, int(args.seed)),
-        Scenario("lmp", _attack_type("lmp"), "lmp", {"lmp_scale": 2.0}, int(args.seed)),
-        Scenario("rl", _attack_type("rl"), "rl", _rl_patch(args), int(args.rl_seed)),
-    ]
+    scenarios = _scenarios(args)
+    common_probe_obs = _make_common_probe_obs(args, scenarios[0])
 
     records = []
     for scenario in scenarios:
-        record = _evaluate_scenario(args, defender, scenario)
+        direct_record = _evaluate_scenario(args, defender, scenario)
+        record = dict(direct_record)
+        if args.few_shot:
+            few_shot = _few_shot_adapt_and_evaluate(args, defender, scenario, probe_obs=common_probe_obs)
+            record["few_shot_adaptation"] = few_shot
+            record["few_shot_gain_clean_acc"] = (
+                float(few_shot["evaluation"]["final_clean_acc"]) - float(direct_record["final_clean_acc"])
+            )
+            record["few_shot_gain_backdoor_acc"] = (
+                float(few_shot["evaluation"]["final_backdoor_acc"]) - float(direct_record["final_backdoor_acc"])
+            )
+            record["few_shot_gain_defense_score"] = (
+                float(few_shot["evaluation"]["final_defense_score"]) - float(direct_record["final_defense_score"])
+            )
         records.append(record)
         print(
             scenario.name,
             "final_clean_acc=",
-            round(record["final_clean_acc"], 4),
+            round(direct_record["final_clean_acc"], 4),
             "mean_reward=",
-            round(record["mean_defender_reward"], 4),
+            round(direct_record["mean_defender_reward"], 4),
+            "backdoor_acc=",
+            round(direct_record["final_backdoor_acc"], 4),
+            "defense_score=",
+            round(direct_record["final_defense_score"], 4),
+            "few_shot_final_clean_acc=",
+            round(record["few_shot_adaptation"]["evaluation"]["final_clean_acc"], 4)
+            if args.few_shot
+            else "n/a",
         )
 
     output_path = Path(args.output_json)
@@ -127,19 +165,9 @@ def main(argv=None) -> None:
 
 
 def _evaluate_scenario(args, defender: TD3Agent, scenario: Scenario) -> dict:
-    coordinator = FLSandboxCoordinatorAdapter(
-        _sandbox_config(args, scenario.attack_name, seed=scenario.seed, patch=scenario.patch)
-    )
-    attack_strategy = None if scenario.attack_name == "clean" else SandboxAttackMarker(scenario.attack_type)
-    env = BSMGEnv(
-        coordinator=coordinator,
-        attack_type=scenario.attack_type,
-        attack_strategy=attack_strategy,
-        defense_strategy=PaperDefenseStrategy(),
-        config=_bsmg_config(args),
-        evaluator=getattr(coordinator, "evaluate_weights", None),
-    )
+    env = _make_env(args, scenario, seed=scenario.seed, horizon=int(args.H))
     obs = env.reset(seed=scenario.seed)
+    initial_action = _action_diagnostics(defender, obs, _bsmg_config(args, horizon=int(args.H)))
     rewards_d: list[float] = []
     rewards_a: list[float] = []
     last_info = {}
@@ -152,22 +180,162 @@ def _evaluate_scenario(args, defender: TD3Agent, scenario: Scenario) -> dict:
         last_info = dict(info)
         if done:
             break
+    final_clean_acc = float(last_info.get("clean_acc", float("nan")))
+    final_backdoor_acc = float(last_info.get("backdoor_acc", float("nan")))
     return {
         "scenario": scenario.name,
         "attack_type": scenario.attack_name,
         "seed": int(scenario.seed),
         "horizon": int(args.H),
-        "final_clean_acc": float(last_info.get("clean_acc", float("nan"))),
-        "final_backdoor_acc": float(last_info.get("backdoor_acc", float("nan"))),
+        "final_clean_acc": final_clean_acc,
+        "final_backdoor_acc": final_backdoor_acc,
+        "final_defense_score": float(final_clean_acc - float(args.lambda_bd) * final_backdoor_acc),
         "final_defender_reward": float(rewards_d[-1]) if rewards_d else float("nan"),
         "mean_defender_reward": float(np.mean(rewards_d)) if rewards_d else float("nan"),
         "mean_attacker_reward": float(np.mean(rewards_a)) if rewards_a else float("nan"),
+        "initial_action": initial_action,
         "final_defender_alpha": float(last_info.get("defense_decision").norm_bound_alpha)
         if last_info.get("defense_decision") is not None
         else float("nan"),
         "final_defender_beta": float(last_info.get("defense_decision").trimmed_mean_beta)
         if last_info.get("defense_decision") is not None
         else float("nan"),
+        "final_defender_neuroclip": float(last_info.get("defense_decision").neuroclip_epsilon)
+        if last_info.get("defense_decision") is not None
+        and last_info.get("defense_decision").neuroclip_epsilon is not None
+        else float("nan"),
+        "final_defender_server_lr": float(last_info.get("defense_decision").server_lr)
+        if last_info.get("defense_decision") is not None
+        and last_info.get("defense_decision").server_lr is not None
+        else float("nan"),
+    }
+
+
+def _few_shot_adapt_and_evaluate(
+    args,
+    defender: TD3Agent,
+    scenario: Scenario,
+    *,
+    probe_obs: np.ndarray,
+) -> dict:
+    adapted = defender.clone()
+    if float(args.adaptation_lr_scale) != 1.0:
+        adapted.set_learning_rates(
+            policy_lr=float(adapted.cfg.policy_lr) * float(args.adaptation_lr_scale),
+            critic_lr=float(adapted.cfg.critic_lr) * float(args.adaptation_lr_scale),
+        )
+
+    bsmg_cfg = _bsmg_config(args, horizon=int(args.adaptation_horizon))
+    start_action = _action_diagnostics(defender, probe_obs, bsmg_cfg)
+    trace = [{"shot": 0, "updates": 0, "action": start_action}]
+
+    buffer = ReplayBuffer(
+        capacity=max(32, int(args.adaptation_horizon) * int(args.adaptation_episodes)),
+        obs_dim=defender.obs_dim,
+        act_dim=defender.act_dim,
+    )
+    update_losses: list[dict] = []
+    for episode in range(int(args.adaptation_episodes)):
+        seed = int(scenario.seed) + 10_000 + episode
+        env = _make_env(args, scenario, seed=seed, horizon=int(args.adaptation_horizon))
+        obs = env.reset(seed=seed)
+        for _ in range(int(args.adaptation_horizon)):
+            action = adapted.get_action(obs, noise=float(args.adaptation_noise))
+            attacker_action = np.zeros(3, dtype=np.float32)
+            next_obs, reward_d, _reward_a, done, _info = env.step(action, attacker_action)
+            buffer.add(obs, action, reward_d, next_obs, done)
+            obs = next_obs
+            if done:
+                break
+        for _ in range(int(args.adaptation_updates)):
+            losses = adapted.update(buffer)
+            if losses:
+                update_losses.append({k: float(v) for k, v in losses.items()})
+        trace.append(
+            {
+                "shot": episode + 1,
+                "updates": (episode + 1) * int(args.adaptation_updates),
+                "action": _action_diagnostics(adapted, probe_obs, bsmg_cfg),
+            }
+        )
+
+    evaluation = _evaluate_scenario(args, adapted, scenario)
+    return {
+        "episodes": int(args.adaptation_episodes),
+        "horizon": int(args.adaptation_horizon),
+        "updates_per_episode": int(args.adaptation_updates),
+        "noise": float(args.adaptation_noise),
+        "lr_scale": float(args.adaptation_lr_scale),
+        "probe_observation": {
+            "scenario": "clean",
+            "seed": int(args.seed),
+            "description": "shared clean initial observation used only for action-space diagnostics",
+        },
+        "transition": {
+            "from": start_action,
+            "to": trace[-1]["action"],
+            "delta": _action_delta(start_action, trace[-1]["action"]),
+        },
+        "trace": trace,
+        "num_transitions": len(buffer),
+        "num_updates": len(update_losses),
+        "last_update_loss": update_losses[-1] if update_losses else {},
+        "evaluation": evaluation,
+    }
+
+
+def _make_common_probe_obs(args, scenario: Scenario) -> np.ndarray:
+    env = _make_env(args, scenario, seed=int(args.seed), horizon=int(args.adaptation_horizon))
+    return env.reset(seed=int(args.seed))
+
+
+def _make_env(args, scenario: Scenario, *, seed: int, horizon: int) -> BSMGEnv:
+    coordinator = FLSandboxCoordinatorAdapter(
+        _sandbox_config(args, scenario.attack_name, seed=seed, patch=scenario.patch)
+    )
+    attack_strategy = None if scenario.attack_name == "clean" else SandboxAttackMarker(scenario.attack_type)
+    return BSMGEnv(
+        coordinator=coordinator,
+        attack_type=scenario.attack_type,
+        attack_strategy=attack_strategy,
+        defense_strategy=PaperDefenseStrategy(),
+        config=_bsmg_config(args, horizon=horizon),
+        evaluator=getattr(coordinator, "evaluate_weights", None),
+    )
+
+
+def _action_diagnostics(defender: TD3Agent, obs: np.ndarray, config: BSMGConfig) -> dict:
+    raw = defender.get_action(obs, noise=0.0)
+    decision = DefenseDecision.from_raw(
+        raw,
+        alpha_min=config.alpha_min,
+        alpha_max=config.alpha_max,
+        beta_min=config.beta_min,
+        beta_max=config.beta_max,
+        eps_min=config.eps_min,
+        eps_max=config.eps_max,
+        use_neuroclip=config.use_neuroclip,
+        third_action=config.third_action,
+        server_lr_min=config.server_lr_min,
+        server_lr_max=config.server_lr_max,
+    )
+    return {
+        "raw": [float(v) for v in np.asarray(raw, dtype=np.float32)],
+        "alpha": float(decision.norm_bound_alpha),
+        "beta": float(decision.trimmed_mean_beta),
+        "neuroclip": float(decision.neuroclip_epsilon)
+        if decision.neuroclip_epsilon is not None
+        else float("nan"),
+        "server_lr": float(decision.server_lr) if decision.server_lr is not None else float("nan"),
+    }
+
+
+def _action_delta(start: dict, end: dict) -> dict:
+    keys = ("alpha", "beta", "neuroclip", "server_lr")
+    return {
+        key: float(end[key]) - float(start[key])
+        for key in keys
+        if key in start and key in end and np.isfinite(float(start[key])) and np.isfinite(float(end[key]))
     }
 
 
@@ -199,14 +367,17 @@ def _sandbox_config(args, attack_name: str, *, seed: int, patch: dict) -> object
     return SandboxConfig(**values)
 
 
-def _bsmg_config(args) -> BSMGConfig:
+def _bsmg_config(args, *, horizon: int | None = None) -> BSMGConfig:
     return BSMGConfig(
-        horizon=int(args.H),
+        horizon=int(args.H if horizon is None else horizon),
         eval_every=1,
         history_len=0,
-        lambda_bd=0.0,
+        lambda_bd=float(args.lambda_bd),
         reward_mode="accuracy",
-        third_action="neuroclip",
+        third_action=args.defender_third_action,
+        server_lr_min=float(args.server_lr_min),
+        server_lr_max=float(args.server_lr_max),
+        server_lr_penalty_weight=float(args.server_lr_penalty_weight),
     )
 
 
@@ -226,8 +397,61 @@ def _rl_patch(args) -> dict:
     }
 
 
+def _backdoor_patch(args) -> dict:
+    return {
+        "bfl_poison_frac": 1.0,
+        "dba_poison_frac": 0.5,
+        "dba_num_sub_triggers": 4,
+        "rl_backdoor_default_action": (1.0, 0.0, -1.0, 0.0),
+        "rl_backdoor_stealth_norm_cap": True,
+        "rl_backdoor_freeze_boost": 5.0,
+        "rl_backdoor_warmup_fixed_rollouts": 0,
+        "rl_backdoor_simulator_shadow_clients": min(5, int(args.num_clients)),
+        "rl_backdoor_simulator_shadow_samples_per_client": 50,
+        "rl_backdoor_reward_mode": "paper",
+        "rl_backdoor_reward_clean_lambda": 0.375,
+        "rl_policy_train_steps_per_round": 1,
+        "rl_attack_start_round": max(2, min(6, int(args.H))),
+        "rl_policy_train_end_round": max(2, int(args.H)),
+    }
+
+
+def _scenarios(args) -> list[Scenario]:
+    clean = [Scenario("clean", _attack_type("clean"), "clean", {"num_attackers": 0}, int(args.seed))]
+    poisoning = [
+        Scenario("clean", _attack_type("clean"), "clean", {"num_attackers": 0}, int(args.seed)),
+        Scenario("ipm", _attack_type("ipm"), "ipm", {"ipm_scaling": 2.0}, int(args.seed)),
+        Scenario("lmp", _attack_type("lmp"), "lmp", {"lmp_scale": 2.0}, int(args.seed)),
+        Scenario("rl", _attack_type("rl"), "rl", _rl_patch(args), int(args.rl_seed)),
+    ]
+    backdoor = _backdoor_patch(args)
+    backdoor_scenarios = [
+        Scenario("clean", _attack_type("clean"), "clean", {"num_attackers": 0}, int(args.seed)),
+        Scenario("bfl", _attack_type("bfl"), "bfl", dict(backdoor), int(args.seed)),
+        Scenario("dba", _attack_type("dba"), "dba", dict(backdoor), int(args.seed)),
+        Scenario("rl_backdoor", _attack_type("rl_backdoor"), "rl_backdoor", dict(backdoor), int(args.rl_seed)),
+    ]
+    if args.scenario_set == "backdoor":
+        return backdoor_scenarios
+    if args.scenario_set == "mixed":
+        return [
+            *clean,
+            *poisoning[1:],
+            *backdoor_scenarios[1:],
+        ]
+    return poisoning
+
+
+def _defender_action_dim(args) -> int:
+    return 4 if str(args.defender_third_action) == "both" else 3
+
+
 def _attack_type(name: str) -> AttackType:
-    return AttackType(name=name, objective="untargeted", adaptive=(name == "rl"))
+    return AttackType(
+        name=name,
+        objective="targeted" if name in {"bfl", "dba", "rl_backdoor", "brl"} else "untargeted",
+        adaptive=(name in {"rl", "brl"}),
+    )
 
 
 def _checkpoint_path(path: str) -> str:

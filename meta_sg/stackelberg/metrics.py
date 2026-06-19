@@ -26,6 +26,7 @@ def make_round_row(
     if raw.shape[0] < 3:
         raw = np.pad(raw, (0, 3 - raw.shape[0]))
     malicious_norms = np.asarray(info.get("malicious_update_norms", []), dtype=np.float32)
+    attack_metrics = dict(info.get("attack_metrics", {}) or {})
     return {
         "step": int(global_step),
         "episode": int(episode),
@@ -46,6 +47,9 @@ def make_round_row(
         "backdoor_acc": float(info["backdoor_acc"]),
         "post_backdoor_acc": float(info.get("post_backdoor_acc", info["backdoor_acc"])),
         "mean_malicious_norm": float(np.mean(malicious_norms)) if malicious_norms.size else 0.0,
+        "attacker_gamma": float(attack_metrics.get("rl_action_gamma", np.nan)),
+        "attacker_local_steps": float(attack_metrics.get("rl_action_local_steps", np.nan)),
+        "attacker_action_norm": float(attack_metrics.get("rl_action_norm", np.nan)),
         "critic_loss": float(stats.get("critic_loss", np.nan)),
         "actor_loss": float(stats.get("actor_loss", np.nan)),
     }

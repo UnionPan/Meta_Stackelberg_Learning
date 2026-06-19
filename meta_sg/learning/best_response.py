@@ -48,7 +48,9 @@ class AttackerBestResponse:
 
         agent = self.attacker_agents[key]
         buffer = self.attacker_buffers[key]
-        n_steps = steps or self.n_a
+        n_steps = self.n_a if steps is None else steps
+        if n_steps <= 0:
+            return {}
 
         critic_sum = 0.0
         q_sum = 0.0

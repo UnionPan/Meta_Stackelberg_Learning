@@ -41,7 +41,7 @@ ATTACK_DOMAIN = {
 @dataclass(frozen=True)
 class DefenseDecision:
     """
-    Paper defender action a_D = (α, β, ε/σ).
+    Paper defender action a_D = (α, β, ε/σ) or (α, β, ε, η_server).
 
     α: norm bound — clip all client updates to L2 norm ≤ α
     β: trimmed mean ratio — discard β fraction from each tail per coordinate
@@ -52,6 +52,7 @@ class DefenseDecision:
     trimmed_mean_beta: float
     neuroclip_epsilon: Optional[float] = None
     prun_mask_rate: Optional[float] = None
+    server_lr: Optional[float] = None
 
     @classmethod
     def from_raw(
@@ -64,11 +65,32 @@ class DefenseDecision:
         eps_min: float = 1.0,
         eps_max: float = 10.0,
         use_neuroclip: bool = True,
+        third_action: str = "neuroclip",
+        server_lr_min: float = 0.0,
+        server_lr_max: float = 1.0,
     ) -> "DefenseDecision":
-        """Decode raw ∈ [-1, 1]^3 action to physical defense parameters."""
+        """Decode raw ∈ [-1, 1]^d action to physical defense parameters."""
         a = np.clip(np.asarray(raw, dtype=np.float32), -1.0, 1.0)
+        if a.shape[0] < 3:
+            a = np.pad(a, (0, 3 - a.shape[0]))
         alpha = float(alpha_min + (a[0] + 1) / 2 * (alpha_max - alpha_min))
         beta = float(beta_min + (a[1] + 1) / 2 * (beta_max - beta_min))
+        mode = str(third_action)
+        if mode == "both":
+            if a.shape[0] < 4:
+                a = np.pad(a, (0, 4 - a.shape[0]))
+            post = float(eps_min + (a[2] + 1) / 2 * (eps_max - eps_min))
+            server_lr = float(server_lr_min + (a[3] + 1) / 2 * (server_lr_max - server_lr_min))
+            return cls(
+                norm_bound_alpha=alpha,
+                trimmed_mean_beta=beta,
+                neuroclip_epsilon=max(eps_min, post) if use_neuroclip else None,
+                prun_mask_rate=None if use_neuroclip else float(np.clip(post / eps_max, 0.0, 0.5)),
+                server_lr=server_lr,
+            )
+        if mode == "server_lr":
+            server_lr = float(server_lr_min + (a[2] + 1) / 2 * (server_lr_max - server_lr_min))
+            return cls(norm_bound_alpha=alpha, trimmed_mean_beta=beta, server_lr=server_lr)
         post = float(eps_min + (a[2] + 1) / 2 * (eps_max - eps_min))
         if use_neuroclip:
             return cls(norm_bound_alpha=alpha, trimmed_mean_beta=beta,

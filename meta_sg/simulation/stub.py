@@ -146,6 +146,29 @@ class StubCoordinator(FLCoordinator):
     def current_weights(self) -> Weights:
         return [w.copy() for w in self._weights]
 
+    def evaluate_weights(self, weights: Weights) -> dict[str, float]:
+        """Return deterministic metrics for arbitrary weights without mutating state."""
+        if not weights:
+            clean_acc = self._base_clean_acc
+        else:
+            flat = np.concatenate([np.asarray(w, dtype=np.float32).ravel() for w in weights])
+            weight_scale = float(np.mean(np.abs(flat))) if flat.size else 0.0
+            defense_strength = np.clip(
+                (5.0 - self._last_defense_alpha) / 5.0 + self._last_defense_beta,
+                0.0,
+                1.5,
+            )
+            clean_acc = float(np.clip(
+                self._base_clean_acc - 0.02 * defense_strength - 0.01 * weight_scale,
+                0.0,
+                1.0,
+            ))
+        return {
+            "clean_acc": clean_acc,
+            "clean_loss": 1.0 - clean_acc,
+            "backdoor_acc": 0.0,
+        }
+
     @property
     def spec(self) -> SimulationSpec:
         return SimulationSpec(layer_shapes=tuple(tuple(shape) for shape in self.layer_shapes))

@@ -48,11 +48,9 @@ class FLSandboxCoordinatorAdapter(FLCoordinator):
         self._last_summary: Optional[RoundSummary] = None
 
     def reset(self, seed: Optional[int] = None) -> InitialState:
-        if seed is not None and seed != self.config.runtime.seed:
+        if seed is not None:
             self.config.runtime.seed = int(seed)
-            self.runner = MinimalFLRunner(self.config)
-        else:
-            self.runner.reset_model()
+        self.runner.reset_model()  # re-seeds and re-initialises model; reuses loaded datasets
         self._round_idx = 0
         self._last_summary = None
         return InitialState(weights=self.current_weights, round_idx=0)
@@ -73,7 +71,7 @@ class FLSandboxCoordinatorAdapter(FLCoordinator):
             self._round_idx,
             attack=sandbox_attack,
             evaluate=should_evaluate,
-            attacker_action=getattr(attack_decision, "raw", None),
+            attacker_action=_native_attacker_action(attack_name, attack_decision),
             defense_decision=defense_decision,
         )
         translated = self._translate_summary(summary)
@@ -133,6 +131,7 @@ class FLSandboxCoordinatorAdapter(FLCoordinator):
             malicious_cosines_to_aggregate=list(getattr(summary, "malicious_cosines_to_aggregate", [])),
             selected_attackers=list(getattr(summary, "selected_attackers", [])),
             sampled_clients=list(getattr(summary, "sampled_clients", [])),
+            attack_metrics=dict(getattr(summary, "attack_metrics", {}) or {}),
         )
 
 
@@ -166,6 +165,12 @@ class MetaSGSandboxAttack(SandboxAttack):
 
 def _is_meta_sg_attack_strategy(attack) -> bool:
     return attack is not None and hasattr(attack, "execute") and hasattr(attack, "attack_type")
+
+
+def _native_attacker_action(attack_name: str, attack_decision):
+    if str(attack_name) == "rl_backdoor":
+        return None
+    return getattr(attack_decision, "raw", None)
 
 
 def _attack_config_from_sandbox(config: RunConfig, attack_name: str, attack_decision) -> SimpleNamespace:

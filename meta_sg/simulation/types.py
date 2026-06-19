@@ -23,6 +23,7 @@ class RoundSummary:
     malicious_cosines_to_aggregate: list[float] = field(default_factory=list)
     selected_attackers: list[int] = field(default_factory=list)
     sampled_clients: list[int] = field(default_factory=list)
+    attack_metrics: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass

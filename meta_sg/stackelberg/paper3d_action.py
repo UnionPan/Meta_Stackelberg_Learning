@@ -22,7 +22,7 @@ def raw_action_to_paper3d(raw_action: np.ndarray, args: argparse.Namespace) -> P
     return Paper3DAction(
         alpha=_scale_raw(raw[0], float(args.alpha_min), float(args.alpha_max)),
         beta=_scale_raw(raw[1], float(args.beta_min), float(args.beta_max)),
-        epsilon=_scale_raw(raw[2], float(args.neuroclip_eps_min), float(args.neuroclip_eps_max)),
+        epsilon=_scale_raw(raw[2], *_third_action_range(args)),
     )
 
 
@@ -31,7 +31,7 @@ def fixed_paper3d_to_raw_action(action: Paper3DAction, args: argparse.Namespace)
         [
             _unscale_raw(action.alpha, float(args.alpha_min), float(args.alpha_max)),
             _unscale_raw(action.beta, float(args.beta_min), float(args.beta_max)),
-            _unscale_raw(action.epsilon, float(args.neuroclip_eps_min), float(args.neuroclip_eps_max)),
+            _unscale_raw(action.epsilon, *_third_action_range(args)),
         ],
         dtype=np.float32,
     )
@@ -59,6 +59,12 @@ def _scale_raw(raw: float, low: float, high: float) -> float:
     if high <= low:
         raise ValueError(f"invalid range: high={high} must be greater than low={low}")
     return float(low + (float(raw) + 1.0) * 0.5 * (high - low))
+
+
+def _third_action_range(args: argparse.Namespace) -> tuple[float, float]:
+    if str(getattr(args, "third_action", "neuroclip")) == "server_lr":
+        return float(args.server_lr_min), float(args.server_lr_max)
+    return float(args.neuroclip_eps_min), float(args.neuroclip_eps_max)
 
 
 def _unscale_raw(value: float, low: float, high: float) -> float:

@@ -64,7 +64,7 @@ class TrajectoryCollector:
         traj = Trajectory(attack_type=self.env.attack_type)
 
         d_policy = RandomPolicy(self.env.act_dim) if use_random else self.defender
-        a_policy = RandomPolicy(self.env.act_dim) if use_random else self.attacker
+        a_policy = RandomPolicy(self.env.attacker_act_dim) if use_random else self.attacker
 
         for _ in range(horizon):
             a_D = d_policy.get_action(obs, noise=self.exploration_noise)
@@ -92,7 +92,7 @@ class TrajectoryCollector:
         collected = 0
         while collected < steps:
             a_D = np.random.uniform(-1, 1, self.env.act_dim).astype(np.float32)
-            a_A = np.random.uniform(-1, 1, self.env.act_dim).astype(np.float32)
+            a_A = np.random.uniform(-1, 1, self.env.attacker_act_dim).astype(np.float32)
             next_obs, r_D, r_A, done, _ = self.env.step(a_D, a_A)
             self.defender_buffer.add(obs, a_D, r_D, next_obs, done)
             if self.store_attacker and self.attacker_buffer is not None:

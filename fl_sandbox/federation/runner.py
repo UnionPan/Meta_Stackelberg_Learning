@@ -307,7 +307,9 @@ class MinimalFLRunner:
             return self.defender
         alpha = float(getattr(defense_decision, "norm_bound_alpha"))
         beta = float(getattr(defense_decision, "trimmed_mean_beta"))
-        return PaperActionDefender(norm_bound_alpha=alpha, trimmed_mean_beta=beta)
+        server_lr = getattr(defense_decision, "server_lr", None)
+        server_lr = 1.0 if server_lr is None else float(server_lr)
+        return PaperActionDefender(norm_bound_alpha=alpha, trimmed_mean_beta=beta, server_lr=server_lr)
 
     @staticmethod
     def _supports_live_progress() -> bool:

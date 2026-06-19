@@ -13,8 +13,10 @@ from __future__ import annotations
 
 import math
 import os
+import json
 from collections import defaultdict
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence
 
 import numpy as np
@@ -68,6 +70,7 @@ class MetaSGTrainer:
         writer=None,
         checkpoint_dir: Optional[str] = None,
         checkpoint_interval: int = 0,
+        metrics_jsonl_path: Optional[str] = None,
         start_iteration: int = 0,
         total_iterations: Optional[int] = None,
     ) -> None:
@@ -82,17 +85,21 @@ class MetaSGTrainer:
         self.writer = writer
         self.checkpoint_dir = checkpoint_dir
         self.checkpoint_interval = max(0, int(checkpoint_interval))
+        self.metrics_jsonl_path = metrics_jsonl_path
         self.start_iteration = max(0, int(start_iteration))
         self.total_iterations = int(total_iterations or (self.start_iteration + meta_config.T))
+        if self.metrics_jsonl_path:
+            Path(self.metrics_jsonl_path).parent.mkdir(parents=True, exist_ok=True)
 
         self.defender = TD3Agent(obs_dim, act_dim, td3_config, device)
+        self.attacker_act_dim = 3
 
         self.attacker_agents: Dict[str, TD3Agent] = {}
         self.attacker_buffers: Dict[str, ReplayBuffer] = {}
         for at in self.attack_domain:
-            self.attacker_agents[at.name] = TD3Agent(obs_dim, act_dim, td3_config, device)
+            self.attacker_agents[at.name] = TD3Agent(obs_dim, self.attacker_act_dim, td3_config, device)
             self.attacker_buffers[at.name] = ReplayBuffer(
-                td3_config.buffer_capacity, obs_dim, act_dim
+                td3_config.buffer_capacity, obs_dim, self.attacker_act_dim
             )
 
         self.best_response = AttackerBestResponse(
@@ -107,6 +114,7 @@ class MetaSGTrainer:
             attacker_agents=self.attacker_agents,
             attacker_buffers=self.attacker_buffers,
             best_response=self.best_response,
+            attacker_act_dim=self.attacker_act_dim,
         )
         self._result = MetaSGResult()
 
@@ -163,12 +171,15 @@ class MetaSGTrainer:
             if self.writer is not None:
                 self._log_all(t, batch_types, task_results, d_rewards, reptile_norms)
 
+            self._write_metrics_record(t, batch_types, task_results, d_rewards, reptile_norms)
+
             if (
                 self.checkpoint_dir
                 and self.checkpoint_interval > 0
                 and (t + 1) % self.checkpoint_interval == 0
             ):
                 self.save(os.path.join(self.checkpoint_dir, f"iter_{t + 1:04d}"))
+                self.save(os.path.join(self.checkpoint_dir, "latest"))
 
         return self._result
 
@@ -246,16 +257,21 @@ class MetaSGTrainer:
         # ── policy/defender/ ──────────────────────────────────────────
         action_diag = _mean_diag_values(
             task_results,
-            "defender_alpha", "defender_beta", "defender_post_param",
+            "defender_alpha", "defender_beta", "defender_post_param", "defender_server_lr",
+            "server_lr_penalty",
             "defender_action_std_0", "defender_action_std_1", "defender_action_std_2",
+            "defender_action_std_3",
         )
         for diag_key, tb_key in [
             ("defender_alpha",        "policy/defender/alpha_mean"),
             ("defender_beta",         "policy/defender/beta_mean"),
             ("defender_post_param",   "policy/defender/post_param_mean"),
+            ("defender_server_lr",    "policy/defender/server_lr_mean"),
+            ("server_lr_penalty",     "policy/defender/server_lr_penalty_mean"),
             ("defender_action_std_0", "policy/defender/action_std_0"),
             ("defender_action_std_1", "policy/defender/action_std_1"),
             ("defender_action_std_2", "policy/defender/action_std_2"),
+            ("defender_action_std_3", "policy/defender/action_std_3"),
         ]:
             if diag_key in action_diag:
                 w.add_scalar(tb_key, action_diag[diag_key], t)
@@ -281,6 +297,62 @@ class MetaSGTrainer:
             w.add_scalar(f"buffers/attacker_{name}", len(buf), t)
         local_buf_sizes = [r.diagnostics.get("buffer_size", 0) for r in task_results]
         w.add_scalar("buffers/local_defender_mean", float(np.mean(local_buf_sizes)), t)
+
+    def _write_metrics_record(
+        self,
+        t: int,
+        batch_types: List[AttackType],
+        task_results: List[TaskResult],
+        d_rewards: List[float],
+        reptile_norms: Dict[str, float],
+    ) -> None:
+        if not self.metrics_jsonl_path:
+            return
+
+        a_rewards = [r.mean_attacker_reward for r in task_results]
+        env_diag = _mean_diag_values(task_results, "clean_acc", "backdoor_acc")
+        action_diag = _mean_diag_values(
+            task_results,
+            "defender_alpha",
+            "defender_beta",
+            "defender_post_param",
+            "defender_server_lr",
+            "server_lr_penalty",
+            "defender_action_std_0",
+            "defender_action_std_1",
+            "defender_action_std_2",
+            "defender_action_std_3",
+            "attacker_gamma",
+            "attacker_local_steps",
+            "attacker_lambda_stealth",
+            "attacker_action_std_0",
+            "attacker_action_std_1",
+            "attacker_action_std_2",
+        )
+        per_attack: Dict[str, List[float]] = defaultdict(list)
+        for result in task_results:
+            per_attack[result.attack_type.name].append(result.mean_defender_reward)
+
+        record = {
+            "iteration": int(t + 1),
+            "local_iteration": int(t - self.start_iteration + 1),
+            "batch_attack_types": [xi.name for xi in batch_types],
+            "reward_mean": float(np.mean(d_rewards)) if d_rewards else float("nan"),
+            "reward_std": float(np.std(d_rewards)) if d_rewards else float("nan"),
+            "attacker_reward_mean": float(np.mean(a_rewards)) if a_rewards else float("nan"),
+            "adaptive_fraction": float(np.mean([xi.adaptive for xi in batch_types])) if batch_types else 0.0,
+            "clean_acc": env_diag.get("clean_acc"),
+            "backdoor_acc": env_diag.get("backdoor_acc"),
+            "reptile_delta_norm": float(reptile_norms["full"]),
+            "reptile_actor_delta_norm": float(reptile_norms["actor"]),
+            "reptile_critic_delta_norm": float(reptile_norms["critic"]),
+            "per_attack_reward_mean": {
+                name: float(np.mean(vals)) for name, vals in per_attack.items()
+            },
+        }
+        record.update(action_diag)
+        with open(self.metrics_jsonl_path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, sort_keys=True) + "\n")
 
     # ------------------------------------------------------------------
     # Reptile meta-update
@@ -349,8 +421,29 @@ class MetaSGTrainer:
     # ------------------------------------------------------------------
 
     def _sample_attack_types(self, k: int) -> List[AttackType]:
-        indices = np.random.choice(len(self.attack_domain), size=k, replace=True)
-        return [self.attack_domain[i] for i in indices]
+        if not self.attack_domain or k <= 0:
+            return []
+
+        sampler = getattr(self.meta_cfg, "task_sampler", "iid")
+        if sampler == "iid":
+            indices = np.random.choice(len(self.attack_domain), size=k, replace=True)
+            return [self.attack_domain[int(i)] for i in indices]
+
+        if sampler != "stratified":
+            raise ValueError(f"Unsupported task_sampler={sampler!r}")
+
+        if k < len(self.attack_domain):
+            indices = np.random.choice(len(self.attack_domain), size=k, replace=False)
+            return [self.attack_domain[i] for i in indices]
+
+        batch: List[AttackType] = []
+        while len(batch) < k:
+            indices = np.random.permutation(len(self.attack_domain))
+            for idx in indices:
+                batch.append(self.attack_domain[int(idx)])
+                if len(batch) == k:
+                    break
+        return batch
 
 
 # ── Module-level helpers ──────────────────────────────────────────────────────

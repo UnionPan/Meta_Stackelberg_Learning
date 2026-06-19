@@ -20,7 +20,15 @@ from meta_sg.strategies.attacks.adaptive import AdaptiveAttackStrategy
 from meta_sg.strategies.attacks.base import AttackStrategy
 from meta_sg.strategies.attacks.fixed import build_fixed_attack
 from meta_sg.strategies.defenses.paper import PaperDefenseStrategy
-from meta_sg.strategies.types import AttackDecision, AttackType
+from meta_sg.strategies.types import AttackDecision, AttackType, DefenseDecision
+
+
+class NativeSandboxAttackMarker:
+    """Name-only marker that makes FLSandboxCoordinatorAdapter build native fl_sandbox attacks."""
+
+    def __init__(self, attack_type: AttackType) -> None:
+        self.attack_type = attack_type
+        self.name = attack_type.name
 
 
 @dataclass
@@ -55,12 +63,14 @@ class AttackTaskRunner:
         attacker_agents: Dict[str, TD3Agent],
         attacker_buffers: Dict[str, ReplayBuffer],
         best_response: AttackerBestResponse,
+        attacker_act_dim: int = 3,
     ) -> None:
         self.coordinator_factory = coordinator_factory
         self.td3_config = td3_config
         self.meta_config = meta_config
         self.obs_dim = obs_dim
         self.act_dim = act_dim
+        self.attacker_act_dim = attacker_act_dim
         self.attacker_agents = attacker_agents
         self.attacker_buffers = attacker_buffers
         self.best_response = best_response
@@ -72,8 +82,9 @@ class AttackTaskRunner:
         )
 
         attack_strategy = self._build_attack_strategy(attack_type)
+        coordinator = self.coordinator_factory()
         env = BSMGEnv(
-            coordinator=self.coordinator_factory(),
+            coordinator=coordinator,
             attack_type=attack_type,
             attack_strategy=attack_strategy,
             defense_strategy=PaperDefenseStrategy(),
@@ -81,7 +92,14 @@ class AttackTaskRunner:
                 horizon=self.meta_config.H,
                 eval_every=self.meta_config.eval_every,
                 history_len=self.meta_config.history_len,
+                lambda_bd=self.meta_config.lambda_bd,
+                reward_mode=self.meta_config.reward_mode,
+                third_action=self.meta_config.defender_third_action,
+                server_lr_min=self.meta_config.server_lr_min,
+                server_lr_max=self.meta_config.server_lr_max,
+                server_lr_penalty_weight=self.meta_config.server_lr_penalty_weight,
             ),
+            evaluator=getattr(coordinator, "evaluate_weights", None),
         )
 
         collector = TrajectoryCollector(
@@ -177,6 +195,8 @@ class AttackTaskRunner:
         )
 
     def _build_attack_strategy(self, attack_type: AttackType) -> AttackStrategy:
+        if self.meta_config.native_sandbox_attacks and attack_type.name in {"bfl", "dba", "rl_backdoor"}:
+            return NativeSandboxAttackMarker(attack_type)
         if attack_type.adaptive:
             return AdaptiveAttackStrategy(attack_type, self.attacker_agents[attack_type.name])
         return build_fixed_attack(attack_type)
@@ -184,7 +204,7 @@ class AttackTaskRunner:
     def _rollout_attacker_policy(self, attack_type: AttackType):
         if attack_type.adaptive:
             return self.attacker_agents[attack_type.name]
-        return ConstantActionPolicy(act_dim=self.act_dim)
+        return ConstantActionPolicy(act_dim=self.attacker_act_dim)
 
     def _warmup_steps(self) -> int:
         if self.meta_config.warmup_steps is not None:
@@ -199,19 +219,52 @@ def _action_diagnostics(traj: Trajectory) -> Dict[str, float]:
     if not traj.transitions:
         return {}
     actions = np.stack([tr.defender_action for tr in traj.transitions], axis=0)
-    raw_mean = np.mean(actions, axis=0)
     raw_std  = np.std(actions,  axis=0)
-    clipped  = np.clip(raw_mean, -1.0, 1.0)
-    return {
-        # Decoded physical parameters (for policy/defender/* group)
-        "defender_alpha":       float((clipped[0] + 1.0) / 2.0 * 5.0),
-        "defender_beta":        float((clipped[1] + 1.0) / 2.0 * 0.45),
-        "defender_post_param":  float((clipped[2] + 1.0) / 2.0 * 10.0),
+    decisions = [
+        tr.info.get("defense_decision")
+        for tr in traj.transitions
+        if isinstance(tr.info.get("defense_decision"), DefenseDecision)
+    ]
+    if decisions:
+        diagnostics = {
+            "defender_alpha": float(np.mean([d.norm_bound_alpha for d in decisions])),
+            "defender_beta": float(np.mean([d.trimmed_mean_beta for d in decisions])),
+        }
+        server_lrs = [d.server_lr for d in decisions if d.server_lr is not None]
+        if server_lrs:
+            diagnostics["defender_server_lr"] = float(np.mean(server_lrs))
+        post_params = [
+            d.neuroclip_epsilon
+            if d.neuroclip_epsilon is not None
+            else d.prun_mask_rate
+            for d in decisions
+            if d.neuroclip_epsilon is not None or d.prun_mask_rate is not None
+        ]
+        if post_params:
+            diagnostics["defender_post_param"] = float(np.mean(post_params))
+    else:
+        raw_mean = np.mean(actions, axis=0)
+        clipped  = np.clip(raw_mean, -1.0, 1.0)
+        diagnostics = {
+            "defender_alpha":       float((clipped[0] + 1.0) / 2.0 * 5.0),
+            "defender_beta":        float((clipped[1] + 1.0) / 2.0 * 0.45),
+            "defender_post_param":  float((clipped[2] + 1.0) / 2.0 * 10.0),
+        }
+    diagnostics.update({
         # Raw action std per dimension (exploration diversity)
-        "defender_action_std_0": float(raw_std[0]),
-        "defender_action_std_1": float(raw_std[1]),
-        "defender_action_std_2": float(raw_std[2]),
-    }
+        **{
+            f"defender_action_std_{idx}": float(raw_std[idx])
+            for idx in range(raw_std.shape[0])
+        },
+    })
+    server_lr_penalties = [
+        float(tr.info["server_lr_penalty"])
+        for tr in traj.transitions
+        if "server_lr_penalty" in tr.info
+    ]
+    if server_lr_penalties:
+        diagnostics["server_lr_penalty"] = float(np.mean(server_lr_penalties))
+    return diagnostics
 
 
 def _attacker_action_diagnostics(traj: Trajectory) -> Dict[str, float]:

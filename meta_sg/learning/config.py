@@ -39,14 +39,20 @@ class MetaSGConfig:
     l: int = 10           # inner TD3 update steps (= N_D)
     N_A: int = 10         # attacker best-response update steps
     post_br_defender_updates: int = 1  # extra defender updates after adaptive attacker BR
-    kappa_D: float = 0.001         # meta-optimisation step (Reptile)
-    kappa_A: float = 0.001         # attacker step size
     eta: float = 0.01              # one-step adaptation step size
-    meta_update_step: float = 1.0  # Reptile meta step (κ_D=1 in paper)
+    meta_update_step: float = 1.0  # Reptile outer step (paper Appendix C-A)
+    task_sampler: str = "iid"      # "iid" paper sampling | "stratified" coverage sampling
     gamma: float = 0.99            # discount factor for returns
     eval_every: int = 1            # full evaluation cadence inside env rollouts
     warmup_steps: int | None = 0     # optional random rollout before task adaptation
     history_len: int = 0           # append last-k action/reward/metric features to obs
+    lambda_bd: float = 0.0         # model-poisoning default: no backdoor penalty
+    reward_mode: str = "accuracy"  # BSMG defender reward mode: "accuracy" | "loss"
+    defender_third_action: str = "neuroclip"  # "neuroclip" | "server_lr" | "both"
+    server_lr_min: float = 0.0      # transition server-lr action lower bound
+    server_lr_max: float = 1.0      # transition server-lr action upper bound
+    server_lr_penalty_weight: float = 0.0  # reward penalty for shrinking transition server-lr
+    native_sandbox_attacks: bool = False  # use fl_sandbox native attacks instead of meta_sg attack stubs
 
     # Online adaptation
     online_T: int = 10
