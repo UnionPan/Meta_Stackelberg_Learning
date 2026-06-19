@@ -89,6 +89,11 @@ def parse_args(argv=None):
         help="Attack task sampler: iid matches the paper; stratified guarantees coverage when possible.",
     )
     parser.add_argument(
+        "--attack-context",
+        action="store_true",
+        help="Append a one-hot attack-domain context vector to every Meta-SG observation.",
+    )
+    parser.add_argument(
         "--defender-third-action",
         choices=["neuroclip", "server_lr", "both"],
         default="neuroclip",
@@ -138,6 +143,11 @@ def build_meta_config(args) -> MetaSGConfig:
     lambda_bd = args.lambda_bd
     if lambda_bd is None:
         lambda_bd = 1.0 if args.attack_domain in {"backdoor", "mixed"} else 0.0
+    attack_context_names = (
+        tuple(attack.name for attack in attack_domain_from_name(args.attack_domain))
+        if args.attack_context
+        else ()
+    )
     return MetaSGConfig(
         T=args.T,
         K=args.K,
@@ -158,6 +168,7 @@ def build_meta_config(args) -> MetaSGConfig:
         server_lr_max=float(args.server_lr_max),
         server_lr_penalty_weight=float(args.server_lr_penalty_weight),
         native_sandbox_attacks=(args.backend == "fl_sandbox" and args.attack_domain in {"backdoor", "mixed"}),
+        attack_context_names=attack_context_names,
         dataset=args.dataset,
     )
 
@@ -247,6 +258,7 @@ def probe_obs_dim(args, meta_config: MetaSGConfig) -> int:
             server_lr_min=meta_config.server_lr_min,
             server_lr_max=meta_config.server_lr_max,
             server_lr_penalty_weight=meta_config.server_lr_penalty_weight,
+            attack_context_names=meta_config.attack_context_names,
         ),
         evaluator=getattr(coordinator, "evaluate_weights", None),
     )

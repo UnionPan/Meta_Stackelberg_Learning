@@ -98,6 +98,7 @@ class AttackTaskRunner:
                 server_lr_min=self.meta_config.server_lr_min,
                 server_lr_max=self.meta_config.server_lr_max,
                 server_lr_penalty_weight=self.meta_config.server_lr_penalty_weight,
+                attack_context_names=self.meta_config.attack_context_names,
             ),
             evaluator=getattr(coordinator, "evaluate_weights", None),
         )

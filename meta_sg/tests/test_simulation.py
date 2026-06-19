@@ -270,6 +270,25 @@ def test_bsmg_env_uses_four_defender_actions_for_combined_defense():
     assert env.attacker_act_dim == 3
 
 
+def test_bsmg_env_observation_can_include_attack_context_one_hot():
+    env = BSMGEnv(
+        coordinator=_make_coord(),
+        attack_type=ATTACK_DOMAIN["lmp"],
+        attack_strategy=IPMAttack(),
+        defense_strategy=PaperDefenseStrategy(),
+        config=BSMGConfig(
+            horizon=1,
+            normalise_obs=False,
+            attack_context_names=("ipm", "lmp", "rl"),
+        ),
+    )
+
+    obs = env.reset(seed=0)
+
+    assert env.obs_dim == obs.shape[0]
+    assert obs[-3:].tolist() == pytest.approx([0.0, 1.0, 0.0])
+
+
 def test_bsmg_env_can_use_loss_based_defender_reward():
     env = BSMGEnv(
         coordinator=_make_coord(),

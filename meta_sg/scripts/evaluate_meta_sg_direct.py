@@ -46,6 +46,20 @@ class SandboxAttackMarker:
         self.name = attack_type.name
 
 
+class ActionOffsetPolicy:
+    """Policy adapter that adds a learned/search-selected raw action offset."""
+
+    def __init__(self, base_policy, offset: np.ndarray) -> None:
+        self.base_policy = base_policy
+        self.offset = np.asarray(offset, dtype=np.float32)
+        self.obs_dim = int(getattr(base_policy, "obs_dim"))
+        self.act_dim = int(getattr(base_policy, "act_dim"))
+
+    def get_action(self, obs, noise: float = 0.0) -> np.ndarray:
+        base_action = np.asarray(self.base_policy.get_action(obs, noise=noise), dtype=np.float32)
+        return np.clip(base_action + self.offset, -1.0, 1.0).astype(np.float32)
+
+
 def parse_args(argv=None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", required=True, help="Path to defender_meta.pt or checkpoint directory.")
@@ -56,6 +70,7 @@ def parse_args(argv=None) -> argparse.Namespace:
         choices=["model_poisoning", "backdoor", "mixed"],
         default="model_poisoning",
     )
+    parser.add_argument("--attack-context", action="store_true")
     parser.add_argument("--lambda-bd", type=float, default=0.0)
     parser.add_argument("--H", type=int, default=20)
     parser.add_argument("--num-clients", type=int, default=20)
@@ -78,11 +93,22 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--server-lr-max", type=float, default=1.0)
     parser.add_argument("--server-lr-penalty-weight", type=float, default=0.0)
     parser.add_argument("--few-shot", action="store_true", help="Run per-scenario adaptation from the loaded checkpoint.")
+    parser.add_argument("--few-shot-method", choices=["td3", "action_offset"], default="td3")
     parser.add_argument("--adaptation-horizon", type=int, default=5)
     parser.add_argument("--adaptation-episodes", type=int, default=2)
     parser.add_argument("--adaptation-updates", type=int, default=10)
     parser.add_argument("--adaptation-noise", type=float, default=0.05)
     parser.add_argument("--adaptation-lr-scale", type=float, default=0.25)
+    parser.add_argument("--offset-step", type=float, default=0.1)
+    parser.add_argument(
+        "--few-shot-selection",
+        choices=["always", "guarded"],
+        default="always",
+        help="Whether to always deploy the adapted policy or accept it only after a validation rollout.",
+    )
+    parser.add_argument("--selection-margin", type=float, default=0.0)
+    parser.add_argument("--selection-horizon", type=int, default=None)
+    parser.add_argument("--selection-seed-offset", type=int, default=20_000)
     parser.add_argument(
         "--rl-policy-checkpoint",
         default=(
@@ -165,8 +191,12 @@ def main(argv=None) -> None:
 
 
 def _evaluate_scenario(args, defender: TD3Agent, scenario: Scenario) -> dict:
-    env = _make_env(args, scenario, seed=scenario.seed, horizon=int(args.H))
-    obs = env.reset(seed=scenario.seed)
+    return _evaluate_scenario_at(args, defender, scenario, seed=int(scenario.seed), horizon=int(args.H))
+
+
+def _evaluate_scenario_at(args, defender: TD3Agent, scenario: Scenario, *, seed: int, horizon: int) -> dict:
+    env = _make_env(args, scenario, seed=seed, horizon=int(horizon))
+    obs = env.reset(seed=seed)
     initial_action = _action_diagnostics(defender, obs, _bsmg_config(args, horizon=int(args.H)))
     rewards_d: list[float] = []
     rewards_a: list[float] = []
@@ -185,8 +215,8 @@ def _evaluate_scenario(args, defender: TD3Agent, scenario: Scenario) -> dict:
     return {
         "scenario": scenario.name,
         "attack_type": scenario.attack_name,
-        "seed": int(scenario.seed),
-        "horizon": int(args.H),
+        "seed": int(seed),
+        "horizon": int(horizon),
         "final_clean_acc": final_clean_acc,
         "final_backdoor_acc": final_backdoor_acc,
         "final_defense_score": float(final_clean_acc - float(args.lambda_bd) * final_backdoor_acc),
@@ -218,6 +248,9 @@ def _few_shot_adapt_and_evaluate(
     *,
     probe_obs: np.ndarray,
 ) -> dict:
+    if str(args.few_shot_method) == "action_offset":
+        return _action_offset_adapt_and_evaluate(args, defender, scenario, probe_obs=probe_obs)
+
     adapted = defender.clone()
     if float(args.adaptation_lr_scale) != 1.0:
         adapted.set_learning_rates(
@@ -259,7 +292,48 @@ def _few_shot_adapt_and_evaluate(
             }
         )
 
-    evaluation = _evaluate_scenario(args, adapted, scenario)
+    adapted_evaluation = _evaluate_scenario(args, adapted, scenario)
+    selection = {
+        "mode": str(args.few_shot_selection),
+        "accepted": True,
+        "selected": "adapted",
+        "margin": float(args.selection_margin),
+    }
+    evaluation = adapted_evaluation
+    if str(args.few_shot_selection) == "guarded":
+        validation_horizon = int(args.selection_horizon or args.adaptation_horizon)
+        validation_seed = int(scenario.seed) + int(args.selection_seed_offset)
+        base_validation = _evaluate_scenario_at(
+            args,
+            defender,
+            scenario,
+            seed=validation_seed,
+            horizon=validation_horizon,
+        )
+        adapted_validation = _evaluate_scenario_at(
+            args,
+            adapted,
+            scenario,
+            seed=validation_seed,
+            horizon=validation_horizon,
+        )
+        selection = _guarded_selection_decision(
+            base_score=float(base_validation["final_defense_score"]),
+            adapted_score=float(adapted_validation["final_defense_score"]),
+            margin=float(args.selection_margin),
+        )
+        selection.update(
+            {
+                "mode": "guarded",
+                "margin": float(args.selection_margin),
+                "validation_horizon": validation_horizon,
+                "validation_seed": validation_seed,
+                "base_validation": base_validation,
+                "adapted_validation": adapted_validation,
+            }
+        )
+        if not selection["accepted"]:
+            evaluation = _evaluate_scenario(args, defender, scenario)
     return {
         "episodes": int(args.adaptation_episodes),
         "horizon": int(args.adaptation_horizon),
@@ -280,8 +354,130 @@ def _few_shot_adapt_and_evaluate(
         "num_transitions": len(buffer),
         "num_updates": len(update_losses),
         "last_update_loss": update_losses[-1] if update_losses else {},
+        "selection": selection,
+        "adapted_evaluation": adapted_evaluation,
         "evaluation": evaluation,
     }
+
+
+def _guarded_selection_decision(*, base_score: float, adapted_score: float, margin: float) -> dict:
+    score_gain = float(adapted_score) - float(base_score)
+    accepted = bool(score_gain >= float(margin))
+    return {
+        "accepted": accepted,
+        "selected": "adapted" if accepted else "base",
+        "base_score": float(base_score),
+        "adapted_score": float(adapted_score),
+        "score_gain": score_gain,
+    }
+
+
+def _action_offset_adapt_and_evaluate(
+    args,
+    defender,
+    scenario: Scenario,
+    *,
+    probe_obs: np.ndarray,
+) -> dict:
+    bsmg_cfg = _bsmg_config(args, horizon=int(args.adaptation_horizon))
+    start_action = _action_diagnostics(defender, probe_obs, bsmg_cfg)
+    candidates = _offset_candidates(act_dim=int(defender.act_dim), step=float(args.offset_step))
+    candidate_records = []
+    for offset in candidates:
+        policy = ActionOffsetPolicy(defender, offset)
+        scores = []
+        for episode in range(int(args.adaptation_episodes)):
+            seed = int(scenario.seed) + 10_000 + episode
+            record = _evaluate_scenario_at(
+                args,
+                policy,
+                scenario,
+                seed=seed,
+                horizon=int(args.adaptation_horizon),
+            )
+            scores.append(float(record["final_defense_score"]))
+        candidate_records.append(
+            {
+                "offset": [float(v) for v in offset],
+                "mean_defense_score": float(np.mean(scores)) if scores else float("-inf"),
+                "scores": scores,
+            }
+        )
+    best = max(candidate_records, key=lambda item: item["mean_defense_score"])
+    zero = candidate_records[0]
+    best_offset = np.asarray(best["offset"], dtype=np.float32)
+    adapted_policy = ActionOffsetPolicy(defender, best_offset)
+    adapted_evaluation = _evaluate_scenario(args, adapted_policy, scenario)
+    selection = {
+        "mode": str(args.few_shot_selection),
+        "accepted": True,
+        "selected": "adapted",
+        "margin": float(args.selection_margin),
+        "base_score": float(zero["mean_defense_score"]),
+        "adapted_score": float(best["mean_defense_score"]),
+        "score_gain": float(best["mean_defense_score"]) - float(zero["mean_defense_score"]),
+    }
+    evaluation = adapted_evaluation
+    if str(args.few_shot_selection) == "guarded":
+        selection = _guarded_selection_decision(
+            base_score=float(zero["mean_defense_score"]),
+            adapted_score=float(best["mean_defense_score"]),
+            margin=float(args.selection_margin),
+        )
+        selection.update(
+            {
+                "mode": "guarded",
+                "margin": float(args.selection_margin),
+                "validation_horizon": int(args.adaptation_horizon),
+                "validation_episodes": int(args.adaptation_episodes),
+            }
+        )
+        if not selection["accepted"]:
+            evaluation = _evaluate_scenario(args, defender, scenario)
+    end_action = _action_diagnostics(adapted_policy, probe_obs, bsmg_cfg)
+    return {
+        "method": "action_offset",
+        "episodes": int(args.adaptation_episodes),
+        "horizon": int(args.adaptation_horizon),
+        "updates_per_episode": 0,
+        "noise": 0.0,
+        "lr_scale": 0.0,
+        "offset_step": float(args.offset_step),
+        "candidate_scores": candidate_records,
+        "selected_offset": [float(v) for v in best_offset],
+        "probe_observation": {
+            "scenario": "clean",
+            "seed": int(args.seed),
+            "description": "shared clean initial observation used only for action-space diagnostics",
+        },
+        "transition": {
+            "from": start_action,
+            "to": end_action,
+            "delta": _action_delta(start_action, end_action),
+        },
+        "trace": [
+            {"shot": 0, "updates": 0, "action": start_action},
+            {"shot": int(args.adaptation_episodes), "updates": 0, "action": end_action},
+        ],
+        "num_transitions": int(args.adaptation_horizon) * int(args.adaptation_episodes) * len(candidates),
+        "num_updates": 0,
+        "last_update_loss": {},
+        "selection": selection,
+        "adapted_evaluation": adapted_evaluation,
+        "evaluation": evaluation,
+    }
+
+
+def _offset_candidates(*, act_dim: int, step: float) -> list[np.ndarray]:
+    zero = np.zeros(int(act_dim), dtype=np.float32)
+    candidates = [zero]
+    for idx in range(int(act_dim)):
+        pos = np.zeros(int(act_dim), dtype=np.float32)
+        neg = np.zeros(int(act_dim), dtype=np.float32)
+        pos[idx] = float(step)
+        neg[idx] = -float(step)
+        candidates.extend([pos, neg])
+    return candidates
 
 
 def _make_common_probe_obs(args, scenario: Scenario) -> np.ndarray:
@@ -378,6 +574,7 @@ def _bsmg_config(args, *, horizon: int | None = None) -> BSMGConfig:
         server_lr_min=float(args.server_lr_min),
         server_lr_max=float(args.server_lr_max),
         server_lr_penalty_weight=float(args.server_lr_penalty_weight),
+        attack_context_names=_attack_context_names(args),
     )
 
 
@@ -440,6 +637,16 @@ def _scenarios(args) -> list[Scenario]:
             *backdoor_scenarios[1:],
         ]
     return poisoning
+
+
+def _attack_context_names(args) -> tuple[str, ...]:
+    if not bool(getattr(args, "attack_context", False)):
+        return ()
+    if args.scenario_set == "backdoor":
+        return ("bfl", "dba", "rl_backdoor")
+    if args.scenario_set == "mixed":
+        return ("ipm", "lmp", "rl", "bfl", "dba", "rl_backdoor")
+    return ("ipm", "lmp", "rl")
 
 
 def _defender_action_dim(args) -> int:

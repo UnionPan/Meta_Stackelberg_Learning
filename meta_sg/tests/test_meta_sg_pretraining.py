@@ -225,6 +225,16 @@ def test_pretraining_script_threads_server_lr_penalty_to_meta_config():
     assert cfg.server_lr_penalty_weight == pytest.approx(0.5)
 
 
+def test_pretraining_script_can_append_attack_context_names_to_meta_config():
+    from meta_sg.scripts.run_meta_sg_pretraining import build_meta_config, parse_args
+
+    args = parse_args(["--attack-domain", "mixed", "--attack-context"])
+
+    cfg = build_meta_config(args)
+
+    assert cfg.attack_context_names == ("ipm", "lmp", "rl", "bfl", "dba", "rl_backdoor")
+
+
 def test_direct_eval_script_threads_server_lr_bounds_to_bsmg_config():
     from meta_sg.scripts.evaluate_meta_sg_direct import _bsmg_config, parse_args
 
@@ -266,6 +276,109 @@ def test_direct_eval_script_threads_server_lr_penalty_to_bsmg_config():
     cfg = _bsmg_config(args)
 
     assert cfg.server_lr_penalty_weight == pytest.approx(0.5)
+
+
+def test_direct_eval_script_can_append_attack_context_names_to_bsmg_config():
+    from meta_sg.scripts.evaluate_meta_sg_direct import _bsmg_config, parse_args
+
+    args = parse_args(
+        [
+            "--checkpoint",
+            "dummy.pt",
+            "--output-json",
+            "out.json",
+            "--scenario-set",
+            "mixed",
+            "--attack-context",
+        ]
+    )
+
+    cfg = _bsmg_config(args)
+
+    assert cfg.attack_context_names == ("ipm", "lmp", "rl", "bfl", "dba", "rl_backdoor")
+
+
+def test_direct_eval_script_accepts_guarded_few_shot_selection_args():
+    from meta_sg.scripts.evaluate_meta_sg_direct import parse_args
+
+    args = parse_args(
+        [
+            "--checkpoint",
+            "dummy.pt",
+            "--output-json",
+            "out.json",
+            "--few-shot",
+            "--few-shot-selection",
+            "guarded",
+            "--selection-margin",
+            "0.002",
+            "--selection-horizon",
+            "7",
+            "--selection-seed-offset",
+            "30000",
+        ]
+    )
+
+    assert args.few_shot_selection == "guarded"
+    assert args.selection_margin == pytest.approx(0.002)
+    assert args.selection_horizon == 7
+    assert args.selection_seed_offset == 30000
+
+
+def test_guarded_few_shot_selection_requires_margin_before_accepting_adapted_policy():
+    from meta_sg.scripts.evaluate_meta_sg_direct import _guarded_selection_decision
+
+    rejected = _guarded_selection_decision(base_score=0.9000, adapted_score=0.9010, margin=0.0020)
+    accepted = _guarded_selection_decision(base_score=0.9000, adapted_score=0.9025, margin=0.0020)
+
+    assert rejected["accepted"] is False
+    assert rejected["selected"] == "base"
+    assert rejected["score_gain"] == pytest.approx(0.0010)
+    assert accepted["accepted"] is True
+    assert accepted["selected"] == "adapted"
+    assert accepted["score_gain"] == pytest.approx(0.0025)
+
+
+def test_action_offset_policy_adds_raw_action_delta_and_clips_to_action_bounds():
+    from meta_sg.scripts.evaluate_meta_sg_direct import ActionOffsetPolicy
+
+    class BasePolicy:
+        obs_dim = 2
+        act_dim = 3
+
+        def get_action(self, obs, noise=0.0):
+            assert noise == 0.0
+            return np.asarray([0.8, -0.9, 0.1], dtype=np.float32)
+
+    policy = ActionOffsetPolicy(BasePolicy(), np.asarray([0.5, -0.5, 0.2], dtype=np.float32))
+
+    action = policy.get_action(np.zeros(2, dtype=np.float32), noise=0.0)
+
+    assert action.tolist() == pytest.approx([1.0, -1.0, 0.3])
+    assert policy.obs_dim == 2
+    assert policy.act_dim == 3
+
+
+def test_action_offset_candidates_include_zero_and_coordinate_steps():
+    from meta_sg.scripts.evaluate_meta_sg_direct import _offset_candidates
+
+    candidates = _offset_candidates(act_dim=3, step=0.25)
+
+    assert np.allclose(
+        np.stack(candidates),
+        np.asarray(
+            [
+                [0.0, 0.0, 0.0],
+                [0.25, 0.0, 0.0],
+                [-0.25, 0.0, 0.0],
+                [0.0, 0.25, 0.0],
+                [0.0, -0.25, 0.0],
+                [0.0, 0.0, 0.25],
+                [0.0, 0.0, -0.25],
+            ],
+            dtype=np.float32,
+        ),
+    )
 
 
 def test_pretraining_script_resolves_auto_device_to_cuda_when_available(monkeypatch):

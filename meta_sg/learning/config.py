@@ -53,6 +53,7 @@ class MetaSGConfig:
     server_lr_max: float = 1.0      # transition server-lr action upper bound
     server_lr_penalty_weight: float = 0.0  # reward penalty for shrinking transition server-lr
     native_sandbox_attacks: bool = False  # use fl_sandbox native attacks instead of meta_sg attack stubs
+    attack_context_names: tuple[str, ...] = ()  # append attack one-hot context to observations when non-empty
 
     # Online adaptation
     online_T: int = 10

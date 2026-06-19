@@ -45,6 +45,7 @@ class BSMGConfig:
     normalise_obs: bool = True        # z-score normalise observations
     eval_every: int = 1               # run expensive full eval every N FL rounds
     history_len: int = 0              # append last-k round feedback/action features
+    attack_context_names: tuple[str, ...] = ()  # optional one-hot task context appended to observations
 
 
 class BSMGEnv:
@@ -211,6 +212,7 @@ class BSMGEnv:
             self.coordinator.spec.empty_weights(),
             self.config.num_tail_layers,
             self.config.history_len,
+            len(self.config.attack_context_names),
         )
 
     @property
@@ -229,9 +231,24 @@ class BSMGEnv:
         obs = compress_weights(weights, self.config.num_tail_layers)
         if self.config.normalise_obs:
             obs = normalise_obs(obs)
-        if self.config.history_len <= 0:
-            return obs
-        return np.concatenate([obs, self._history_obs()], axis=0).astype(np.float32)
+        parts = [obs]
+        if self.config.history_len > 0:
+            parts.append(self._history_obs())
+        context = self._attack_context_obs()
+        if context.size:
+            parts.append(context)
+        return np.concatenate(parts, axis=0).astype(np.float32)
+
+    def _attack_context_obs(self) -> np.ndarray:
+        names = tuple(self.config.attack_context_names)
+        if not names:
+            return np.zeros(0, dtype=np.float32)
+        context = np.zeros(len(names), dtype=np.float32)
+        try:
+            context[names.index(self.attack_type.name)] = 1.0
+        except ValueError:
+            pass
+        return context
 
     def _history_obs(self) -> np.ndarray:
         k = max(0, int(self.config.history_len))
