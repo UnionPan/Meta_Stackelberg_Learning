@@ -14,8 +14,8 @@ class AttackType:
     Identifies one attack scenario ξ = {(ω1, ω2, ω3)_i}^M_i.
     Corresponds to Section II-D of the paper.
     """
-    name: str                    # "ipm" | "lmp" | "bfl" | "dba" | "rl" | "brl"
-    objective: str               # "untargeted" | "targeted"
+    name: str                    # "clean" | "ipm" | "lmp" | "bfl" | "dba" | "rl" | "brl"
+    objective: str               # "clean" | "untargeted" | "targeted"
     adaptive: bool               # True = RL attacker with inner best-response loop
     config: dict = field(default_factory=dict)
 
@@ -25,6 +25,7 @@ class AttackType:
 
 # Pre-defined attack domain Ξ from paper (Table 3)
 ATTACK_DOMAIN = {
+    "clean": AttackType(name="clean", objective="clean", adaptive=False),
     "ipm": AttackType(name="ipm", objective="untargeted", adaptive=False,
                       config={"scaling": 2.0}),
     "lmp": AttackType(name="lmp", objective="untargeted", adaptive=False,

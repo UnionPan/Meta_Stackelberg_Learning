@@ -44,6 +44,11 @@ def backdoor_attack_domain() -> list[AttackType]:
     ]
 
 
+def clean_backdoor_attack_domain() -> list[AttackType]:
+    """Return a clean task plus the targeted backdoor task domain."""
+    return [ATTACK_DOMAIN["clean"], *backdoor_attack_domain()]
+
+
 def mixed_attack_domain() -> list[AttackType]:
     """Return global model-poisoning plus targeted backdoor task domain."""
     return [*poisoning_attack_domain(), *backdoor_attack_domain()]
@@ -54,6 +59,8 @@ def attack_domain_from_name(name: str) -> list[AttackType]:
         return poisoning_attack_domain()
     if name == "backdoor":
         return backdoor_attack_domain()
+    if name == "clean_backdoor":
+        return clean_backdoor_attack_domain()
     if name == "mixed":
         return mixed_attack_domain()
     raise ValueError(f"Unsupported attack domain: {name}")
@@ -70,7 +77,7 @@ def parse_args(argv=None):
     parser.add_argument("--dataset", choices=["mnist", "cifar10"], default="mnist")
     parser.add_argument(
         "--attack-domain",
-        choices=["model_poisoning", "backdoor", "mixed"],
+        choices=["model_poisoning", "backdoor", "clean_backdoor", "mixed"],
         default="model_poisoning",
         help="Meta-training attack task domain.",
     )
@@ -81,6 +88,74 @@ def parse_args(argv=None):
     parser.add_argument("--N-A", dest="N_A", type=int, default=10, help="Adaptive attacker BR updates")
     parser.add_argument("--post-br-defender-updates", type=int, default=1)
     parser.add_argument("--meta-step", type=float, default=1.0)
+    parser.add_argument(
+        "--meta-objective",
+        choices=["reptile", "query_gated_reptile", "query_targeted_reptile"],
+        default="reptile",
+        help=(
+            "Outer objective: original Reptile, score-gated query Reptile, "
+            "or targeted-ASR-reduction query Reptile."
+        ),
+    )
+    parser.add_argument(
+        "--query-horizon",
+        type=int,
+        default=None,
+        help="Held-out query rollout horizon for query_gated_reptile. Defaults to H.",
+    )
+    parser.add_argument("--query-seed-offset", type=int, default=50_000)
+    parser.add_argument("--query-accept-margin", type=float, default=0.0)
+    parser.add_argument(
+        "--query-clean-floor",
+        type=float,
+        default=None,
+        help="For query_gated_reptile, reject adapted query policies whose clean accuracy falls below this floor.",
+    )
+    parser.add_argument(
+        "--query-clean-drop-tolerance",
+        type=float,
+        default=None,
+        help="For query_gated_reptile, reject adapted query policies that drop clean accuracy by more than this amount.",
+    )
+    parser.add_argument(
+        "--query-backdoor-ceiling",
+        type=float,
+        default=None,
+        help="For query_gated_reptile, reject adapted query policies whose backdoor accuracy exceeds this ceiling.",
+    )
+    parser.add_argument(
+        "--query-backdoor-increase-tolerance",
+        type=float,
+        default=None,
+        help="For query_gated_reptile, reject adapted query policies that increase backdoor accuracy by more than this amount.",
+    )
+    parser.add_argument(
+        "--query-backdoor-improvement-margin",
+        type=float,
+        default=None,
+        help=(
+            "For query_gated_reptile, allow an adapted query policy above the backdoor ceiling "
+            "only if it reduces backdoor accuracy by at least this margin."
+        ),
+    )
+    parser.add_argument(
+        "--query-targeted-asr-reduction-margin",
+        type=float,
+        default=None,
+        help=(
+            "For query_targeted_reptile, require targeted attacks to reduce query ASR "
+            "by at least this amount."
+        ),
+    )
+    parser.add_argument(
+        "--query-targeted-min-base-backdoor",
+        type=float,
+        default=None,
+        help=(
+            "For query_targeted_reptile, only accept targeted updates when the base "
+            "query ASR is at least this value."
+        ),
+    )
     parser.add_argument("--lambda-bd", type=float, default=None, help="Backdoor ASR penalty in defender reward.")
     parser.add_argument(
         "--task-sampler",
@@ -112,6 +187,12 @@ def parse_args(argv=None):
     parser.add_argument("--eval-samples", type=int, default=None)
     parser.add_argument("--eval-batch-size", type=int, default=256)
     parser.add_argument(
+        "--fl-batch-size",
+        type=int,
+        default=None,
+        help="Client DataLoader batch size inside fl_sandbox. Defaults to --batch-size for direct-eval parity.",
+    )
+    parser.add_argument(
         "--fl-parallel-clients",
         type=int,
         default=1,
@@ -142,7 +223,7 @@ def parse_args(argv=None):
 def build_meta_config(args) -> MetaSGConfig:
     lambda_bd = args.lambda_bd
     if lambda_bd is None:
-        lambda_bd = 1.0 if args.attack_domain in {"backdoor", "mixed"} else 0.0
+        lambda_bd = 1.0 if args.attack_domain in {"backdoor", "clean_backdoor", "mixed"} else 0.0
     attack_context_names = (
         tuple(attack.name for attack in attack_domain_from_name(args.attack_domain))
         if args.attack_context
@@ -157,6 +238,17 @@ def build_meta_config(args) -> MetaSGConfig:
         N_A=args.N_A,
         post_br_defender_updates=args.post_br_defender_updates,
         meta_update_step=args.meta_step,
+        meta_objective=args.meta_objective,
+        query_horizon=args.query_horizon,
+        query_seed_offset=args.query_seed_offset,
+        query_accept_margin=args.query_accept_margin,
+        query_clean_floor=args.query_clean_floor,
+        query_clean_drop_tolerance=args.query_clean_drop_tolerance,
+        query_backdoor_ceiling=args.query_backdoor_ceiling,
+        query_backdoor_increase_tolerance=args.query_backdoor_increase_tolerance,
+        query_backdoor_improvement_margin=args.query_backdoor_improvement_margin,
+        query_targeted_asr_reduction_margin=args.query_targeted_asr_reduction_margin,
+        query_targeted_min_base_backdoor=args.query_targeted_min_base_backdoor,
         task_sampler=args.task_sampler,
         eval_every=1,
         warmup_steps=0,
@@ -167,7 +259,10 @@ def build_meta_config(args) -> MetaSGConfig:
         server_lr_min=float(args.server_lr_min),
         server_lr_max=float(args.server_lr_max),
         server_lr_penalty_weight=float(args.server_lr_penalty_weight),
-        native_sandbox_attacks=(args.backend == "fl_sandbox" and args.attack_domain in {"backdoor", "mixed"}),
+        native_sandbox_attacks=(
+            args.backend == "fl_sandbox"
+            and args.attack_domain in {"backdoor", "clean_backdoor", "mixed"}
+        ),
         attack_context_names=attack_context_names,
         dataset=args.dataset,
     )
@@ -188,20 +283,31 @@ def resolve_torch_device(device: str) -> torch.device:
     return torch.device(device)
 
 
-def build_sandbox_config(args):
+def build_sandbox_config(
+    args,
+    *,
+    attack_type: AttackType | str | None = None,
+    horizon: int | None = None,
+    seed: int | None = None,
+):
     resolved_device = str(resolve_torch_device(args.device))
+    attack_name = _attack_name_for_sandbox_config(attack_type)
+    resolved_horizon = int(args.H if horizon is None else horizon)
+    resolved_seed = int(args.seed if seed is None else seed)
+    fl_batch_size = int(args.batch_size if args.fl_batch_size is None else args.fl_batch_size)
     return SandboxConfig(
         dataset=args.dataset,
-        attack_type="clean",
+        attack_type=attack_name,
         defense_type="paper_norm_trimmed_mean",
-        rounds=args.H,
+        rounds=resolved_horizon,
         num_clients=args.num_clients,
-        num_attackers=args.num_attackers,
+        num_attackers=0 if attack_name == "clean" else args.num_attackers,
         subsample_rate=args.subsample_rate,
-        seed=args.seed,
+        seed=resolved_seed,
         device=resolved_device,
         parallel_clients=args.fl_parallel_clients,
         num_workers=args.fl_num_workers,
+        batch_size=fl_batch_size,
         max_client_samples_per_client=args.client_samples,
         max_eval_samples=args.eval_samples,
         eval_batch_size=args.eval_batch_size,
@@ -217,33 +323,56 @@ def build_sandbox_config(args):
         rl_backdoor_reward_mode="paper",
         rl_backdoor_reward_clean_lambda=0.375,
         rl_policy_train_steps_per_round=1,
-        rl_attack_start_round=max(2, min(6, args.H)),
-        rl_policy_train_end_round=max(2, args.H),
+        rl_attack_start_round=max(2, min(6, resolved_horizon)),
+        rl_policy_train_end_round=max(2, resolved_horizon),
     )
 
 
+def _attack_name_for_sandbox_config(attack_type: AttackType | str | None) -> str:
+    if attack_type is None:
+        return "clean"
+    return str(getattr(attack_type, "name", attack_type))
+
+
 def make_coordinator_factory(args):
-    def factory():
+    def factory(
+        *,
+        attack_type: AttackType | str | None = None,
+        horizon: int | None = None,
+        seed: int | None = None,
+    ):
         if args.backend == "stub":
             return StubCoordinator(
                 num_clients=args.num_clients,
                 num_attackers=args.num_attackers,
                 subsample_rate=args.subsample_rate,
-                seed=args.seed,
+                seed=int(args.seed if seed is None else seed),
             )
-        return FLSandboxCoordinatorAdapter(build_sandbox_config(args))
+        return FLSandboxCoordinatorAdapter(
+            build_sandbox_config(
+                args,
+                attack_type=attack_type,
+                horizon=horizon,
+                seed=seed,
+            )
+        )
 
     return factory
 
 
 def probe_obs_dim(args, meta_config: MetaSGConfig) -> int:
-    coordinator = make_coordinator_factory(args)()
     attack_type = attack_domain_from_name(args.attack_domain)[0]
-    attack_strategy = (
-        NativeSandboxAttackMarker(attack_type)
-        if meta_config.native_sandbox_attacks
-        else build_fixed_attack(attack_type)
+    coordinator = make_coordinator_factory(args)(
+        attack_type=attack_type,
+        horizon=meta_config.H,
+        seed=args.seed,
     )
+    if attack_type.name == "clean":
+        attack_strategy = None
+    elif meta_config.native_sandbox_attacks:
+        attack_strategy = NativeSandboxAttackMarker(attack_type)
+    else:
+        attack_strategy = build_fixed_attack(attack_type)
     env = BSMGEnv(
         coordinator=coordinator,
         attack_type=attack_type,

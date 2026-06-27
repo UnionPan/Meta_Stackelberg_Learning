@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from inspect import Parameter, signature
 from typing import Callable, Dict, List, Optional
 
 import numpy as np
@@ -46,6 +47,18 @@ class TaskResult:
     attacker_br_losses: Dict[str, float] = field(default_factory=dict)
     # ||θ_ξ(final) - θ_meta|| — per-task inner adaptation magnitude
     inner_delta_norm: float = 0.0
+    # Held-out query evaluation for objectives that train for post-adaptation improvement.
+    query_base_reward: float = float("nan")
+    query_adapted_reward: float = float("nan")
+    query_gain: float = float("nan")
+    query_base_clean_acc: float = float("nan")
+    query_adapted_clean_acc: float = float("nan")
+    query_clean_drop: float = float("nan")
+    query_base_backdoor_acc: float = float("nan")
+    query_adapted_backdoor_acc: float = float("nan")
+    query_clean_accepted: bool = True
+    query_backdoor_accepted: bool = True
+    query_accepted: bool = True
     # Env-level diagnostics (action distribution, clean/backdoor acc)
     diagnostics: dict = field(default_factory=dict)
 
@@ -55,7 +68,7 @@ class AttackTaskRunner:
 
     def __init__(
         self,
-        coordinator_factory: Callable[[], FLCoordinator],
+        coordinator_factory: Callable[..., FLCoordinator],
         td3_config: TD3Config,
         meta_config: MetaSGConfig,
         obs_dim: int,
@@ -81,27 +94,7 @@ class AttackTaskRunner:
             self.td3_config.buffer_capacity, self.obs_dim, self.act_dim
         )
 
-        attack_strategy = self._build_attack_strategy(attack_type)
-        coordinator = self.coordinator_factory()
-        env = BSMGEnv(
-            coordinator=coordinator,
-            attack_type=attack_type,
-            attack_strategy=attack_strategy,
-            defense_strategy=PaperDefenseStrategy(),
-            config=BSMGConfig(
-                horizon=self.meta_config.H,
-                eval_every=self.meta_config.eval_every,
-                history_len=self.meta_config.history_len,
-                lambda_bd=self.meta_config.lambda_bd,
-                reward_mode=self.meta_config.reward_mode,
-                third_action=self.meta_config.defender_third_action,
-                server_lr_min=self.meta_config.server_lr_min,
-                server_lr_max=self.meta_config.server_lr_max,
-                server_lr_penalty_weight=self.meta_config.server_lr_penalty_weight,
-                attack_context_names=self.meta_config.attack_context_names,
-            ),
-            evaluator=getattr(coordinator, "evaluate_weights", None),
-        )
+        env = self._build_env(attack_type, horizon=self.meta_config.H, seed=seed_base)
 
         collector = TrajectoryCollector(
             env=env,
@@ -175,6 +168,98 @@ class AttackTaskRunner:
             for k in adapted_p
         ))
 
+        diagnostics = {
+            "buffer_size": len(local_def_buffer),
+            "attacker_buffer_size": len(self.attacker_buffers[attack_type.name]),
+            **action_diag,
+            **attacker_action_diag,
+            **env_diag,
+        }
+        query_base_reward = float("nan")
+        query_adapted_reward = float("nan")
+        query_gain = float("nan")
+        query_base_clean_acc = float("nan")
+        query_adapted_clean_acc = float("nan")
+        query_clean_drop = float("nan")
+        query_base_backdoor_acc = float("nan")
+        query_adapted_backdoor_acc = float("nan")
+        query_clean_accepted = True
+        query_backdoor_accepted = True
+        query_accepted = True
+        if self.meta_config.meta_objective in {"query_gated_reptile", "query_targeted_reptile"}:
+            query_horizon = self.meta_config.query_horizon or self.meta_config.H
+            query_seed = seed_base + self.meta_config.query_seed_offset
+            query_base = self._query_evaluate(
+                attack_type=attack_type,
+                defender=meta_defender,
+                horizon=query_horizon,
+                seed=query_seed,
+            )
+            query_adapted = self._query_evaluate(
+                attack_type=attack_type,
+                defender=local_defender,
+                horizon=query_horizon,
+                seed=query_seed,
+            )
+            query_base_reward = query_base["reward"]
+            query_adapted_reward = query_adapted["reward"]
+            query_gain = query_adapted_reward - query_base_reward
+            query_base_clean_acc = query_base["clean_acc"]
+            query_adapted_clean_acc = query_adapted["clean_acc"]
+            query_clean_drop = _clean_drop(query_base_clean_acc, query_adapted_clean_acc)
+            query_base_backdoor_acc = query_base["backdoor_acc"]
+            query_adapted_backdoor_acc = query_adapted["backdoor_acc"]
+            query_clean_accepted = _query_clean_constraints_accept(
+                base_clean=query_base_clean_acc,
+                adapted_clean=query_adapted_clean_acc,
+                clean_floor=self.meta_config.query_clean_floor,
+                clean_drop_tolerance=self.meta_config.query_clean_drop_tolerance,
+            )
+            if self.meta_config.meta_objective == "query_targeted_reptile":
+                if str(attack_type.objective) == "targeted":
+                    query_backdoor_accepted = _query_backdoor_reduction_accept(
+                        base_backdoor=query_base_backdoor_acc,
+                        adapted_backdoor=query_adapted_backdoor_acc,
+                        reduction_margin=self.meta_config.query_targeted_asr_reduction_margin,
+                        min_base_backdoor=self.meta_config.query_targeted_min_base_backdoor,
+                    )
+                    query_accepted = query_clean_accepted and query_backdoor_accepted
+                else:
+                    query_backdoor_accepted = True
+                    query_accepted = (
+                        query_gain >= self.meta_config.query_accept_margin
+                        and query_clean_accepted
+                    )
+            else:
+                query_backdoor_accepted = _query_backdoor_constraints_accept(
+                    base_backdoor=query_base_backdoor_acc,
+                    adapted_backdoor=query_adapted_backdoor_acc,
+                    backdoor_ceiling=self.meta_config.query_backdoor_ceiling,
+                    backdoor_increase_tolerance=self.meta_config.query_backdoor_increase_tolerance,
+                    backdoor_improvement_margin=self.meta_config.query_backdoor_improvement_margin,
+                )
+                query_accepted = (
+                    query_gain >= self.meta_config.query_accept_margin
+                    and query_clean_accepted
+                    and query_backdoor_accepted
+                )
+            diagnostics.update(
+                {
+                    "query_base_reward": query_base_reward,
+                    "query_adapted_reward": query_adapted_reward,
+                    "query_gain": query_gain,
+                    "query_base_clean_acc": query_base_clean_acc,
+                    "query_adapted_clean_acc": query_adapted_clean_acc,
+                    "query_clean_drop": query_clean_drop,
+                    "query_base_backdoor_acc": query_base_backdoor_acc,
+                    "query_adapted_backdoor_acc": query_adapted_backdoor_acc,
+                    "query_backdoor_reduction": query_base_backdoor_acc - query_adapted_backdoor_acc,
+                    "query_clean_accepted": float(query_clean_accepted),
+                    "query_backdoor_accepted": float(query_backdoor_accepted),
+                    "query_accepted": float(query_accepted),
+                }
+            )
+
         return TaskResult(
             attack_type=attack_type,
             adapted_params=adapted_p,
@@ -186,16 +271,75 @@ class AttackTaskRunner:
             defender_losses=_aggregate_losses(all_def_losses),
             attacker_br_losses=attacker_br_losses,
             inner_delta_norm=inner_delta_norm,
-            diagnostics={
-                "buffer_size": len(local_def_buffer),
-                "attacker_buffer_size": len(self.attacker_buffers[attack_type.name]),
-                **action_diag,
-                **attacker_action_diag,
-                **env_diag,
-            },
+            query_base_reward=query_base_reward,
+            query_adapted_reward=query_adapted_reward,
+            query_gain=query_gain,
+            query_base_clean_acc=query_base_clean_acc,
+            query_adapted_clean_acc=query_adapted_clean_acc,
+            query_clean_drop=query_clean_drop,
+            query_base_backdoor_acc=query_base_backdoor_acc,
+            query_adapted_backdoor_acc=query_adapted_backdoor_acc,
+            query_clean_accepted=query_clean_accepted,
+            query_backdoor_accepted=query_backdoor_accepted,
+            query_accepted=query_accepted,
+            diagnostics=diagnostics,
         )
 
-    def _build_attack_strategy(self, attack_type: AttackType) -> AttackStrategy:
+    def _build_env(self, attack_type: AttackType, horizon: int, seed: int | None = None) -> BSMGEnv:
+        attack_strategy = self._build_attack_strategy(attack_type)
+        coordinator = _coordinator_from_factory(
+            self.coordinator_factory,
+            attack_type=attack_type,
+            horizon=max(1, int(horizon)),
+            seed=seed,
+        )
+        return BSMGEnv(
+            coordinator=coordinator,
+            attack_type=attack_type,
+            attack_strategy=attack_strategy,
+            defense_strategy=PaperDefenseStrategy(),
+            config=BSMGConfig(
+                horizon=max(1, int(horizon)),
+                eval_every=self.meta_config.eval_every,
+                history_len=self.meta_config.history_len,
+                lambda_bd=self.meta_config.lambda_bd,
+                reward_mode=self.meta_config.reward_mode,
+                third_action=self.meta_config.defender_third_action,
+                server_lr_min=self.meta_config.server_lr_min,
+                server_lr_max=self.meta_config.server_lr_max,
+                server_lr_penalty_weight=self.meta_config.server_lr_penalty_weight,
+                attack_context_names=self.meta_config.attack_context_names,
+            ),
+            evaluator=getattr(coordinator, "evaluate_weights", None),
+        )
+
+    def _query_evaluate(
+        self,
+        attack_type: AttackType,
+        defender: TD3Agent,
+        horizon: int,
+        seed: int,
+    ) -> dict[str, float]:
+        env = self._build_env(attack_type, horizon=horizon, seed=seed)
+        collector = TrajectoryCollector(
+            env=env,
+            defender=defender,
+            attacker=self._rollout_attacker_policy(attack_type),
+            defender_buffer=ReplayBuffer(
+                max(1, int(horizon)),
+                self.obs_dim,
+                self.act_dim,
+            ),
+            attacker_buffer=None,
+            exploration_noise=0.0,
+            store_attacker=False,
+        )
+        traj = collector.collect(max(1, int(horizon)), seed=seed)
+        return _query_rollout_metrics(traj)
+
+    def _build_attack_strategy(self, attack_type: AttackType) -> AttackStrategy | None:
+        if attack_type.name == "clean":
+            return None
         if self.meta_config.native_sandbox_attacks and attack_type.name in {"bfl", "dba", "rl_backdoor"}:
             return NativeSandboxAttackMarker(attack_type)
         if attack_type.adaptive:
@@ -296,6 +440,123 @@ def _env_diagnostics(traj: Trajectory) -> Dict[str, float]:
         "clean_acc":    float(np.nanmean(clean_accs)),
         "backdoor_acc": float(np.nanmean(bd_accs)),
     }
+
+
+def _query_rollout_metrics(traj: Trajectory) -> dict[str, float]:
+    if not traj.transitions:
+        return {
+            "reward": float("nan"),
+            "clean_acc": float("nan"),
+            "backdoor_acc": float("nan"),
+        }
+    final = traj.transitions[-1]
+    return {
+        "reward": float(np.mean([tr.defender_reward for tr in traj.transitions])),
+        "clean_acc": _finite_info(final, "clean_acc"),
+        "backdoor_acc": _finite_info(final, "backdoor_acc"),
+    }
+
+
+def _finite_info(transition: Transition, key: str) -> float:
+    value = transition.info.get(key, float("nan"))
+    return float(value)
+
+
+def _clean_drop(base_clean: float, adapted_clean: float) -> float:
+    if math.isnan(base_clean) or math.isnan(adapted_clean):
+        return float("nan")
+    return float(base_clean - adapted_clean)
+
+
+def _coordinator_from_factory(
+    factory: Callable[..., FLCoordinator],
+    *,
+    attack_type: AttackType,
+    horizon: int,
+    seed: int | None,
+) -> FLCoordinator:
+    """Call attack-aware factories while preserving older zero-arg factories."""
+    try:
+        params = signature(factory).parameters
+    except (TypeError, ValueError):
+        return factory()
+
+    accepts_kwargs = any(param.kind == Parameter.VAR_KEYWORD for param in params.values())
+    kwargs = {}
+    for key, value in {
+        "attack_type": attack_type,
+        "horizon": int(horizon),
+        "seed": seed,
+    }.items():
+        if accepts_kwargs or key in params:
+            kwargs[key] = value
+    return factory(**kwargs)
+
+
+def _query_clean_constraints_accept(
+    *,
+    base_clean: float,
+    adapted_clean: float,
+    clean_floor: float | None,
+    clean_drop_tolerance: float | None,
+) -> bool:
+    if clean_floor is not None:
+        if math.isnan(adapted_clean) or adapted_clean < float(clean_floor):
+            return False
+    if clean_drop_tolerance is not None:
+        drop = _clean_drop(base_clean, adapted_clean)
+        if math.isnan(drop) or drop > float(clean_drop_tolerance):
+            return False
+    return True
+
+
+def _query_backdoor_constraints_accept(
+    *,
+    base_backdoor: float,
+    adapted_backdoor: float,
+    backdoor_ceiling: float | None,
+    backdoor_increase_tolerance: float | None,
+    backdoor_improvement_margin: float | None = None,
+) -> bool:
+    eps = 1e-12
+    if (
+        backdoor_ceiling is None
+        and backdoor_increase_tolerance is None
+        and backdoor_improvement_margin is None
+    ):
+        return True
+    if not math.isfinite(adapted_backdoor):
+        return False
+    if backdoor_ceiling is not None and adapted_backdoor > float(backdoor_ceiling) + eps:
+        if (
+            backdoor_improvement_margin is None
+            or not math.isfinite(base_backdoor)
+            or base_backdoor <= float(backdoor_ceiling) + eps
+            or base_backdoor - adapted_backdoor < float(backdoor_improvement_margin) - eps
+        ):
+            return False
+    if backdoor_increase_tolerance is not None:
+        if not math.isfinite(base_backdoor):
+            return False
+        if adapted_backdoor - base_backdoor > float(backdoor_increase_tolerance) + eps:
+            return False
+    return True
+
+
+def _query_backdoor_reduction_accept(
+    *,
+    base_backdoor: float,
+    adapted_backdoor: float,
+    reduction_margin: float | None,
+    min_base_backdoor: float | None,
+) -> bool:
+    eps = 1e-12
+    if not math.isfinite(base_backdoor) or not math.isfinite(adapted_backdoor):
+        return False
+    if min_base_backdoor is not None and base_backdoor < float(min_base_backdoor) - eps:
+        return False
+    margin = 0.0 if reduction_margin is None else float(reduction_margin)
+    return bool(base_backdoor - adapted_backdoor >= margin - eps)
 
 
 def _aggregate_losses(loss_dicts: List[Dict]) -> Dict[str, float]:

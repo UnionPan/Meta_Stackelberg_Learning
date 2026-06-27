@@ -25,7 +25,12 @@ import torch
 from meta_sg.learning.best_response import AttackerBestResponse
 from meta_sg.learning.config import MetaSGConfig, TD3Config
 from meta_sg.learning.replay_buffer import ReplayBuffer
-from meta_sg.learning.task_runner import AttackTaskRunner, TaskResult
+from meta_sg.learning.task_runner import (
+    AttackTaskRunner,
+    TaskResult,
+    _query_backdoor_constraints_accept,
+    _query_backdoor_reduction_accept,
+)
 from meta_sg.learning.td3 import TD3Agent
 from meta_sg.simulation.interface import FLCoordinator
 from meta_sg.strategies.types import AttackType
@@ -59,7 +64,7 @@ class MetaSGTrainer:
 
     def __init__(
         self,
-        coordinator_factory: Callable[[], FLCoordinator],
+        coordinator_factory: Callable[..., FLCoordinator],
         attack_domain: Sequence[AttackType],
         meta_config: MetaSGConfig,
         td3_config: TD3Config,
@@ -150,7 +155,19 @@ class MetaSGTrainer:
                 task_results.append(task_result)
 
             # Reptile meta-update θ ← θ + (1/K) Σ (θ_ξ - θ)
-            reptile_norms = self._reptile_update(adapted_params, step_size=cfg.meta_update_step)
+            meta_update_params = _meta_update_adapted_params(
+                task_results,
+                meta_objective=cfg.meta_objective,
+                query_accept_margin=cfg.query_accept_margin,
+                query_clean_floor=cfg.query_clean_floor,
+                query_clean_drop_tolerance=cfg.query_clean_drop_tolerance,
+                query_backdoor_ceiling=cfg.query_backdoor_ceiling,
+                query_backdoor_increase_tolerance=cfg.query_backdoor_increase_tolerance,
+                query_backdoor_improvement_margin=cfg.query_backdoor_improvement_margin,
+                query_targeted_asr_reduction_margin=cfg.query_targeted_asr_reduction_margin,
+                query_targeted_min_base_backdoor=cfg.query_targeted_min_base_backdoor,
+            )
+            reptile_norms = self._reptile_update(meta_update_params, step_size=cfg.meta_update_step)
 
             # --- Aggregate metrics ---
             d_rewards  = [r.mean_defender_reward for r in task_results]
@@ -161,10 +178,18 @@ class MetaSGTrainer:
             self._result.meta_iterations = t + 1
 
             if (t + 1) % self.log_interval == 0:
+                query_metrics = _query_metric_values(task_results)
+                query_suffix = ""
+                if query_metrics:
+                    query_suffix = (
+                        f"  q_gain={query_metrics['query_gain_mean']:.5f}  "
+                        f"q_accept={query_metrics['query_accept_rate']:.2f}"
+                    )
                 print(
                     f"[MetaSG] iter {t + 1}/{self.total_iterations}  "
                     f"r_D={mean_d_rew:.4f}  "
                     f"reptile_δ={reptile_norms['actor']:.5f}  "
+                    f"{query_suffix}  "
                     f"batch={[xi.name for xi in batch_types]}"
                 )
 
@@ -206,6 +231,9 @@ class MetaSGTrainer:
         w.add_scalar("train/attacker_reward_mean", float(np.mean(a_rewards)), t)
         w.add_scalar("train/adaptive_fraction",
                      float(np.mean([xi.adaptive for xi in batch_types])), t)
+        query_metrics = _query_metric_values(task_results)
+        for key, value in query_metrics.items():
+            w.add_scalar(f"query/{key}", value, t)
 
         env_diag = _mean_diag_values(task_results, "clean_acc", "backdoor_acc")
         if "clean_acc" in env_diag:
@@ -350,6 +378,7 @@ class MetaSGTrainer:
                 name: float(np.mean(vals)) for name, vals in per_attack.items()
             },
         }
+        record.update(_query_metric_values(task_results))
         record.update(action_diag)
         with open(self.metrics_jsonl_path, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(record, sort_keys=True) + "\n")
@@ -457,6 +486,238 @@ def _mean_diag_values(task_results: List[TaskResult], *keys: str) -> Dict[str, f
             if val is not None and not math.isnan(val):
                 buckets[key].append(float(val))
     return {key: float(np.mean(vals)) for key, vals in buckets.items() if vals}
+
+
+def _query_metric_values(task_results: List[TaskResult]) -> Dict[str, float]:
+    gains = [r.query_gain for r in task_results if not math.isnan(r.query_gain)]
+    if not gains:
+        return {}
+    base = [r.query_base_reward for r in task_results if not math.isnan(r.query_base_reward)]
+    adapted = [r.query_adapted_reward for r in task_results if not math.isnan(r.query_adapted_reward)]
+    accepted = [float(r.query_accepted) for r in task_results if not math.isnan(r.query_gain)]
+    base_clean = [
+        r.query_base_clean_acc
+        for r in task_results
+        if not math.isnan(r.query_base_clean_acc)
+    ]
+    adapted_clean = [
+        r.query_adapted_clean_acc
+        for r in task_results
+        if not math.isnan(r.query_adapted_clean_acc)
+    ]
+    clean_drops = [r.query_clean_drop for r in task_results if not math.isnan(r.query_clean_drop)]
+    clean_accepted = [
+        float(r.query_clean_accepted)
+        for r in task_results
+        if not math.isnan(r.query_gain)
+    ]
+    base_bd = [
+        r.query_base_backdoor_acc
+        for r in task_results
+        if not math.isnan(r.query_base_backdoor_acc)
+    ]
+    adapted_bd = [
+        r.query_adapted_backdoor_acc
+        for r in task_results
+        if not math.isnan(r.query_adapted_backdoor_acc)
+    ]
+    backdoor_accepted = [
+        float(r.query_backdoor_accepted)
+        for r in task_results
+        if not math.isnan(r.query_gain)
+    ]
+    backdoor_increases = [
+        r.query_adapted_backdoor_acc - r.query_base_backdoor_acc
+        for r in task_results
+        if not math.isnan(r.query_base_backdoor_acc)
+        and not math.isnan(r.query_adapted_backdoor_acc)
+    ]
+    targeted_reductions = [
+        r.query_base_backdoor_acc - r.query_adapted_backdoor_acc
+        for r in task_results
+        if str(r.attack_type.objective) == "targeted"
+        and not math.isnan(r.query_base_backdoor_acc)
+        and not math.isnan(r.query_adapted_backdoor_acc)
+    ]
+    metrics = {
+        "query_base_reward_mean": float(np.mean(base)) if base else float("nan"),
+        "query_adapted_reward_mean": float(np.mean(adapted)) if adapted else float("nan"),
+        "query_gain_mean": float(np.mean(gains)),
+        "query_gain_min": float(np.min(gains)),
+        "query_accept_rate": float(np.mean(accepted)) if accepted else float("nan"),
+    }
+    if base_clean:
+        metrics["query_base_clean_acc_mean"] = float(np.mean(base_clean))
+    if adapted_clean:
+        metrics["query_adapted_clean_acc_mean"] = float(np.mean(adapted_clean))
+    if clean_drops:
+        metrics["query_clean_drop_mean"] = float(np.mean(clean_drops))
+        metrics["query_clean_drop_max"] = float(np.max(clean_drops))
+    if clean_accepted:
+        metrics["query_clean_accept_rate"] = float(np.mean(clean_accepted))
+    if base_bd:
+        metrics["query_base_backdoor_acc_mean"] = float(np.mean(base_bd))
+    if adapted_bd:
+        metrics["query_adapted_backdoor_acc_mean"] = float(np.mean(adapted_bd))
+    if backdoor_accepted:
+        metrics["query_backdoor_accept_rate"] = float(np.mean(backdoor_accepted))
+    if backdoor_increases:
+        metrics["query_backdoor_increase_mean"] = float(np.mean(backdoor_increases))
+        metrics["query_backdoor_increase_max"] = float(np.max(backdoor_increases))
+    if targeted_reductions:
+        metrics["query_targeted_asr_reduction_mean"] = float(np.mean(targeted_reductions))
+        metrics["query_targeted_asr_reduction_min"] = float(np.min(targeted_reductions))
+        metrics["query_targeted_asr_reduction_max"] = float(np.max(targeted_reductions))
+    for result in task_results:
+        if math.isnan(result.query_gain):
+            continue
+        attack_name = str(result.attack_type.name)
+        attack_prefix = f"query_attack_name__{attack_name}__"
+        metrics[f"query_attack_{attack_name}_gain"] = float(result.query_gain)
+        metrics[f"{attack_prefix}gain"] = float(result.query_gain)
+        metrics[f"query_attack_{attack_name}_accepted"] = float(result.query_accepted)
+        metrics[f"{attack_prefix}accepted"] = float(result.query_accepted)
+        metrics[f"query_attack_{attack_name}_clean_accepted"] = float(result.query_clean_accepted)
+        metrics[f"{attack_prefix}clean_accepted"] = float(result.query_clean_accepted)
+        metrics[f"query_attack_{attack_name}_backdoor_accepted"] = float(result.query_backdoor_accepted)
+        metrics[f"{attack_prefix}backdoor_accepted"] = float(result.query_backdoor_accepted)
+        if not math.isnan(result.query_base_clean_acc):
+            metrics[f"query_attack_{attack_name}_base_clean_acc"] = float(result.query_base_clean_acc)
+            metrics[f"{attack_prefix}base_clean_acc"] = float(result.query_base_clean_acc)
+        if not math.isnan(result.query_adapted_clean_acc):
+            metrics[f"query_attack_{attack_name}_adapted_clean_acc"] = float(result.query_adapted_clean_acc)
+            metrics[f"{attack_prefix}adapted_clean_acc"] = float(result.query_adapted_clean_acc)
+        if not math.isnan(result.query_base_backdoor_acc):
+            metrics[f"query_attack_{attack_name}_base_backdoor_acc"] = float(result.query_base_backdoor_acc)
+            metrics[f"{attack_prefix}base_backdoor_acc"] = float(result.query_base_backdoor_acc)
+        if not math.isnan(result.query_adapted_backdoor_acc):
+            metrics[f"query_attack_{attack_name}_adapted_backdoor_acc"] = float(result.query_adapted_backdoor_acc)
+            metrics[f"{attack_prefix}adapted_backdoor_acc"] = float(result.query_adapted_backdoor_acc)
+        if (
+            not math.isnan(result.query_base_backdoor_acc)
+            and not math.isnan(result.query_adapted_backdoor_acc)
+        ):
+            metrics[f"query_attack_{attack_name}_backdoor_increase"] = float(
+                result.query_adapted_backdoor_acc - result.query_base_backdoor_acc
+            )
+            metrics[f"{attack_prefix}backdoor_increase"] = float(
+                result.query_adapted_backdoor_acc - result.query_base_backdoor_acc
+            )
+            metrics[f"query_attack_{attack_name}_backdoor_reduction"] = float(
+                result.query_base_backdoor_acc - result.query_adapted_backdoor_acc
+            )
+            metrics[f"{attack_prefix}backdoor_reduction"] = float(
+                result.query_base_backdoor_acc - result.query_adapted_backdoor_acc
+            )
+    return metrics
+
+
+def _meta_update_adapted_params(
+    task_results: List[TaskResult],
+    *,
+    meta_objective: str,
+    query_accept_margin: float,
+    query_clean_floor: float | None = None,
+    query_clean_drop_tolerance: float | None = None,
+    query_backdoor_ceiling: float | None = None,
+    query_backdoor_increase_tolerance: float | None = None,
+    query_backdoor_improvement_margin: float | None = None,
+    query_targeted_asr_reduction_margin: float | None = None,
+    query_targeted_min_base_backdoor: float | None = None,
+) -> List[Dict]:
+    if meta_objective == "reptile":
+        return [result.adapted_params for result in task_results]
+    if meta_objective == "query_gated_reptile":
+        return [
+            result.adapted_params
+            for result in task_results
+            if not math.isnan(result.query_gain)
+            and result.query_gain >= query_accept_margin
+            and _query_clean_constraints_accept(
+                result,
+                clean_floor=query_clean_floor,
+                clean_drop_tolerance=query_clean_drop_tolerance,
+            )
+            and _query_backdoor_constraints_accept(
+                base_backdoor=result.query_base_backdoor_acc,
+                adapted_backdoor=result.query_adapted_backdoor_acc,
+                backdoor_ceiling=query_backdoor_ceiling,
+                backdoor_increase_tolerance=query_backdoor_increase_tolerance,
+                backdoor_improvement_margin=query_backdoor_improvement_margin,
+            )
+        ]
+    if meta_objective == "query_targeted_reptile":
+        targeted = sorted(
+            [
+                result
+                for result in task_results
+                if not math.isnan(result.query_gain)
+                and str(result.attack_type.objective) == "targeted"
+                and _query_clean_constraints_accept(
+                    result,
+                    clean_floor=query_clean_floor,
+                    clean_drop_tolerance=query_clean_drop_tolerance,
+                )
+                and _query_backdoor_reduction_accept(
+                    base_backdoor=result.query_base_backdoor_acc,
+                    adapted_backdoor=result.query_adapted_backdoor_acc,
+                    reduction_margin=query_targeted_asr_reduction_margin,
+                    min_base_backdoor=query_targeted_min_base_backdoor,
+                )
+            ],
+            key=_targeted_query_rank_key,
+            reverse=True,
+        )
+        non_targeted = [
+            result
+            for result in task_results
+            if not math.isnan(result.query_gain)
+            and str(result.attack_type.objective) != "targeted"
+            and result.query_gain >= query_accept_margin
+            and _query_clean_constraints_accept(
+                result,
+                clean_floor=query_clean_floor,
+                clean_drop_tolerance=query_clean_drop_tolerance,
+            )
+        ]
+        return [result.adapted_params for result in [*targeted, *non_targeted]]
+    raise ValueError(f"Unsupported meta_objective={meta_objective!r}")
+
+
+def _targeted_query_rank_key(result: TaskResult) -> tuple[float, float, float, float]:
+    backdoor_reduction = result.query_base_backdoor_acc - result.query_adapted_backdoor_acc
+    adapted_clean = result.query_adapted_clean_acc
+    adapted_backdoor = result.query_adapted_backdoor_acc
+    return (
+        float(backdoor_reduction) if math.isfinite(backdoor_reduction) else float("-inf"),
+        float(result.query_gain) if math.isfinite(result.query_gain) else float("-inf"),
+        float(adapted_clean) if math.isfinite(adapted_clean) else float("-inf"),
+        -float(adapted_backdoor) if math.isfinite(adapted_backdoor) else float("-inf"),
+    )
+
+
+def _query_clean_constraints_accept(
+    result: TaskResult,
+    *,
+    clean_floor: float | None,
+    clean_drop_tolerance: float | None,
+) -> bool:
+    if clean_floor is not None:
+        if (
+            math.isnan(result.query_adapted_clean_acc)
+            or result.query_adapted_clean_acc < float(clean_floor)
+        ):
+            return False
+    if clean_drop_tolerance is not None:
+        if math.isnan(result.query_clean_drop):
+            if math.isnan(result.query_base_clean_acc) or math.isnan(result.query_adapted_clean_acc):
+                return False
+            clean_drop = result.query_base_clean_acc - result.query_adapted_clean_acc
+        else:
+            clean_drop = result.query_clean_drop
+        if clean_drop > float(clean_drop_tolerance):
+            return False
+    return True
 
 
 def _aggregate_task_losses(loss_dicts: List[Dict]) -> Dict[str, float]:
