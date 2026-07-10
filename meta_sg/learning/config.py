@@ -37,6 +37,7 @@ class MetaSGConfig:
     H_mnist: int = 200    # trajectory horizon for MNIST
     H_cifar: int = 500    # trajectory horizon for CIFAR-10
     l: int = 10           # inner TD3 update steps (= N_D)
+    support_episodes: int = 1  # support trajectories collected per task before query evaluation
     N_A: int = 10         # attacker best-response update steps
     post_br_defender_updates: int = 1  # extra defender updates after adaptive attacker BR
     eta: float = 0.01              # one-step adaptation step size
@@ -52,6 +53,7 @@ class MetaSGConfig:
     query_backdoor_improvement_margin: float | None = None  # allow above-ceiling adapted ASR only if it drops by this margin
     query_targeted_asr_reduction_margin: float | None = None  # targeted objective: min base-adapted ASR drop
     query_targeted_min_base_backdoor: float | None = None  # targeted objective: only learn from high-ASR query tasks
+    query_diagnostics_horizon: int | None = None  # log held-out query diagnostics without changing Reptile updates
     task_sampler: str = "iid"      # "iid" paper sampling | "stratified" coverage sampling
     gamma: float = 0.99            # discount factor for returns
     eval_every: int = 1            # full evaluation cadence inside env rollouts
@@ -60,6 +62,10 @@ class MetaSGConfig:
     lambda_bd: float = 0.0         # model-poisoning default: no backdoor penalty
     reward_mode: str = "accuracy"  # BSMG defender reward mode: "accuracy" | "loss"
     defender_third_action: str = "neuroclip"  # "neuroclip" | "server_lr" | "both"
+    post_defense_mode: str = "weight_copy"  # "weight_copy" | "model_aware_neuroclip"
+    eps_min: float = 1.0          # NeuroClip lower bound for defender action decoding
+    eps_max: float = 10.0         # NeuroClip upper bound for defender action decoding
+    eps_log_scale: bool = False   # decode epsilon logarithmically when True
     server_lr_min: float = 0.0      # transition server-lr action lower bound
     server_lr_max: float = 1.0      # transition server-lr action upper bound
     server_lr_penalty_weight: float = 0.0  # reward penalty for shrinking transition server-lr

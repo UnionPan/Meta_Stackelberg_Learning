@@ -11,6 +11,7 @@ from fl_sandbox.attacks.dba import DBAAttack
 from fl_sandbox.attacks.gaussian import GaussianAttack
 from fl_sandbox.attacks.ipm import IPMAttack
 from fl_sandbox.attacks.lmp import LMPAttack
+from fl_sandbox.attacks.mixed_backdoor import MixedBackdoorAttack
 from fl_sandbox.attacks.rl_attacker import RLAttack
 from fl_sandbox.attacks.rl_backdoor import RLBackdoorAttack
 from fl_sandbox.attacks.signflip import SignFlipAttack
@@ -25,6 +26,7 @@ ATTACK_CHOICES = (
     "gaussian",
     "bfl",
     "dba",
+    "mixed_backdoor",
     "rl",
     "rl_backdoor",
 )
@@ -61,6 +63,29 @@ def create_attack(attacker_config) -> Optional[SandboxAttack]:
         return DBAAttack(
             num_sub_triggers=attacker_config.dba_num_sub_triggers,
             poison_frac=attacker_config.dba_poison_frac,
+        )
+    if attack_type == "mixed_backdoor":
+        from fl_sandbox.attacks.rl_backdoor.config import BackdoorRLConfig
+
+        steps_per_round = (
+            int(getattr(attacker_config, "rl_policy_train_steps_per_round", 0)) or 50
+        )
+        rl_backdoor = RLBackdoorAttack(
+            default_action=tuple(getattr(attacker_config, "rl_backdoor_default_action", (1.0, 0.0, -1.0, 0.0))),
+            stealth_norm_cap=bool(getattr(attacker_config, "rl_backdoor_stealth_norm_cap", False)),
+            config=BackdoorRLConfig.from_attacker_config(attacker_config),
+            attack_start_round=int(getattr(attacker_config, "rl_attack_start_round", 10) or 10),
+            policy_train_end_round=int(getattr(attacker_config, "rl_policy_train_end_round", 30) or 30),
+            policy_train_steps_per_round=steps_per_round,
+        )
+        return MixedBackdoorAttack(
+            total_attackers=int(getattr(attacker_config, "num_attackers", 0) or 0),
+            bfl_attack=BFLAttack(poison_frac=attacker_config.bfl_poison_frac),
+            dba_attack=DBAAttack(
+                num_sub_triggers=attacker_config.dba_num_sub_triggers,
+                poison_frac=attacker_config.dba_poison_frac,
+            ),
+            rl_backdoor_attack=rl_backdoor,
         )
     if attack_type == "rl":
         from fl_sandbox.attacks.rl_attacker.config import RLAttackerConfig

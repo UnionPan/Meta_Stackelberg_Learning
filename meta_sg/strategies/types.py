@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 from dataclasses import dataclass, field
+import math
 from typing import Optional
 
 import numpy as np
@@ -65,6 +66,7 @@ class DefenseDecision:
         beta_max: float = 0.45,
         eps_min: float = 1.0,
         eps_max: float = 10.0,
+        eps_log_scale: bool = False,
         use_neuroclip: bool = True,
         third_action: str = "neuroclip",
         server_lr_min: float = 0.0,
@@ -80,7 +82,7 @@ class DefenseDecision:
         if mode == "both":
             if a.shape[0] < 4:
                 a = np.pad(a, (0, 4 - a.shape[0]))
-            post = float(eps_min + (a[2] + 1) / 2 * (eps_max - eps_min))
+            post = _decode_post_action(float(a[2]), eps_min, eps_max, eps_log_scale)
             server_lr = float(server_lr_min + (a[3] + 1) / 2 * (server_lr_max - server_lr_min))
             return cls(
                 norm_bound_alpha=alpha,
@@ -92,12 +94,21 @@ class DefenseDecision:
         if mode == "server_lr":
             server_lr = float(server_lr_min + (a[2] + 1) / 2 * (server_lr_max - server_lr_min))
             return cls(norm_bound_alpha=alpha, trimmed_mean_beta=beta, server_lr=server_lr)
-        post = float(eps_min + (a[2] + 1) / 2 * (eps_max - eps_min))
+        post = _decode_post_action(float(a[2]), eps_min, eps_max, eps_log_scale)
         if use_neuroclip:
             return cls(norm_bound_alpha=alpha, trimmed_mean_beta=beta,
                        neuroclip_epsilon=max(eps_min, post))
         return cls(norm_bound_alpha=alpha, trimmed_mean_beta=beta,
                    prun_mask_rate=float(np.clip(post / eps_max, 0.0, 0.5)))
+
+
+def _decode_post_action(raw_value: float, eps_min: float, eps_max: float, eps_log_scale: bool) -> float:
+    u = (float(raw_value) + 1.0) / 2.0
+    if not eps_log_scale:
+        return float(eps_min + u * (eps_max - eps_min))
+    lo = max(float(eps_min), 1e-12)
+    hi = max(float(eps_max), lo)
+    return float(math.exp(math.log(lo) + u * (math.log(hi) - math.log(lo))))
 
 
 @dataclass

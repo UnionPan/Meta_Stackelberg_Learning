@@ -29,6 +29,7 @@ from meta_sg.learning.td3 import TD3Agent
 from meta_sg.simulation.fl_sandbox_adapter import FLSandboxCoordinatorAdapter, SandboxConfig
 from meta_sg.strategies.defenses.paper import PaperDefenseStrategy
 from meta_sg.strategies.types import AttackType, DefenseDecision
+from src.defenses import apply_post_defense
 
 
 @dataclass(frozen=True)
@@ -170,7 +171,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--dataset", choices=["mnist", "cifar10"], default="mnist")
     parser.add_argument(
         "--scenario-set",
-        choices=["model_poisoning", "backdoor", "mixed"],
+        choices=["model_poisoning", "backdoor", "clean_mixed_backdoor", "mixed", "clean_global_backdoor_mixed"],
         default="model_poisoning",
     )
     parser.add_argument(
@@ -197,6 +198,34 @@ def parse_args(argv=None) -> argparse.Namespace:
         choices=["neuroclip", "server_lr", "both"],
         default="neuroclip",
     )
+    parser.add_argument(
+        "--post-defense-mode",
+        choices=["weight_copy", "model_aware_neuroclip", "model_aware_pruning"],
+        default="weight_copy",
+        help=(
+            "Post-training evaluation path. weight_copy preserves the legacy "
+            "PaperDefenseStrategy weight-value clipping; model_aware_neuroclip "
+            "wraps the fl_sandbox model with activation-clamping NeuroClip; "
+            "model_aware_pruning wraps it with activation-based pruning."
+        ),
+    )
+    parser.add_argument(
+        "--fixed-neuroclip-epsilon",
+        type=float,
+        default=None,
+        help=(
+            "Optional fixed NeuroClip epsilon for post-defense evaluation. "
+            "Useful for overlaying model-aware NeuroClip on a server_lr checkpoint."
+        ),
+    )
+    parser.add_argument("--neuroclip-eps-min", type=float, default=1.0)
+    parser.add_argument("--neuroclip-eps-max", type=float, default=10.0)
+    parser.add_argument("--fixed-pruning-mask-rate", type=float, default=None)
+    parser.add_argument(
+        "--neuroclip-log-scale",
+        action="store_true",
+        help="Decode learned NeuroClip epsilon actions logarithmically.",
+    )
     parser.add_argument("--server-lr-min", type=float, default=0.0)
     parser.add_argument("--server-lr-max", type=float, default=1.0)
     parser.add_argument("--server-lr-penalty-weight", type=float, default=0.0)
@@ -214,6 +243,9 @@ def parse_args(argv=None) -> argparse.Namespace:
             "axis_rule_v2_offset",
             "physical_rule_target",
             "physical_target_selector",
+            "paper_online_td3",
+            "paper_online_backdoor_td3",
+            "paper_online_proxy_td3",
             "residual_adapter",
             "trained_residual_adapter",
         ],
@@ -222,8 +254,90 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--adaptation-horizon", type=int, default=5)
     parser.add_argument("--adaptation-episodes", type=int, default=2)
     parser.add_argument("--adaptation-updates", type=int, default=10)
+    parser.add_argument("--adaptation-batch-size", type=int, default=None)
+    parser.add_argument("--adaptation-warmup-steps", type=int, default=0)
     parser.add_argument("--adaptation-noise", type=float, default=0.05)
     parser.add_argument("--adaptation-lr-scale", type=float, default=0.25)
+    parser.add_argument(
+        "--attacker-source",
+        choices=["native", "zero"],
+        default="native",
+        help=(
+            "Attacker action source for direct evaluation. native lets the sandbox/client attack "
+            "module provide attack behavior; zero explicitly passes a zero action for ablation."
+        ),
+    )
+    parser.add_argument(
+        "--adaptation-attacker-source",
+        choices=["native", "zero"],
+        default=None,
+        help="Optional attacker action source override for adaptation rollouts. Defaults to --attacker-source.",
+    )
+    parser.add_argument("--paper-online-windows", type=int, default=10)
+    parser.add_argument("--paper-online-window-horizon", type=int, default=20)
+    parser.add_argument("--paper-online-updates-per-window", type=int, default=10)
+    parser.add_argument(
+        "--backdoor-reward-mode",
+        choices=["environment", "clean_minus_asr", "clean_gated_asr"],
+        default="clean_gated_asr",
+        help="Replay-buffer reward used by paper_online_backdoor_td3.",
+    )
+    parser.add_argument("--backdoor-clean-floor", type=float, default=0.90)
+    parser.add_argument("--backdoor-reward-lambda", type=float, default=1.0)
+    parser.add_argument("--backdoor-clean-penalty", type=float, default=2.0)
+    parser.add_argument(
+        "--proxy-reward-mode",
+        choices=["clean_update_anomaly", "clean_synthetic_trigger", "clean_proxy_backdoor"],
+        default="clean_update_anomaly",
+        help=(
+            "Replay-buffer reward used by paper_online_proxy_td3. "
+            "This path does not consume true backdoor_acc/ASR during adaptation."
+        ),
+    )
+    parser.add_argument("--proxy-clean-weight", type=float, default=1.0)
+    parser.add_argument("--proxy-update-anomaly-weight", type=float, default=0.2)
+    parser.add_argument("--proxy-server-lr-weight", type=float, default=0.1)
+    parser.add_argument("--proxy-synthetic-trigger-weight", type=float, default=1.0)
+    parser.add_argument(
+        "--proxy-synthetic-trigger-patterns",
+        default="corner_square,opposite_corner,center_square",
+        help="Comma-separated synthetic trigger patterns for proxy backdoor scoring.",
+    )
+    parser.add_argument(
+        "--proxy-synthetic-trigger-targets",
+        default="all",
+        help="'all' or comma-separated target labels for synthetic trigger proxy scoring.",
+    )
+    parser.add_argument("--proxy-synthetic-trigger-max-batches", type=int, default=1)
+    parser.add_argument("--proxy-synthetic-trigger-size", type=int, default=3)
+    parser.add_argument("--proxy-synthetic-trigger-value", type=float, default=1.0)
+    parser.add_argument("--proxy-synthetic-trigger-eval-interval", type=int, default=20)
+    parser.add_argument(
+        "--proxy-server-lr-offset-step",
+        type=float,
+        default=0.0,
+        help=(
+            "Raw-action step used by paper_online_proxy_td3 to deploy an additional "
+            "negative server_lr residual during adaptation. Disabled when zero."
+        ),
+    )
+    parser.add_argument(
+        "--proxy-server-lr-offset-max-steps",
+        type=int,
+        default=0,
+        help=(
+            "Number of raw-action steps to subtract from the server_lr dimension in "
+            "paper_online_proxy_td3. For a saturated +1 action, step=0.5 and max_steps=4 "
+            "moves the deployed action to -1 after clipping."
+        ),
+    )
+    parser.add_argument(
+        "--continuous-window-gate",
+        action="store_true",
+        help="After each online window, roll back the adapted TD3 network if clean/ASR validation worsens.",
+    )
+    parser.add_argument("--continuous-window-clean-drop-tolerance", type=float, default=0.02)
+    parser.add_argument("--continuous-window-asr-improvement-margin", type=float, default=0.0)
     parser.add_argument("--sac-alpha", type=float, default=0.2)
     parser.add_argument("--sac-conditioned-sigma", action="store_true")
     parser.add_argument("--offset-step", type=float, default=0.1)
@@ -304,13 +418,28 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--residual-dump-supervision-jsonl", default=None)
     parser.add_argument(
         "--few-shot-selection",
-        choices=["always", "guarded"],
+        choices=["always", "guarded", "backdoor_guarded"],
         default="always",
-        help="Whether to always deploy the adapted policy or accept it only after a validation rollout.",
+        help=(
+            "Whether to always deploy the adapted policy or accept it only after a validation rollout. "
+            "backdoor_guarded requires clean accuracy to stay within tolerance and ASR to drop."
+        ),
     )
     parser.add_argument("--selection-margin", type=float, default=0.0)
+    parser.add_argument(
+        "--selection-clean-drop-tolerance",
+        type=float,
+        default=0.0,
+        help="Maximum validation clean-accuracy drop allowed by --few-shot-selection backdoor_guarded.",
+    )
     parser.add_argument("--selection-horizon", type=int, default=None)
     parser.add_argument("--selection-seed-offset", type=int, default=20_000)
+    parser.add_argument(
+        "--selection-repeats",
+        type=int,
+        default=1,
+        help="Number of validation seeds averaged by guarded few-shot selection.",
+    )
     parser.add_argument(
         "--rl-policy-checkpoint",
         default=(
@@ -340,7 +469,10 @@ def main(argv=None) -> None:
         attack_strategy=None,
         defense_strategy=PaperDefenseStrategy(),
         config=_bsmg_config(args),
-        evaluator=getattr(probe, "evaluate_weights", None),
+        evaluator=None
+        if str(args.post_defense_mode) == "model_aware_neuroclip"
+        else getattr(probe, "evaluate_weights", None),
+        post_training_evaluator=_post_training_evaluator_for_args(args, probe),
     ).reset(seed=args.seed).shape[0]
 
     defender = TD3Agent(
@@ -396,6 +528,20 @@ def _evaluate_scenario(args, defender: TD3Agent, scenario: Scenario) -> dict:
     return _evaluate_scenario_at(args, defender, scenario, seed=int(scenario.seed), horizon=int(args.H))
 
 
+def _adaptation_attacker_source(args) -> str:
+    return str(args.adaptation_attacker_source or args.attacker_source)
+
+
+def _attacker_action_for_source(args, *, source: str | None = None):
+    del args
+    selected = str(source or "native")
+    if selected == "native":
+        return None
+    if selected == "zero":
+        return np.zeros(3, dtype=np.float32)
+    raise ValueError(f"Unsupported attacker source: {selected}")
+
+
 def _evaluate_scenario_at(args, defender: TD3Agent, scenario: Scenario, *, seed: int, horizon: int) -> dict:
     env = _make_env(args, scenario, seed=seed, horizon=int(horizon))
     obs = env.reset(seed=seed)
@@ -407,9 +553,10 @@ def _evaluate_scenario_at(args, defender: TD3Agent, scenario: Scenario, *, seed:
     rewards_d: list[float] = []
     rewards_a: list[float] = []
     last_info = {}
+    attacker_source = str(args.attacker_source)
     for _ in range(int(args.H)):
         defender_action = defender.get_action(obs, noise=0.0)
-        attacker_action = np.zeros(3, dtype=np.float32)
+        attacker_action = _attacker_action_for_source(args, source=attacker_source)
         obs, r_d, r_a, done, info = env.step(defender_action, attacker_action)
         rewards_d.append(float(r_d))
         rewards_a.append(float(r_a))
@@ -421,6 +568,7 @@ def _evaluate_scenario_at(args, defender: TD3Agent, scenario: Scenario, *, seed:
     return {
         "scenario": scenario.name,
         "attack_type": scenario.attack_name,
+        "attacker_source": attacker_source,
         "seed": int(seed),
         "horizon": int(horizon),
         "final_clean_acc": final_clean_acc,
@@ -443,6 +591,10 @@ def _evaluate_scenario_at(args, defender: TD3Agent, scenario: Scenario, *, seed:
         "final_defender_server_lr": float(last_info.get("defense_decision").server_lr)
         if last_info.get("defense_decision") is not None
         and last_info.get("defense_decision").server_lr is not None
+        else float("nan"),
+        "post_defense_mode": str(args.post_defense_mode),
+        "fixed_neuroclip_epsilon": float(args.fixed_neuroclip_epsilon)
+        if args.fixed_neuroclip_epsilon is not None
         else float("nan"),
     }
 
@@ -470,6 +622,24 @@ def _few_shot_adapt_and_evaluate(
         return _physical_rule_target_adapt_and_evaluate(args, defender, scenario, probe_obs=probe_obs)
     if str(args.few_shot_method) == "physical_target_selector":
         return _physical_target_selector_adapt_and_evaluate(args, defender, scenario, probe_obs=probe_obs)
+    if str(args.few_shot_method) == "paper_online_td3":
+        return _paper_online_td3_adapt_and_evaluate(args, defender, scenario, probe_obs=probe_obs)
+    if str(args.few_shot_method) == "paper_online_backdoor_td3":
+        return _paper_online_td3_adapt_and_evaluate(
+            args,
+            defender,
+            scenario,
+            probe_obs=probe_obs,
+            backdoor_aware=True,
+        )
+    if str(args.few_shot_method) == "paper_online_proxy_td3":
+        return _paper_online_td3_adapt_and_evaluate(
+            args,
+            defender,
+            scenario,
+            probe_obs=probe_obs,
+            proxy_reward=True,
+        )
     if str(args.few_shot_method) == "residual_adapter":
         return _residual_adapter_adapt_and_evaluate(args, defender, scenario, probe_obs=probe_obs)
     if str(args.few_shot_method) == "trained_residual_adapter":
@@ -488,24 +658,44 @@ def _few_shot_adapt_and_evaluate(
             policy_lr=float(adapted.cfg.policy_lr) * float(args.adaptation_lr_scale),
             critic_lr=float(adapted.cfg.critic_lr) * float(args.adaptation_lr_scale),
         )
+    if args.adaptation_batch_size is not None and hasattr(adapted, "cfg"):
+        adapted.cfg.batch_size = max(1, int(args.adaptation_batch_size))
 
     bsmg_cfg = _bsmg_config(args, horizon=int(args.adaptation_horizon))
     start_action = _action_diagnostics(defender, probe_obs, bsmg_cfg)
     trace = [{"shot": 0, "updates": 0, "action": start_action}]
 
     buffer = ReplayBuffer(
-        capacity=max(32, int(args.adaptation_horizon) * int(args.adaptation_episodes)),
+        capacity=max(
+            32,
+            int(args.adaptation_horizon) * int(args.adaptation_episodes)
+            + int(args.adaptation_warmup_steps),
+        ),
         obs_dim=defender.obs_dim,
         act_dim=defender.act_dim,
     )
     update_losses: list[dict] = []
+    warmup_steps = max(0, int(args.adaptation_warmup_steps))
+    attacker_source = _adaptation_attacker_source(args)
+    if warmup_steps:
+        warmup_seed = int(scenario.seed) + 9_000
+        env = _make_env(args, scenario, seed=warmup_seed, horizon=max(1, warmup_steps))
+        obs = env.reset(seed=warmup_seed)
+        for _ in range(warmup_steps):
+            action = np.random.uniform(-1.0, 1.0, size=defender.act_dim).astype(np.float32)
+            attacker_action = _attacker_action_for_source(args, source=attacker_source)
+            next_obs, reward_d, _reward_a, done, _info = env.step(action, attacker_action)
+            buffer.add(obs, action, reward_d, next_obs, done)
+            obs = next_obs
+            if done:
+                obs = env.reset(seed=warmup_seed)
     for episode in range(int(args.adaptation_episodes)):
         seed = int(scenario.seed) + 10_000 + episode
         env = _make_env(args, scenario, seed=seed, horizon=int(args.adaptation_horizon))
         obs = env.reset(seed=seed)
         for _ in range(int(args.adaptation_horizon)):
             action = adapted.get_action(obs, noise=float(args.adaptation_noise))
-            attacker_action = np.zeros(3, dtype=np.float32)
+            attacker_action = _attacker_action_for_source(args, source=attacker_source)
             next_obs, reward_d, _reward_a, done, _info = env.step(action, attacker_action)
             buffer.add(obs, action, reward_d, next_obs, done)
             obs = next_obs
@@ -533,21 +723,21 @@ def _few_shot_adapt_and_evaluate(
     evaluation = adapted_evaluation
     if str(args.few_shot_selection) == "guarded":
         validation_horizon = int(args.selection_horizon or args.adaptation_horizon)
-        validation_seed = int(scenario.seed) + int(args.selection_seed_offset)
-        base_validation = _evaluate_scenario_at(
-            args,
-            defender,
-            scenario,
-            seed=validation_seed,
-            horizon=validation_horizon,
-        )
-        adapted_validation = _evaluate_scenario_at(
-            args,
-            adapted,
-            scenario,
-            seed=validation_seed,
-            horizon=validation_horizon,
-        )
+        validation_repeats = max(1, int(args.selection_repeats))
+        validation_seeds = [
+            int(scenario.seed) + int(args.selection_seed_offset) + repeat
+            for repeat in range(validation_repeats)
+        ]
+        base_validation_records = [
+            _evaluate_scenario_at(args, defender, scenario, seed=seed, horizon=validation_horizon)
+            for seed in validation_seeds
+        ]
+        adapted_validation_records = [
+            _evaluate_scenario_at(args, adapted, scenario, seed=seed, horizon=validation_horizon)
+            for seed in validation_seeds
+        ]
+        base_validation = _validation_summary(base_validation_records)
+        adapted_validation = _validation_summary(adapted_validation_records)
         selection = _guarded_selection_decision(
             base_score=float(base_validation["final_defense_score"]),
             adapted_score=float(adapted_validation["final_defense_score"]),
@@ -558,9 +748,13 @@ def _few_shot_adapt_and_evaluate(
                 "mode": "guarded",
                 "margin": float(args.selection_margin),
                 "validation_horizon": validation_horizon,
-                "validation_seed": validation_seed,
+                "validation_seed": validation_seeds[0],
+                "validation_seeds": validation_seeds,
+                "validation_repeats": validation_repeats,
                 "base_validation": base_validation,
                 "adapted_validation": adapted_validation,
+                "base_validation_records": base_validation_records,
+                "adapted_validation_records": adapted_validation_records,
             }
         )
         if not selection["accepted"]:
@@ -570,6 +764,9 @@ def _few_shot_adapt_and_evaluate(
         "episodes": int(args.adaptation_episodes),
         "horizon": int(args.adaptation_horizon),
         "updates_per_episode": int(args.adaptation_updates),
+        "batch_size": int(adapted.cfg.batch_size) if hasattr(adapted, "cfg") else None,
+        "attacker_source": attacker_source,
+        "warmup_steps": warmup_steps,
         "noise": float(args.adaptation_noise),
         "lr_scale": float(args.adaptation_lr_scale),
         "probe_observation": {
@@ -601,6 +798,724 @@ def _guarded_selection_decision(*, base_score: float, adapted_score: float, marg
         "base_score": float(base_score),
         "adapted_score": float(adapted_score),
         "score_gain": score_gain,
+    }
+
+
+def _backdoor_guarded_selection_decision(
+    *,
+    base_clean_acc: float,
+    adapted_clean_acc: float,
+    base_backdoor_acc: float,
+    adapted_backdoor_acc: float,
+    asr_reduction_margin: float,
+    clean_drop_tolerance: float,
+) -> dict:
+    clean_drop = float(base_clean_acc) - float(adapted_clean_acc)
+    asr_reduction = float(base_backdoor_acc) - float(adapted_backdoor_acc)
+    clean_safe = bool(clean_drop <= float(clean_drop_tolerance))
+    asr_safe = bool(asr_reduction > float(asr_reduction_margin))
+    accepted = bool(clean_safe and asr_safe)
+    return {
+        "accepted": accepted,
+        "selected": "adapted" if accepted else "base",
+        "base_clean_acc": float(base_clean_acc),
+        "adapted_clean_acc": float(adapted_clean_acc),
+        "clean_drop": clean_drop,
+        "clean_drop_tolerance": float(clean_drop_tolerance),
+        "clean_safe": clean_safe,
+        "base_backdoor_acc": float(base_backdoor_acc),
+        "adapted_backdoor_acc": float(adapted_backdoor_acc),
+        "asr_reduction": round(asr_reduction, 12),
+        "asr_reduction_margin": float(asr_reduction_margin),
+        "asr_safe": asr_safe,
+    }
+
+
+def _metric_from_info(info: dict, key: str, default: float = 0.0) -> float:
+    value = info.get(key, default)
+    try:
+        metric = float(value)
+    except (TypeError, ValueError):
+        return float(default)
+    return metric if np.isfinite(metric) else float(default)
+
+
+def _mean_record_value(records: list[dict], key: str) -> float:
+    values = []
+    for record in records:
+        try:
+            value = float(record.get(key, float("nan")))
+        except (TypeError, ValueError):
+            value = float("nan")
+        if np.isfinite(value):
+            values.append(value)
+    return float(np.mean(values)) if values else float("nan")
+
+
+def _validation_summary(records: list[dict]) -> dict:
+    scenario = str(records[0].get("scenario", "")) if records else ""
+    attack_type = str(records[0].get("attack_type", "")) if records else ""
+    seeds = [int(record["seed"]) for record in records if "seed" in record]
+    horizons = [int(record["horizon"]) for record in records if "horizon" in record]
+    return {
+        "scenario": scenario,
+        "attack_type": attack_type,
+        "seed": seeds[0] if seeds else None,
+        "seeds": seeds,
+        "horizon": horizons[0] if horizons else None,
+        "num_records": len(records),
+        "final_clean_acc": _mean_record_value(records, "final_clean_acc"),
+        "final_backdoor_acc": _mean_record_value(records, "final_backdoor_acc"),
+        "final_defense_score": _mean_record_value(records, "final_defense_score"),
+        "final_defender_reward": _mean_record_value(records, "final_defender_reward"),
+        "mean_defender_reward": _mean_record_value(records, "mean_defender_reward"),
+        "mean_attacker_reward": _mean_record_value(records, "mean_attacker_reward"),
+    }
+
+
+def _backdoor_aware_replay_reward(
+    info: dict,
+    *,
+    raw_reward: float,
+    mode: str,
+    clean_floor: float,
+    lambda_bd: float,
+    clean_penalty: float,
+) -> float:
+    if str(mode) == "environment":
+        return float(raw_reward)
+    clean_acc = _metric_from_info(info, "clean_acc")
+    backdoor_acc = _metric_from_info(info, "backdoor_acc")
+    if str(mode) == "clean_minus_asr":
+        return float(clean_acc - float(lambda_bd) * backdoor_acc)
+    clean_shortfall = max(0.0, float(clean_floor) - clean_acc)
+    return float(-float(lambda_bd) * backdoor_acc - float(clean_penalty) * clean_shortfall)
+
+
+def _proxy_update_anomaly_score(info: dict) -> float:
+    norms = []
+    for key in ("benign_update_norms", "malicious_update_norms"):
+        for value in info.get(key, []) or []:
+            try:
+                metric = float(value)
+            except (TypeError, ValueError):
+                continue
+            if np.isfinite(metric):
+                norms.append(metric)
+    if len(norms) < 2:
+        return 0.0
+    values = np.asarray(norms, dtype=np.float64)
+    median = float(np.median(values))
+    scale = max(abs(median), 1e-8)
+    mad = float(np.median(np.abs(values - median))) / scale
+    upper_tail = max(0.0, float(np.max(values)) / scale - 1.0)
+    return float(mad + upper_tail)
+
+
+def _proxy_replay_reward(
+    info: dict,
+    *,
+    args,
+    proxy_backdoor_acc: float | None = None,
+) -> dict:
+    clean_acc = _metric_from_info(info, "clean_acc")
+    update_anomaly = _proxy_update_anomaly_score(info)
+    defense_decision = info.get("defense_decision")
+    server_lr = (
+        float(defense_decision.server_lr)
+        if defense_decision is not None and defense_decision.server_lr is not None
+        else 0.0
+    )
+    server_lr_span = max(1e-8, float(args.server_lr_max) - float(args.server_lr_min))
+    server_lr_fraction = max(0.0, (server_lr - float(args.server_lr_min)) / server_lr_span)
+    proxy_bd = None if proxy_backdoor_acc is None else float(proxy_backdoor_acc)
+
+    reward = float(args.proxy_clean_weight) * clean_acc
+    reward -= float(args.proxy_update_anomaly_weight) * update_anomaly
+    reward -= float(args.proxy_server_lr_weight) * server_lr_fraction * server_lr_fraction
+    if str(args.proxy_reward_mode) in {"clean_synthetic_trigger", "clean_proxy_backdoor"} and proxy_bd is not None:
+        reward -= float(args.proxy_synthetic_trigger_weight) * proxy_bd
+
+    diagnostics = {
+        "clean_acc": float(clean_acc),
+        "update_anomaly_score": float(update_anomaly),
+        "server_lr_fraction": float(server_lr_fraction),
+        "proxy_reward": float(reward),
+    }
+    if proxy_bd is not None:
+        diagnostics["proxy_backdoor_acc"] = float(proxy_bd)
+    return {"reward": float(reward), "diagnostics": diagnostics}
+
+
+def _server_lr_action_index(args, *, act_dim: int) -> int | None:
+    third_action = str(args.defender_third_action)
+    if third_action == "server_lr" and int(act_dim) >= 3:
+        return 2
+    if third_action == "both" and int(act_dim) >= 4:
+        return 3
+    return None
+
+
+def _proxy_server_lr_offset(args, *, act_dim: int) -> np.ndarray:
+    offset = np.zeros(int(act_dim), dtype=np.float32)
+    index = _server_lr_action_index(args, act_dim=act_dim)
+    if index is None:
+        return offset
+    magnitude = max(0.0, float(args.proxy_server_lr_offset_step)) * max(
+        0, int(args.proxy_server_lr_offset_max_steps)
+    )
+    if magnitude <= 0.0:
+        return offset
+    offset[index] = -float(magnitude)
+    return offset
+
+
+def _parse_csv_items(value: str) -> list[str]:
+    return [item.strip() for item in str(value).split(",") if item.strip()]
+
+
+def _parse_proxy_target_classes(value: str, *, num_classes: int | None = None) -> list[int] | None:
+    text = str(value).strip().lower()
+    if text == "all":
+        if num_classes is None:
+            return None
+        return list(range(int(num_classes)))
+    return [int(item) for item in _parse_csv_items(value)]
+
+
+def _apply_synthetic_trigger_batch(
+    images: torch.Tensor,
+    *,
+    pattern: str,
+    trigger_size: int,
+    trigger_value: float,
+) -> torch.Tensor:
+    triggered = images.clone()
+    if triggered.ndim != 4:
+        raise ValueError("Synthetic trigger proxy expects images shaped [B, C, H, W].")
+    size = max(1, min(int(trigger_size), int(triggered.shape[-1]), int(triggered.shape[-2])))
+    pattern_name = str(pattern)
+    if pattern_name == "corner_square":
+        rows = slice(-size, None)
+        cols = slice(-size, None)
+    elif pattern_name == "opposite_corner":
+        rows = slice(0, size)
+        cols = slice(0, size)
+    elif pattern_name == "center_square":
+        row0 = max(0, (int(triggered.shape[-2]) - size) // 2)
+        col0 = max(0, (int(triggered.shape[-1]) - size) // 2)
+        rows = slice(row0, row0 + size)
+        cols = slice(col0, col0 + size)
+    else:
+        raise ValueError(f"Unsupported synthetic trigger pattern: {pattern}")
+    triggered[:, :, rows, cols] = float(trigger_value)
+    return triggered
+
+
+def _synthetic_trigger_proxy_backdoor_acc(
+    model: torch.nn.Module,
+    loader,
+    *,
+    device: torch.device,
+    target_classes: list[int] | None,
+    patterns: list[str],
+    trigger_size: int,
+    trigger_value: float,
+    max_batches: int,
+) -> dict:
+    model.eval()
+    best = {
+        "proxy_backdoor_acc": 0.0,
+        "target_class": None,
+        "pattern": None,
+        "num_examples": 0,
+    }
+    cached_batches = []
+    with torch.no_grad():
+        for batch_idx, (images, _labels) in enumerate(loader):
+            if batch_idx >= max(1, int(max_batches)):
+                break
+            cached_batches.append(images.to(device))
+    if not cached_batches:
+        return best
+    resolved_targets = target_classes
+    if resolved_targets is None:
+        with torch.no_grad():
+            logits = model(cached_batches[0])
+        resolved_targets = list(range(int(logits.shape[1])))
+    with torch.no_grad():
+        for pattern in patterns:
+            for target in resolved_targets:
+                correct = 0
+                total = 0
+                for images in cached_batches:
+                    triggered = _apply_synthetic_trigger_batch(
+                        images,
+                        pattern=pattern,
+                        trigger_size=int(trigger_size),
+                        trigger_value=float(trigger_value),
+                    )
+                    preds = model(triggered).argmax(dim=1)
+                    correct += int((preds == int(target)).sum().item())
+                    total += int(preds.numel())
+                acc = float(correct / total) if total else 0.0
+                if acc > float(best["proxy_backdoor_acc"]):
+                    best = {
+                        "proxy_backdoor_acc": acc,
+                        "target_class": int(target),
+                        "pattern": str(pattern),
+                        "num_examples": int(total),
+                    }
+    return best
+
+
+def _proxy_synthetic_trigger_for_env(args, env: BSMGEnv, info: dict) -> dict:
+    coordinator = getattr(env, "coordinator", None)
+    runner = getattr(coordinator, "runner", None)
+    if runner is None or not hasattr(runner, "test_loader"):
+        return {"proxy_backdoor_acc": None}
+    model = getattr(runner, "model", None)
+    if model is None:
+        return {"proxy_backdoor_acc": None}
+    decision = info.get("defense_decision")
+    eval_model = model
+    if str(args.post_defense_mode) == "model_aware_neuroclip" and decision is not None:
+        epsilon = _neuroclip_epsilon_for_post_eval(args, decision)
+        if epsilon is not None:
+            eval_model = apply_post_defense(model, "neuroclip", float(epsilon))
+    elif str(args.post_defense_mode) == "model_aware_pruning" and decision is not None:
+        mask_rate = getattr(args, "fixed_pruning_mask_rate", None)
+        if mask_rate is not None:
+            eval_model = apply_post_defense(
+                model,
+                "pruning",
+                float(mask_rate),
+                eval_loader=getattr(runner, "test_loader", None),
+                device=getattr(runner, "device", None),
+            )
+    patterns = _parse_csv_items(args.proxy_synthetic_trigger_patterns)
+    targets = _parse_proxy_target_classes(args.proxy_synthetic_trigger_targets)
+    return _synthetic_trigger_proxy_backdoor_acc(
+        eval_model,
+        runner.test_loader,
+        device=getattr(runner, "device", _resolve_device(args.device)),
+        target_classes=targets,
+        patterns=patterns,
+        trigger_size=int(args.proxy_synthetic_trigger_size),
+        trigger_value=float(args.proxy_synthetic_trigger_value),
+        max_batches=int(args.proxy_synthetic_trigger_max_batches),
+    )
+
+
+def _should_refresh_proxy_trigger(args, round_idx: int, *, force: bool = False) -> bool:
+    if str(args.proxy_reward_mode) not in {"clean_synthetic_trigger", "clean_proxy_backdoor"}:
+        return False
+    if force:
+        return True
+    interval = max(1, int(args.proxy_synthetic_trigger_eval_interval))
+    return int(round_idx) == 1 or int(round_idx) % interval == 0
+
+
+def _coerce_optional_float(value) -> float | None:
+    try:
+        metric = float(value)
+    except (TypeError, ValueError):
+        return None
+    return metric if np.isfinite(metric) else None
+
+
+def _mean_optional_metric(records: list[dict], key: str) -> float:
+    values = []
+    for record in records:
+        value = _coerce_optional_float(record.get(key))
+        if value is not None:
+            values.append(value)
+    return float(np.mean(values)) if values else float("nan")
+
+
+def _continuous_backdoor_window_gate_decision(
+    *,
+    previous_clean_acc: float,
+    current_clean_acc: float,
+    previous_backdoor_acc: float,
+    current_backdoor_acc: float,
+    clean_drop_tolerance: float,
+    asr_improvement_margin: float,
+) -> dict:
+    clean_drop = float(previous_clean_acc) - float(current_clean_acc)
+    asr_reduction = float(previous_backdoor_acc) - float(current_backdoor_acc)
+    clean_safe = bool(clean_drop <= float(clean_drop_tolerance))
+    asr_safe = bool(asr_reduction > float(asr_improvement_margin))
+    accepted = bool(clean_safe and asr_safe)
+    return {
+        "accepted": accepted,
+        "selected": "current" if accepted else "previous",
+        "previous_clean_acc": float(previous_clean_acc),
+        "current_clean_acc": float(current_clean_acc),
+        "clean_drop": clean_drop,
+        "clean_drop_tolerance": float(clean_drop_tolerance),
+        "clean_safe": clean_safe,
+        "previous_backdoor_acc": float(previous_backdoor_acc),
+        "current_backdoor_acc": float(current_backdoor_acc),
+        "asr_reduction": round(asr_reduction, 12),
+        "asr_improvement_margin": float(asr_improvement_margin),
+        "asr_safe": asr_safe,
+    }
+
+
+def _paper_online_td3_adapt_and_evaluate(
+    args,
+    defender: TD3Agent,
+    scenario: Scenario,
+    *,
+    probe_obs: np.ndarray,
+    backdoor_aware: bool = False,
+    proxy_reward: bool = False,
+) -> dict:
+    adapted = defender.clone()
+    if float(args.adaptation_lr_scale) != 1.0:
+        adapted.set_learning_rates(
+            policy_lr=float(adapted.cfg.policy_lr) * float(args.adaptation_lr_scale),
+            critic_lr=float(adapted.cfg.critic_lr) * float(args.adaptation_lr_scale),
+        )
+    if args.adaptation_batch_size is not None:
+        adapted.cfg.batch_size = max(1, int(args.adaptation_batch_size))
+
+    windows = max(1, int(args.paper_online_windows))
+    window_horizon = max(1, int(args.paper_online_window_horizon))
+    updates_per_window = max(0, int(args.paper_online_updates_per_window))
+    total_horizon = windows * window_horizon
+    warmup_steps = max(0, int(args.adaptation_warmup_steps))
+    buffer = ReplayBuffer(
+        capacity=max(32, total_horizon + warmup_steps),
+        obs_dim=defender.obs_dim,
+        act_dim=defender.act_dim,
+    )
+    bsmg_cfg = _bsmg_config(args, horizon=total_horizon)
+    start_action = _action_diagnostics(defender, probe_obs, bsmg_cfg)
+    trace = [{"window": 0, "round": 0, "updates": 0, "action": start_action}]
+    update_losses: list[dict] = []
+    window_records: list[dict] = []
+    accepted_policy = adapted.clone()
+    accepted_clean_acc = None
+    accepted_backdoor_acc = None
+    attacker_source = _adaptation_attacker_source(args)
+    latest_proxy_backdoor_acc: float | None = None
+    latest_proxy_diagnostics: dict = {}
+    proxy_server_lr_offset = (
+        _proxy_server_lr_offset(args, act_dim=defender.act_dim)
+        if proxy_reward
+        else np.zeros(int(defender.act_dim), dtype=np.float32)
+    )
+    uses_proxy_server_lr_offset = bool(proxy_reward and not np.allclose(proxy_server_lr_offset, 0.0))
+
+    def deployed_policy(policy):
+        return ActionOffsetPolicy(policy, proxy_server_lr_offset) if uses_proxy_server_lr_offset else policy
+
+    if warmup_steps:
+        warmup_seed = int(scenario.seed) + 29_000
+        env = _make_env(args, scenario, seed=warmup_seed, horizon=max(1, warmup_steps))
+        obs = env.reset(seed=warmup_seed)
+        for warmup_step in range(warmup_steps):
+            action = np.random.uniform(-1.0, 1.0, size=defender.act_dim).astype(np.float32)
+            attacker_action = _attacker_action_for_source(args, source=attacker_source)
+            next_obs, reward_d, _reward_a, done, info = env.step(action, attacker_action)
+            if proxy_reward:
+                if _should_refresh_proxy_trigger(args, warmup_step + 1, force=done):
+                    latest_proxy_diagnostics = _proxy_synthetic_trigger_for_env(args, env, dict(info))
+                    latest_proxy_backdoor_acc = _coerce_optional_float(
+                        latest_proxy_diagnostics.get("proxy_backdoor_acc")
+                    )
+                proxy_result = _proxy_replay_reward(
+                    dict(info),
+                    args=args,
+                    proxy_backdoor_acc=latest_proxy_backdoor_acc,
+                )
+                replay_reward = float(proxy_result["reward"])
+            elif backdoor_aware:
+                replay_reward = _backdoor_aware_replay_reward(
+                    dict(info),
+                    raw_reward=float(reward_d),
+                    mode=str(args.backdoor_reward_mode),
+                    clean_floor=float(args.backdoor_clean_floor),
+                    lambda_bd=float(args.backdoor_reward_lambda),
+                    clean_penalty=float(args.backdoor_clean_penalty),
+                )
+            else:
+                replay_reward = float(reward_d)
+            buffer.add(obs, action, replay_reward, next_obs, done)
+            obs = next_obs
+            if done:
+                break
+
+    seed = int(scenario.seed) + 30_000
+    env = _make_env(args, scenario, seed=seed, horizon=total_horizon)
+    obs = env.reset(seed=seed)
+    if hasattr(adapted, "reset"):
+        adapted.reset()
+    global_round = 0
+    done = False
+    for window in range(windows):
+        rewards: list[float] = []
+        env_rewards: list[float] = []
+        proxy_records: list[dict] = []
+        last_info: dict = {}
+        for step_in_window in range(window_horizon):
+            action = deployed_policy(adapted).get_action(obs, noise=float(args.adaptation_noise))
+            attacker_action = _attacker_action_for_source(args, source=attacker_source)
+            next_obs, reward_d, _reward_a, done, info = env.step(action, attacker_action)
+            last_info = dict(info)
+            if proxy_reward:
+                round_for_proxy = global_round + 1
+                should_refresh = _should_refresh_proxy_trigger(
+                    args,
+                    round_for_proxy,
+                    force=done or step_in_window == window_horizon - 1,
+                )
+                if should_refresh:
+                    latest_proxy_diagnostics = _proxy_synthetic_trigger_for_env(args, env, last_info)
+                    latest_proxy_backdoor_acc = _coerce_optional_float(
+                        latest_proxy_diagnostics.get("proxy_backdoor_acc")
+                    )
+                proxy_result = _proxy_replay_reward(
+                    last_info,
+                    args=args,
+                    proxy_backdoor_acc=latest_proxy_backdoor_acc,
+                )
+                proxy_diagnostics = dict(latest_proxy_diagnostics)
+                proxy_diagnostics.update(proxy_result["diagnostics"])
+                replay_reward = float(proxy_result["reward"])
+                proxy_records.append(proxy_diagnostics)
+            elif backdoor_aware:
+                replay_reward = _backdoor_aware_replay_reward(
+                    last_info,
+                    raw_reward=float(reward_d),
+                    mode=str(args.backdoor_reward_mode),
+                    clean_floor=float(args.backdoor_clean_floor),
+                    lambda_bd=float(args.backdoor_reward_lambda),
+                    clean_penalty=float(args.backdoor_clean_penalty),
+                )
+            else:
+                replay_reward = float(reward_d)
+            buffer.add(obs, action, replay_reward, next_obs, done)
+            rewards.append(float(replay_reward))
+            env_rewards.append(float(reward_d))
+            obs = next_obs
+            global_round += 1
+            if done:
+                break
+        for _ in range(updates_per_window):
+            losses = adapted.update(buffer)
+            if losses:
+                update_losses.append({k: float(v) for k, v in losses.items()})
+        current_clean_acc = _metric_from_info(last_info, "clean_acc", default=float("nan"))
+        current_backdoor_acc = _metric_from_info(last_info, "backdoor_acc", default=float("nan"))
+        window_gate = {
+            "enabled": bool(backdoor_aware and args.continuous_window_gate),
+            "accepted": True,
+            "selected": "current",
+        }
+        if backdoor_aware and bool(args.continuous_window_gate) and np.isfinite(current_clean_acc):
+            if accepted_clean_acc is None or not np.isfinite(float(accepted_clean_acc)):
+                accepted_clean_acc = current_clean_acc
+                accepted_backdoor_acc = current_backdoor_acc
+                accepted_policy = adapted.clone()
+            else:
+                window_gate = _continuous_backdoor_window_gate_decision(
+                    previous_clean_acc=float(accepted_clean_acc),
+                    current_clean_acc=float(current_clean_acc),
+                    previous_backdoor_acc=float(accepted_backdoor_acc),
+                    current_backdoor_acc=float(current_backdoor_acc),
+                    clean_drop_tolerance=float(args.continuous_window_clean_drop_tolerance),
+                    asr_improvement_margin=float(args.continuous_window_asr_improvement_margin),
+                )
+                window_gate["enabled"] = True
+                if bool(window_gate["accepted"]):
+                    accepted_clean_acc = current_clean_acc
+                    accepted_backdoor_acc = current_backdoor_acc
+                    accepted_policy = adapted.clone()
+                else:
+                    adapted = accepted_policy.clone()
+        trace.append(
+            {
+                "window": window + 1,
+                "round": global_round,
+                "updates": len(update_losses),
+                "action": _action_diagnostics(deployed_policy(adapted), probe_obs, bsmg_cfg),
+                "actor_action": _action_diagnostics(adapted, probe_obs, bsmg_cfg)
+                if uses_proxy_server_lr_offset
+                else None,
+            }
+        )
+        defense_decision = last_info.get("defense_decision")
+        window_records.append(
+            {
+                "window": window + 1,
+                "round": global_round,
+                "mean_reward": float(np.mean(rewards)) if rewards else float("nan"),
+                "mean_environment_reward": float(np.mean(env_rewards)) if env_rewards else float("nan"),
+                "clean_acc": float(last_info.get("clean_acc", float("nan"))),
+                "backdoor_acc": float(last_info.get("backdoor_acc", float("nan"))),
+                "window_gate": window_gate,
+                "alpha": float(defense_decision.norm_bound_alpha)
+                if defense_decision is not None
+                else float("nan"),
+                "beta": float(defense_decision.trimmed_mean_beta)
+                if defense_decision is not None
+                else float("nan"),
+                "server_lr": float(defense_decision.server_lr)
+                if defense_decision is not None and defense_decision.server_lr is not None
+                else float("nan"),
+                "proxy_reward": float(np.mean([item["proxy_reward"] for item in proxy_records]))
+                if proxy_records
+                else float("nan"),
+                "proxy_update_anomaly_score": float(
+                    np.mean([item["update_anomaly_score"] for item in proxy_records])
+                )
+                if proxy_records
+                else float("nan"),
+                "proxy_backdoor_acc": _mean_optional_metric(proxy_records, "proxy_backdoor_acc"),
+            }
+        )
+        if done:
+            break
+
+    adapted_policy = deployed_policy(adapted)
+    adapted_evaluation = _evaluate_scenario(args, adapted_policy, scenario)
+    selection = {
+        "mode": str(args.few_shot_selection),
+        "accepted": True,
+        "selected": "adapted",
+        "margin": float(args.selection_margin),
+    }
+    evaluation = adapted_evaluation
+    if str(args.few_shot_selection) in {"guarded", "backdoor_guarded"}:
+        validation_horizon = int(args.selection_horizon or args.H)
+        validation_repeats = max(1, int(args.selection_repeats))
+        validation_seeds = [
+            int(scenario.seed) + int(args.selection_seed_offset) + repeat
+            for repeat in range(validation_repeats)
+        ]
+        base_validation_records = [
+            _evaluate_scenario_at(args, defender, scenario, seed=seed, horizon=validation_horizon)
+            for seed in validation_seeds
+        ]
+        adapted_validation_records = [
+            _evaluate_scenario_at(args, adapted_policy, scenario, seed=seed, horizon=validation_horizon)
+            for seed in validation_seeds
+        ]
+        base_validation = _validation_summary(base_validation_records)
+        adapted_validation = _validation_summary(adapted_validation_records)
+        if str(args.few_shot_selection) == "backdoor_guarded":
+            selection = _backdoor_guarded_selection_decision(
+                base_clean_acc=float(base_validation["final_clean_acc"]),
+                adapted_clean_acc=float(adapted_validation["final_clean_acc"]),
+                base_backdoor_acc=float(base_validation["final_backdoor_acc"]),
+                adapted_backdoor_acc=float(adapted_validation["final_backdoor_acc"]),
+                asr_reduction_margin=float(args.selection_margin),
+                clean_drop_tolerance=float(args.selection_clean_drop_tolerance),
+            )
+        else:
+            selection = _guarded_selection_decision(
+                base_score=float(base_validation["final_defense_score"]),
+                adapted_score=float(adapted_validation["final_defense_score"]),
+                margin=float(args.selection_margin),
+            )
+        selection.update(
+            {
+                "mode": str(args.few_shot_selection),
+                "margin": float(args.selection_margin),
+                "validation_horizon": validation_horizon,
+                "validation_seed": validation_seeds[0],
+                "validation_seeds": validation_seeds,
+                "validation_repeats": validation_repeats,
+                "base_validation": base_validation,
+                "adapted_validation": adapted_validation,
+                "base_validation_records": base_validation_records,
+                "adapted_validation_records": adapted_validation_records,
+            }
+        )
+        if not selection["accepted"]:
+            evaluation = _evaluate_scenario(args, defender, scenario)
+
+    return {
+        "method": (
+            "paper_online_backdoor_td3"
+            if backdoor_aware
+            else "paper_online_proxy_td3"
+            if proxy_reward
+            else "paper_online_td3"
+        ),
+        "paper_style": {
+            "reward_source": "backdoor_aware_clean_asr_reward"
+            if backdoor_aware
+            else "paper_like_proxy_reward"
+            if proxy_reward
+            else "sandbox_oracle_metric_reward",
+            "backdoor_reward_mode": str(args.backdoor_reward_mode) if backdoor_aware else "environment",
+            "backdoor_clean_floor": float(args.backdoor_clean_floor) if backdoor_aware else None,
+            "backdoor_reward_lambda": float(args.backdoor_reward_lambda) if backdoor_aware else None,
+            "backdoor_clean_penalty": float(args.backdoor_clean_penalty) if backdoor_aware else None,
+            "proxy_reward_mode": str(args.proxy_reward_mode) if proxy_reward else None,
+            "proxy_uses_true_asr": False if proxy_reward else None,
+            "proxy_synthetic_trigger_patterns": _parse_csv_items(args.proxy_synthetic_trigger_patterns)
+            if proxy_reward
+            else None,
+            "proxy_synthetic_trigger_targets": str(args.proxy_synthetic_trigger_targets)
+            if proxy_reward
+            else None,
+            "proxy_server_lr_offset_active": uses_proxy_server_lr_offset if proxy_reward else None,
+            "proxy_server_lr_offset": [float(v) for v in proxy_server_lr_offset]
+            if proxy_reward
+            else None,
+            "proxy_server_lr_offset_step": float(args.proxy_server_lr_offset_step)
+            if proxy_reward
+            else None,
+            "proxy_server_lr_offset_max_steps": int(args.proxy_server_lr_offset_max_steps)
+            if proxy_reward
+            else None,
+            "attacker_source": attacker_source,
+            "online_windows": windows,
+            "window_horizon": window_horizon,
+            "updates_per_window": updates_per_window,
+            "total_online_horizon": total_horizon,
+            "continuous_trajectory": True,
+            "continuous_window_gate": bool(backdoor_aware and args.continuous_window_gate),
+            "action_space": str(args.defender_third_action),
+            "server_lr_available": bool(str(args.defender_third_action) in {"server_lr", "both"}),
+            "action_space_warning": None
+            if str(args.defender_third_action) in {"server_lr", "both"}
+            else (
+                "server_lr is unavailable for this checkpoint action space; "
+                "use a server_lr or 4D both checkpoint to adapt learning-rate control."
+            ),
+        },
+        "episodes": windows,
+        "horizon": window_horizon,
+        "updates_per_episode": updates_per_window,
+        "attacker_source": attacker_source,
+        "batch_size": int(adapted.cfg.batch_size),
+        "warmup_steps": warmup_steps,
+        "noise": float(args.adaptation_noise),
+        "lr_scale": float(args.adaptation_lr_scale),
+        "probe_observation": {
+            "scenario": "clean",
+            "seed": int(args.seed),
+            "description": "shared clean initial observation used only for action-space diagnostics",
+        },
+        "transition": {
+            "from": start_action,
+            "to": trace[-1]["action"],
+            "delta": _action_delta(start_action, trace[-1]["action"]),
+        },
+        "trace": trace,
+        "window_records": window_records,
+        "num_transitions": len(buffer),
+        "num_updates": len(update_losses),
+        "last_update_loss": update_losses[-1] if update_losses else {},
+        "selection": selection,
+        "adapted_evaluation": adapted_evaluation,
+        "evaluation": evaluation,
     }
 
 
@@ -3228,14 +4143,72 @@ def _make_env(args, scenario: Scenario, *, seed: int, horizon: int) -> BSMGEnv:
         _sandbox_config(args, scenario.attack_name, seed=seed, patch=scenario.patch)
     )
     attack_strategy = None if scenario.attack_name == "clean" else SandboxAttackMarker(scenario.attack_type)
+    post_training_evaluator = _post_training_evaluator_for_args(args, coordinator)
     return BSMGEnv(
         coordinator=coordinator,
         attack_type=scenario.attack_type,
         attack_strategy=attack_strategy,
         defense_strategy=PaperDefenseStrategy(),
         config=_bsmg_config(args, horizon=horizon),
-        evaluator=getattr(coordinator, "evaluate_weights", None),
+        evaluator=None
+        if post_training_evaluator is not None
+        else getattr(coordinator, "evaluate_weights", None),
+        post_training_evaluator=post_training_evaluator,
     )
+
+
+def _post_training_evaluator_for_args(args, coordinator):
+    mode = str(getattr(args, "post_defense_mode", "weight_copy"))
+    if mode not in {"model_aware_neuroclip", "model_aware_pruning"}:
+        return None
+    runner = getattr(coordinator, "runner", None)
+    evaluate_model = getattr(coordinator, "evaluate_model", None)
+    if runner is None or evaluate_model is None:
+        raise ValueError(f"{mode} requires coordinator.runner.model and evaluate_model().")
+
+    def evaluator(weights, decision: DefenseDecision) -> dict[str, float]:
+        if mode == "model_aware_pruning":
+            mask_rate = getattr(args, "fixed_pruning_mask_rate", None)
+            if mask_rate is None:
+                mask_rate = decision.prun_mask_rate
+            if mask_rate is None:
+                evaluate_weights = getattr(coordinator, "evaluate_weights", None)
+                if evaluate_weights is None:
+                    raise ValueError("No pruning mask rate was provided and coordinator cannot evaluate weights.")
+                return evaluate_weights(weights)
+            model = getattr(runner, "model", None)
+            if model is None:
+                raise ValueError("model_aware_pruning requires coordinator.runner.model at evaluation time.")
+            defended_model = apply_post_defense(
+                model,
+                "pruning",
+                float(mask_rate),
+                eval_loader=getattr(runner, "test_loader", None),
+                device=getattr(runner, "device", None),
+            )
+            return evaluate_model(defended_model, weights)
+        epsilon = _neuroclip_epsilon_for_post_eval(args, decision)
+        if epsilon is None:
+            evaluate_weights = getattr(coordinator, "evaluate_weights", None)
+            if evaluate_weights is None:
+                raise ValueError("No NeuroClip epsilon was provided and coordinator cannot evaluate weights.")
+            return evaluate_weights(weights)
+        model = getattr(runner, "model", None)
+        if model is None:
+            raise ValueError("model_aware_neuroclip requires coordinator.runner.model at evaluation time.")
+        defended_model = apply_post_defense(model, "neuroclip", float(epsilon))
+        return evaluate_model(defended_model, weights)
+
+    return evaluator
+
+
+def _neuroclip_epsilon_for_post_eval(args, decision: DefenseDecision) -> float | None:
+    fixed = getattr(args, "fixed_neuroclip_epsilon", None)
+    if fixed is not None:
+        return float(fixed)
+    if decision.neuroclip_epsilon is not None:
+        return float(decision.neuroclip_epsilon)
+    return None
 
 
 def _action_diagnostics(defender: TD3Agent, obs: np.ndarray, config: BSMGConfig) -> dict:
@@ -3248,6 +4221,7 @@ def _action_diagnostics(defender: TD3Agent, obs: np.ndarray, config: BSMGConfig)
         beta_max=config.beta_max,
         eps_min=config.eps_min,
         eps_max=config.eps_max,
+        eps_log_scale=config.eps_log_scale,
         use_neuroclip=config.use_neuroclip,
         third_action=config.third_action,
         server_lr_min=config.server_lr_min,
@@ -3309,6 +4283,9 @@ def _bsmg_config(args, *, horizon: int | None = None) -> BSMGConfig:
         lambda_bd=float(args.lambda_bd),
         reward_mode="accuracy",
         third_action=args.defender_third_action,
+        eps_min=float(getattr(args, "neuroclip_eps_min", 1.0)),
+        eps_max=float(getattr(args, "neuroclip_eps_max", 10.0)),
+        eps_log_scale=bool(getattr(args, "neuroclip_log_scale", False)),
         server_lr_min=float(args.server_lr_min),
         server_lr_max=float(args.server_lr_max),
         server_lr_penalty_weight=float(args.server_lr_penalty_weight),
@@ -3366,8 +4343,28 @@ def _scenarios(args) -> list[Scenario]:
         Scenario("dba", _attack_type("dba"), "dba", dict(backdoor), int(args.seed)),
         Scenario("rl_backdoor", _attack_type("rl_backdoor"), "rl_backdoor", dict(backdoor), int(args.rl_seed)),
     ]
+    clean_mixed_backdoor_scenarios = [
+        Scenario("clean", _attack_type("clean"), "clean", {"num_attackers": 0}, int(args.seed)),
+        Scenario(
+            "mixed_backdoor",
+            _attack_type("mixed_backdoor"),
+            "mixed_backdoor",
+            dict(backdoor, num_attackers=int(args.num_attackers)),
+            int(args.rl_seed),
+        ),
+    ]
+    clean_global_backdoor_mixed_scenarios = [
+        *clean,
+        *poisoning[1:],
+        *backdoor_scenarios[1:],
+        clean_mixed_backdoor_scenarios[1],
+    ]
     if args.scenario_set == "backdoor":
         return _filter_scenarios(backdoor_scenarios, getattr(args, "scenario_filter", None))
+    if args.scenario_set == "clean_mixed_backdoor":
+        return _filter_scenarios(clean_mixed_backdoor_scenarios, getattr(args, "scenario_filter", None))
+    if args.scenario_set == "clean_global_backdoor_mixed":
+        return _filter_scenarios(clean_global_backdoor_mixed_scenarios, getattr(args, "scenario_filter", None))
     if args.scenario_set == "mixed":
         return _filter_scenarios(
             [
@@ -3397,6 +4394,10 @@ def _attack_context_names(args) -> tuple[str, ...]:
         return ()
     if args.scenario_set == "backdoor":
         return ("bfl", "dba", "rl_backdoor")
+    if args.scenario_set == "clean_mixed_backdoor":
+        return ("mixed_backdoor",)
+    if args.scenario_set == "clean_global_backdoor_mixed":
+        return ("clean", "ipm", "lmp", "rl", "bfl", "dba", "rl_backdoor", "mixed_backdoor")
     if args.scenario_set == "mixed":
         return ("ipm", "lmp", "rl", "bfl", "dba", "rl_backdoor")
     return ("ipm", "lmp", "rl")
@@ -3409,7 +4410,7 @@ def _defender_action_dim(args) -> int:
 def _attack_type(name: str) -> AttackType:
     return AttackType(
         name=name,
-        objective="targeted" if name in {"bfl", "dba", "rl_backdoor", "brl"} else "untargeted",
+        objective="targeted" if name in {"bfl", "dba", "rl_backdoor", "mixed_backdoor", "brl"} else "untargeted",
         adaptive=(name in {"rl", "brl"}),
     )
 

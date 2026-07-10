@@ -1,0 +1,2366 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>H=200 Paper-like Meta Learning 实验报告</title>
+  <style>
+    :root {
+      --ink: #18202a;
+      --muted: #617080;
+      --line: #d9e1e8;
+      --paper: #fbfcfd;
+      --surface: #ffffff;
+      --navy: #24476f;
+      --teal: #0c7b72;
+      --green: #2f7d4f;
+      --amber: #a76305;
+      --red: #b23b3b;
+      --violet: #6254a3;
+      --slate: #ecf1f4;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: Inter, "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif;
+      line-height: 1.55;
+      letter-spacing: 0;
+    }
+
+    a {
+      color: var(--navy);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    .page {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 28px 24px 64px;
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(300px, 0.8fr);
+      gap: 24px;
+      align-items: stretch;
+      padding: 28px 0 24px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      line-height: 1.22;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      max-width: 860px;
+      font-size: 36px;
+      font-weight: 760;
+    }
+
+    h2 {
+      margin-top: 42px;
+      padding-top: 10px;
+      border-top: 1px solid var(--line);
+      font-size: 23px;
+      font-weight: 720;
+    }
+
+    h3 {
+      margin-top: 24px;
+      font-size: 17px;
+      font-weight: 700;
+    }
+
+    p {
+      margin: 10px 0 0;
+    }
+
+    .subtitle {
+      max-width: 860px;
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: 16px;
+    }
+
+    .path {
+      margin-top: 18px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--surface);
+      color: #344353;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    .status-board {
+      display: grid;
+      gap: 10px;
+      align-content: start;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+
+    .status-row {
+      display: grid;
+      grid-template-columns: 130px minmax(0, 1fr);
+      gap: 10px;
+      min-height: 28px;
+      align-items: start;
+      font-size: 14px;
+    }
+
+    .status-row span:first-child {
+      color: var(--muted);
+    }
+
+    .status-row strong {
+      font-weight: 720;
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 4px 9px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--surface);
+      color: #334155;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .chip.good {
+      border-color: #b7d6c4;
+      color: var(--green);
+      background: #f3faf5;
+    }
+
+    .chip.warn {
+      border-color: #edd2a7;
+      color: var(--amber);
+      background: #fff9ed;
+    }
+
+    .grid {
+      display: grid;
+      gap: 14px;
+      margin-top: 16px;
+    }
+
+    .grid.two {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .grid.three {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      padding: 16px;
+    }
+
+    .panel h3 {
+      margin-top: 0;
+      font-size: 15px;
+    }
+
+    .metric {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      padding: 8px 0;
+      border-top: 1px solid #edf1f4;
+      font-size: 14px;
+    }
+
+    .metric:first-of-type {
+      border-top: 0;
+    }
+
+    .metric span:first-child {
+      color: var(--muted);
+    }
+
+    .metric strong {
+      font-variant-numeric: tabular-nums;
+    }
+
+    table {
+      width: 100%;
+      margin-top: 14px;
+      border-collapse: collapse;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      font-size: 13px;
+    }
+
+    th,
+    td {
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #eef3f6;
+      color: #394756;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    td.num,
+    th.num {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .note {
+      margin-top: 12px;
+      padding: 11px 13px;
+      border-left: 4px solid var(--teal);
+      background: #f0faf8;
+      color: #28524d;
+      font-size: 14px;
+    }
+
+    .warning {
+      border-left-color: var(--amber);
+      background: #fff8ea;
+      color: #65420f;
+    }
+
+    .danger {
+      border-left-color: var(--red);
+      background: #fff2f2;
+      color: #743131;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .step {
+      min-height: 122px;
+      padding: 13px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      position: relative;
+    }
+
+    .step::after {
+      content: ">";
+      position: absolute;
+      top: 45px;
+      right: -11px;
+      color: #8795a1;
+      font-weight: 700;
+    }
+
+    .step:last-child::after {
+      content: "";
+    }
+
+    .step .label {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+
+    .step strong {
+      display: block;
+      margin-top: 4px;
+      font-size: 15px;
+    }
+
+    .step p {
+      color: #506070;
+      font-size: 13px;
+    }
+
+    .task-strip {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .task {
+      min-height: 76px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      font-size: 13px;
+    }
+
+    .task strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 14px;
+    }
+
+    .task.clean {
+      border-top: 4px solid var(--green);
+    }
+
+    .task.bfl {
+      border-top: 4px solid var(--amber);
+    }
+
+    .task.dba {
+      border-top: 4px solid var(--red);
+    }
+
+    .task.rl {
+      border-top: 4px solid var(--violet);
+    }
+
+    .task.mix {
+      border-top: 4px solid var(--teal);
+    }
+
+    .action-diagram {
+      display: grid;
+      grid-template-columns: minmax(250px, 0.9fr) minmax(0, 1.1fr);
+      gap: 14px;
+      margin-top: 16px;
+      align-items: stretch;
+    }
+
+    .vector {
+      display: grid;
+      gap: 10px;
+      align-content: center;
+      min-height: 240px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      padding: 18px;
+    }
+
+    .vector .raw {
+      padding: 16px;
+      border-radius: 8px;
+      background: #eef3f6;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      text-align: center;
+      font-size: 18px;
+    }
+
+    .vector .arrow {
+      text-align: center;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .formula {
+      padding: 12px;
+      border: 1px dashed #b9c6cf;
+      border-radius: 8px;
+      color: #344353;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    .bars {
+      display: grid;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .curve-grid,
+    .chart-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 18px;
+    }
+
+    .chart-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      padding: 14px;
+    }
+
+    .chart-card h3 {
+      margin-top: 0;
+      font-size: 15px;
+    }
+
+    .chart-card svg {
+      display: block;
+      width: 100%;
+      height: 250px;
+      margin-top: 8px;
+      overflow: visible;
+    }
+
+    .embedded-report {
+      width: 100%;
+      min-height: 680px;
+      margin-top: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+
+    .chart-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 12px;
+      margin-top: 10px;
+      color: #4b5b68;
+      font-size: 12px;
+    }
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      white-space: nowrap;
+    }
+
+    .legend-swatch {
+      width: 18px;
+      height: 3px;
+      border-radius: 3px;
+      background: currentColor;
+    }
+
+    .chart-caption {
+      margin-top: 9px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .bar-row {
+      display: grid;
+      grid-template-columns: 150px minmax(0, 1fr) 64px;
+      gap: 10px;
+      align-items: center;
+      font-size: 13px;
+    }
+
+    .bar-track {
+      height: 11px;
+      border-radius: 6px;
+      background: #e5eaee;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      border-radius: 6px;
+      background: var(--teal);
+    }
+
+    .bar-fill.clean {
+      background: var(--green);
+    }
+
+    .bar-fill.bd {
+      background: var(--red);
+    }
+
+    .bar-fill.score {
+      background: var(--navy);
+    }
+
+    .small {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .mono {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    }
+
+    .section-lead {
+      max-width: 920px;
+      color: #465768;
+    }
+
+    .footer {
+      margin-top: 44px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .experiment-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 18px 0 2px;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+
+    .tab-button {
+      min-height: 36px;
+      padding: 7px 12px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      background: transparent;
+      color: #405060;
+      font: inherit;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .tab-button:hover {
+      background: #eef3f6;
+    }
+
+    .tab-button.active {
+      border-color: #b7c6d4;
+      background: #e9f1f7;
+      color: var(--navy);
+      font-weight: 700;
+    }
+
+    .tab-panel[hidden] {
+      display: none;
+    }
+
+    @media (max-width: 940px) {
+      header,
+      .grid.two,
+      .grid.three,
+      .action-diagram {
+        grid-template-columns: 1fr;
+      }
+
+      .flow,
+      .task-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .step::after {
+        display: none;
+      }
+    }
+
+    @media (max-width: 620px) {
+      .page {
+        padding: 20px 14px 44px;
+      }
+
+      h1 {
+        font-size: 27px;
+      }
+
+      h2 {
+        font-size: 20px;
+      }
+
+      .flow,
+      .task-strip {
+        grid-template-columns: 1fr;
+      }
+
+      .status-row,
+      .bar-row {
+        grid-template-columns: 1fr;
+        gap: 4px;
+      }
+
+      table {
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header>
+      <section>
+        <h1>H=200 Paper-like 混合攻防 Meta Learning 实验报告</h1>
+        <p class="subtitle">
+          这份报告整理最近三天的主线实验配置、任务混合方式、meta learning 学到的初始 defender 网络、
+          三维防御动作含义，以及 iter 50 checkpoint 在 base 与 adaptation 下的评估对比。
+        </p>
+        <div class="chips" aria-label="实验标签">
+          <span class="chip good">checkpoint: iter_0050</span>
+          <span class="chip">T=100</span>
+          <span class="chip">K=10</span>
+          <span class="chip">H=200</span>
+          <span class="chip">l=10</span>
+          <span class="chip warn">adaptation 当前为负增益</span>
+        </div>
+        <div class="path">
+          runs/meta_sg_goal/clean_backdoor_mixed_paperlike_t100_k10_h200_l10/20260704-100848/checkpoints/iter_0050
+        </div>
+      </section>
+
+      <aside class="status-board" aria-label="关键状态">
+        <div class="status-row">
+          <span>实验定位</span>
+          <strong>clean + backdoor + mixed_backdoor 的 paper-like H=200 训练</strong>
+        </div>
+        <div class="status-row">
+          <span>当前最可靠点</span>
+          <strong>2026-07-04 10:08:48 run, iter 50</strong>
+        </div>
+        <div class="status-row">
+          <span>训练读数</span>
+          <strong>iter 31-40 tradeoff 最好，iter 41-50 clean 明显下滑</strong>
+        </div>
+        <div class="status-row">
+          <span>评估读数</span>
+          <strong>base mean clean 0.770, max ASR 0.010, native adaptation 后 score 下降 0.022</strong>
+        </div>
+      </aside>
+    </header>
+
+    <nav class="experiment-tabs" aria-label="实验子页面">
+      <button class="tab-button active" type="button" data-tab-target="serverlr">3D server_lr 主线</button>
+      <button class="tab-button" type="button" data-tab-target="epsilon">3D epsilon / NeuroClip</button>
+      <button class="tab-button" type="button" data-tab-target="four-d">4D both / diagnostic</button>
+      <button class="tab-button" type="button" data-tab-target="current-4d">当前 4D 训练曲线</button>
+    </nav>
+
+    <div class="tab-panel" id="tab-serverlr">
+    <section>
+      <h2>1. 实验目标</h2>
+      <p class="section-lead">
+        这条主线不是单独训练一个固定防御规则，而是在多个攻击任务上做 Meta-Stackelberg / Reptile 风格预训练。
+        训练结束后得到一个共享的 defender 初始神经网络。理论上，它应该作为不同场景 adaptation 的起点，
+        在看到当前场景的在线反馈后快速微调到更合适的防御动作。
+      </p>
+
+      <div class="flow" aria-label="meta learning 流程">
+        <div class="step">
+          <span class="label">Step 1</span>
+          <strong>采样任务</strong>
+          <p>K=10 个任务来自 clean, bfl, dba, rl_backdoor, mixed_backdoor。</p>
+        </div>
+        <div class="step">
+          <span class="label">Step 2</span>
+          <strong>复制初始网络</strong>
+          <p>从共享 defender actor/critic 初始化出发，对每个任务做内层 TD3。</p>
+        </div>
+        <div class="step">
+          <span class="label">Step 3</span>
+          <strong>任务内 adaptation</strong>
+          <p>每个任务跑 H=200 FL rounds，并做 l=10 次 defender TD3 更新。</p>
+        </div>
+        <div class="step">
+          <span class="label">Step 4</span>
+          <strong>Query 约束筛选</strong>
+          <p>用 query reward / clean drop / ASR reduction 判断更新是否进入 meta update。</p>
+        </div>
+        <div class="step">
+          <span class="label">Step 5</span>
+          <strong>Reptile meta update</strong>
+          <p>把共享初始化朝多个任务 adaptation 后的参数平均方向移动。</p>
+        </div>
+      </div>
+
+      <div class="note">
+        报告里把这个共享初始化称为“初始策略网络”。它不是每个攻击类型一个完全独立的 defender 网络；
+        不同攻击类型下的差异，预期主要来自后续 adaptation 对这个共享初始化的微调。
+      </div>
+    </section>
+
+    <section>
+      <h2>2. 核心实验配置</h2>
+      <div class="grid three">
+        <div class="panel">
+          <h3>Meta Learning</h3>
+          <div class="metric"><span>backend</span><strong>fl_sandbox</strong></div>
+          <div class="metric"><span>attack-domain</span><strong>clean_backdoor_mixed</strong></div>
+          <div class="metric"><span>outer iterations T</span><strong>100</strong></div>
+          <div class="metric"><span>tasks per iteration K</span><strong>10</strong></div>
+          <div class="metric"><span>FL horizon H</span><strong>200</strong></div>
+          <div class="metric"><span>defender updates l</span><strong>10</strong></div>
+          <div class="metric"><span>meta objective</span><strong>query_targeted_reptile</strong></div>
+          <div class="metric"><span>meta step</span><strong>0.25</strong></div>
+        </div>
+
+        <div class="panel">
+          <h3>Federated Learning</h3>
+          <div class="metric"><span>dataset</span><strong>MNIST</strong></div>
+          <div class="metric"><span>clients</span><strong>30</strong></div>
+          <div class="metric"><span>attackers</span><strong>6</strong></div>
+          <div class="metric"><span>attacker ratio</span><strong>20%</strong></div>
+          <div class="metric"><span>subsample rate</span><strong>0.2</strong></div>
+          <div class="metric"><span>sampled clients/round</span><strong>约 6</strong></div>
+          <div class="metric"><span>client samples</span><strong>64</strong></div>
+          <div class="metric"><span>eval samples</span><strong>500</strong></div>
+        </div>
+
+        <div class="panel">
+          <h3>Defender / TD3</h3>
+          <div class="metric"><span>actor hidden dim</span><strong>256</strong></div>
+          <div class="metric"><span>actor output dim</span><strong>3</strong></div>
+          <div class="metric"><span>third action</span><strong>server_lr</strong></div>
+          <div class="metric"><span>post-defense mode</span><strong>weight_copy</strong></div>
+          <div class="metric"><span>lambda_bd</span><strong>1.0</strong></div>
+          <div class="metric"><span>device</span><strong>cuda:0</strong></div>
+          <div class="metric"><span>seed / rl-seed</span><strong>42 / 506</strong></div>
+          <div class="metric"><span>checkpoint interval</span><strong>1</strong></div>
+        </div>
+      </div>
+
+      <table aria-label="运行路径">
+        <thead>
+          <tr>
+            <th>项目</th>
+            <th>路径</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>训练启动脚本</td>
+            <td class="mono">meta_sg/scripts/launch_clean_backdoor_mixed_h200_paperlike.sh</td>
+          </tr>
+          <tr>
+            <td>job wrapper</td>
+            <td class="mono">meta_sg/scripts/run_clean_backdoor_mixed_h200_job.sh</td>
+          </tr>
+          <tr>
+            <td>metrics</td>
+            <td class="mono">runs/.../20260704-100848/metrics.jsonl</td>
+          </tr>
+          <tr>
+            <td>TensorBoard logdir</td>
+            <td class="mono">runs/.../analysis/training_log_digest_20260704-iter0050/tensorboard</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>3. 任务混合方式</h2>
+      <p class="section-lead">
+        <span class="mono">clean_backdoor_mixed</span> 不是普通 model poisoning 混合域。它由 clean、三个单一后门攻击、
+        以及一个同轮次内混合多种后门客户端的 <span class="mono">mixed_backdoor</span> 组成。
+        K=10 使用 stratified sampler，因此每个 outer iteration 通常先覆盖 5 类任务，再填充额外任务。
+      </p>
+
+      <div class="task-strip" aria-label="任务类型">
+        <div class="task clean">
+          <strong>clean</strong>
+          无攻击 baseline，用于约束 clean accuracy。
+        </div>
+        <div class="task bfl">
+          <strong>bfl</strong>
+          单一 BFL 后门任务。
+        </div>
+        <div class="task dba">
+          <strong>dba</strong>
+          单一 DBA 分布式后门任务。
+        </div>
+        <div class="task rl">
+          <strong>rl_backdoor</strong>
+          sandbox 内部原生 RL 后门逻辑。
+        </div>
+        <div class="task mix">
+          <strong>mixed_backdoor</strong>
+          同一轮 malicious clients 分成 BFL / DBA / RL-backdoor 三组。
+        </div>
+      </div>
+
+      <table aria-label="mixed_backdoor 客户端角色">
+        <thead>
+          <tr>
+            <th>mixed_backdoor 角色</th>
+            <th>6 个攻击客户端时的划分</th>
+            <th>说明</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>BFL role</td>
+            <td class="mono">attacker 0, 1</td>
+            <td>使用 BFLAttack 生成该组恶意更新。</td>
+          </tr>
+          <tr>
+            <td>DBA role</td>
+            <td class="mono">attacker 2, 3</td>
+            <td>使用 DBAAttack 生成该组恶意更新。</td>
+          </tr>
+          <tr>
+            <td>RL-backdoor role</td>
+            <td class="mono">attacker 4, 5</td>
+            <td>使用 RLBackdoorAttack 的原生内部逻辑。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="note warning">
+        评估修复后，attacker action 走统一 native 链路。defender 不应直接看到 attacker action；
+        history feature 中保留的是固定维度占位，不再把攻击方 raw action 暴露给 defender。
+      </div>
+    </section>
+
+    <section>
+      <h2>4. Meta Learning 学到的网络</h2>
+      <p class="section-lead">
+        当前 checkpoint 中的核心产物是 <span class="mono">defender_meta.pt</span>。它包含一个 TD3 defender，
+        其中 actor 是确定性策略网络，critic 是 twin-Q 网络。actor 输入当前 FL 状态观测，输出三维 raw action；
+        raw action 经 tanh 限制在 <span class="mono">[-1, 1]^3</span>，再映射成真实防御参数。
+      </p>
+
+      <div class="grid two">
+        <div class="panel">
+          <h3>Actor: 初始策略网络</h3>
+          <div class="metric"><span>输入</span><strong>FL 状态观测 obs</strong></div>
+          <div class="metric"><span>结构</span><strong>Linear -> ReLU -> Linear -> ReLU -> Linear -> Tanh</strong></div>
+          <div class="metric"><span>hidden dim</span><strong>256, 256</strong></div>
+          <div class="metric"><span>输出</span><strong>raw action in [-1, 1]^3</strong></div>
+          <div class="metric"><span>训练目标</span><strong>最大化 defense score / reward</strong></div>
+        </div>
+
+        <div class="panel">
+          <h3>Critic: TD3 双 Q 网络</h3>
+          <div class="metric"><span>输入</span><strong>concat(obs, action)</strong></div>
+          <div class="metric"><span>结构</span><strong>Q1 和 Q2 两套 MLP</strong></div>
+          <div class="metric"><span>hidden dim</span><strong>256, 256</strong></div>
+          <div class="metric"><span>输出</span><strong>Q1(s,a), Q2(s,a)</strong></div>
+          <div class="metric"><span>用途</span><strong>给 actor 更新提供 TD3 价值估计</strong></div>
+        </div>
+      </div>
+
+      <div class="note">
+        从 meta learning 角度看，训练不是直接记住某个攻击的固定 action，而是学习一个能在多种任务上作为
+        adaptation 起点的参数初始化。当前结果的问题是：这个初始化本身已经很强，后续 online TD3 adaptation
+        在弱信号下反而容易把策略推离当前较优点。
+      </div>
+    </section>
+
+    <section>
+      <h2>5. 三维 Action 的含义</h2>
+      <div class="action-diagram">
+        <div class="vector">
+          <div class="raw">a = [a0, a1, a2] in [-1, 1]^3</div>
+          <div class="arrow">decode</div>
+          <div class="formula">
+            physical = low + (raw + 1) / 2 * (high - low)
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3>当前实验使用的三维防御动作</h3>
+          <table aria-label="三维动作含义">
+            <thead>
+              <tr>
+                <th>维度</th>
+                <th>物理参数</th>
+                <th>范围</th>
+                <th>含义</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="mono">a0</td>
+                <td><span class="mono">alpha</span></td>
+                <td class="mono">0.0 到 5.0</td>
+                <td>norm bound 强度，用于约束客户端更新范数。</td>
+              </tr>
+              <tr>
+                <td class="mono">a1</td>
+                <td><span class="mono">beta</span></td>
+                <td class="mono">0.0 到 0.45</td>
+                <td>trimmed mean 比例，控制聚合时两端裁剪强度。</td>
+              </tr>
+              <tr>
+                <td class="mono">a2</td>
+                <td><span class="mono">server_lr</span></td>
+                <td class="mono">0.0 到 1.0</td>
+                <td>server update 缩放系数，控制 FL 全局更新步长。</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <table aria-label="iter50 action">
+        <thead>
+          <tr>
+            <th>来源</th>
+            <th class="num">alpha</th>
+            <th class="num">beta</th>
+            <th class="num">server_lr</th>
+            <th>解释</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>iter 50 training mean</td>
+            <td class="num">4.775</td>
+            <td class="num">0.238</td>
+            <td class="num">0.045</td>
+            <td>接近高 alpha、居中 beta、极低 server_lr，说明策略倾向强范数约束并显著减小全局步长。</td>
+          </tr>
+          <tr>
+            <td>H=200 direct eval base</td>
+            <td class="num">约 4.758 到 4.809</td>
+            <td class="num">约 0.224 到 0.229</td>
+            <td class="num">约 0.030 到 0.045</td>
+            <td>不同 scenario 下输出差异很小，符合“共享初始化很强但较平均”的现象。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="bars" aria-label="iter50 action bar">
+        <div class="bar-row">
+          <span>alpha / 5.0</span>
+          <div class="bar-track"><div class="bar-fill" style="width: 95.5%"></div></div>
+          <strong>95.5%</strong>
+        </div>
+        <div class="bar-row">
+          <span>beta / 0.45</span>
+          <div class="bar-track"><div class="bar-fill" style="width: 52.9%"></div></div>
+          <strong>52.9%</strong>
+        </div>
+        <div class="bar-row">
+          <span>server_lr / 1.0</span>
+          <div class="bar-track"><div class="bar-fill" style="width: 4.5%"></div></div>
+          <strong>4.5%</strong>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>6. 训练日志与曲线指标</h2>
+      <p class="section-lead">
+        训练已经整理到 iter 50，TensorBoard 记录来自 training log digest。主要曲线分为性能、动作、Reptile 更新、
+        query/meta objective、per-attack query 几组。
+      </p>
+
+      <div class="grid two">
+        <div class="panel">
+          <h3>记录的性能指标</h3>
+          <div class="metric"><span>训练 reward</span><strong>reward_mean, reward_std</strong></div>
+          <div class="metric"><span>准确率</span><strong>clean_acc, backdoor_acc</strong></div>
+          <div class="metric"><span>攻击侧</span><strong>attacker_reward_mean, per_attack_reward_mean</strong></div>
+          <div class="metric"><span>defense score</span><strong>clean_acc - lambda_bd * backdoor_acc</strong></div>
+        </div>
+
+        <div class="panel">
+          <h3>记录的学习/动作指标</h3>
+          <div class="metric"><span>Reptile</span><strong>delta_norm, actor_delta_norm, critic_delta_norm</strong></div>
+          <div class="metric"><span>defender action</span><strong>alpha, beta, server_lr, action_std</strong></div>
+          <div class="metric"><span>query objective</span><strong>gain, accept_rate, clean_drop, ASR reduction</strong></div>
+          <div class="metric"><span>per attack query</span><strong>clean / bfl / dba / rl_backdoor / mixed_backdoor</strong></div>
+        </div>
+      </div>
+
+      <div class="curve-grid" aria-label="训练曲线">
+        <div class="chart-card">
+          <h3>训练性能曲线</h3>
+          <svg id="chart-performance" role="img" aria-label="reward clean backdoor curves"></svg>
+          <div class="chart-legend" data-legend-for="chart-performance"></div>
+          <p class="chart-caption">共享 y 轴 0-1；可以直接看到 31-40 reward 上升、41-50 clean 下滑。</p>
+        </div>
+
+        <div class="chart-card">
+          <h3>Query / Adaptation 曲线</h3>
+          <svg id="chart-query" role="img" aria-label="query gain and accept rate curves"></svg>
+          <div class="chart-legend" data-legend-for="chart-query"></div>
+          <p class="chart-caption">q_gain 在 31 轮后转负，q_gain_accept_rate 到 45-50 基本归零。</p>
+        </div>
+
+        <div class="chart-card">
+          <h3>Defender 三维动作趋势</h3>
+          <svg id="chart-actions" role="img" aria-label="defender alpha beta server lr curves"></svg>
+          <div class="chart-legend" data-legend-for="chart-actions"></div>
+          <p class="chart-caption">按物理范围归一化：alpha/5, beta/0.45, server_lr/1；iter 50 走向高 alpha、低 server_lr。</p>
+        </div>
+
+        <div class="chart-card">
+          <h3>Reptile 更新幅度</h3>
+          <svg id="chart-reptile" role="img" aria-label="reptile delta curves"></svg>
+          <div class="chart-legend" data-legend-for="chart-reptile"></div>
+          <p class="chart-caption">展示 full / actor / critic delta norm，辅助判断 meta update 是否变得不稳定。</p>
+        </div>
+      </div>
+
+      <table aria-label="训练区间均值">
+        <thead>
+          <tr>
+            <th>iteration range</th>
+            <th class="num">reward</th>
+            <th class="num">clean</th>
+            <th class="num">backdoor</th>
+            <th class="num">q_gain</th>
+            <th class="num">q_acc</th>
+            <th class="num">q_gain_acc</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>01-10</td><td class="num">0.516</td><td class="num">0.884</td><td class="num">0.368</td><td class="num">0.005</td><td class="num">0.61</td><td class="num">0.49</td></tr>
+          <tr><td>11-20</td><td class="num">0.531</td><td class="num">0.881</td><td class="num">0.350</td><td class="num">0.011</td><td class="num">0.64</td><td class="num">0.53</td></tr>
+          <tr><td>21-30</td><td class="num">0.585</td><td class="num">0.869</td><td class="num">0.284</td><td class="num">0.048</td><td class="num">0.75</td><td class="num">0.61</td></tr>
+          <tr><td>31-40</td><td class="num">0.697</td><td class="num">0.817</td><td class="num">0.120</td><td class="num">-0.009</td><td class="num">0.73</td><td class="num">0.35</td></tr>
+          <tr><td>41-50</td><td class="num">0.604</td><td class="num">0.665</td><td class="num">0.061</td><td class="num">-0.156</td><td class="num">0.55</td><td class="num">0.07</td></tr>
+        </tbody>
+      </table>
+
+      <div class="note warning">
+        当前最重要的训练现象是：31-40 区间 reward/clean/backdoor tradeoff 最好；41-50 继续压低了 backdoor，
+        但 clean accuracy 和 query gain 明显恶化。iter 50 可用，但不一定是训练轨迹中最优 checkpoint。
+      </div>
+    </section>
+
+    <section>
+      <h2>7. 初始网络 vs Adaptation 评估</h2>
+      <p class="section-lead">
+        这里把 meta learning 结束后的初始网络结果和做完 adaptation 的结果并排放。本节图表来自较早的
+        <span class="mono">w10 h100</span> 历史 adaptation 评估；当前 no-offset 重评估使用
+        <span class="mono">w10 h20</span>，即每个任务 200 个 FL rounds。
+      </p>
+
+      <div class="flow" aria-label="adaptation 机制流程">
+        <div class="step">
+          <span class="label">Adapt 1</span>
+          <strong>Clone meta defender</strong>
+          <p>从 iter 50 的共享 actor/critic 拷贝一份 adapted policy，base policy 本身不被覆盖。</p>
+        </div>
+        <div class="step">
+          <span class="label">Adapt 2</span>
+          <strong>Native attacker rollout</strong>
+          <p>当前 scenario 内部攻击逻辑自行产生客户端行为；defender 不读取 attacker action。</p>
+        </div>
+        <div class="step">
+          <span class="label">Adapt 3</span>
+          <strong>10 个在线窗口</strong>
+          <p>本节历史图每个 window 跑 100 个 FL rounds，总在线 horizon 为 1000；当前 no-offset 重评估为每个 window 20 rounds。</p>
+        </div>
+        <div class="step">
+          <span class="label">Adapt 4</span>
+          <strong>TD3 更新</strong>
+          <p>每个 window 把 transition 写入 replay buffer，并做 10 次 TD3 update。</p>
+        </div>
+        <div class="step">
+          <span class="label">Adapt 5</span>
+          <strong>Final evaluation</strong>
+          <p>selection=always，因此最终部署分数使用 adapted policy，而不是 guarded 回退到 base。</p>
+        </div>
+      </div>
+
+      <div class="grid three">
+        <div class="panel">
+          <h3>本节历史 adaptation 配置</h3>
+          <div class="metric"><span>method</span><strong>paper_online_td3</strong></div>
+          <div class="metric"><span>attacker source</span><strong>native</strong></div>
+          <div class="metric"><span>windows</span><strong>10</strong></div>
+          <div class="metric"><span>window horizon</span><strong>100</strong></div>
+          <div class="metric"><span>updates/window</span><strong>10</strong></div>
+          <div class="metric"><span>selection</span><strong>always</strong></div>
+        </div>
+
+        <div class="panel">
+          <h3>Adaptation 在调整什么</h3>
+          <p class="small">
+            它调整的是 cloned defender TD3 actor/critic 参数。actor 的输出仍然是三维防御动作：
+            <span class="mono">alpha, beta, server_lr</span>。攻击类型不会切换到独立 defender 网络；
+            差异来自同一个初始化在在线数据上的 TD3 微调。
+          </p>
+        </div>
+
+        <div class="panel">
+          <h3>读数注意</h3>
+          <p class="small">
+            window 曲线记录的是 adaptation 过程中在线环境的末轮评估。最终 base/adapted 对比表是重新用
+            H=200 做部署评估，所以 window 10 的 clean/ASR 不一定等于 final adapted evaluation。
+          </p>
+        </div>
+      </div>
+
+      <div class="curve-grid" aria-label="adaptation 过程曲线">
+        <div class="chart-card">
+          <h3>Adaptation 过程 Clean Accuracy</h3>
+          <svg id="chart-adapt-clean" role="img" aria-label="adaptation clean accuracy curves"></svg>
+          <div class="chart-legend" data-legend-for="chart-adapt-clean"></div>
+          <p class="chart-caption">每条线是一个 scenario 的 10 个 online windows；本节历史图 x 轴每格等价于 100 个 FL rounds。当前 no-offset 重评估每格为 20 个 FL rounds。</p>
+        </div>
+
+        <div class="chart-card">
+          <h3>Adaptation 过程 ASR</h3>
+          <svg id="chart-adapt-asr" role="img" aria-label="adaptation attack success rate curves"></svg>
+          <div class="chart-legend" data-legend-for="chart-adapt-asr"></div>
+          <p class="chart-caption">BFL 的 ASR 在 online window 内明显下降，但 final adapted score 仍因 clean 损失而低于 base。</p>
+        </div>
+      </div>
+
+      <table aria-label="base adaptation aggregate">
+        <thead>
+          <tr>
+            <th>评估设置</th>
+            <th class="num">base clean</th>
+            <th class="num">adapted clean</th>
+            <th class="num">delta clean</th>
+            <th class="num">base score</th>
+            <th class="num">adapted score</th>
+            <th class="num">delta score</th>
+            <th class="num">max base ASR</th>
+            <th class="num">max adapted ASR</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>paper-online native strict, H=200</td>
+            <td class="num">0.770</td>
+            <td class="num">0.749</td>
+            <td class="num">-0.022</td>
+            <td class="num">0.768</td>
+            <td class="num">0.745</td>
+            <td class="num">-0.022</td>
+            <td class="num">0.010</td>
+            <td class="num">0.008</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <table aria-label="per scenario native strict">
+        <thead>
+          <tr>
+            <th>scenario set</th>
+            <th>scenario</th>
+            <th class="num">base clean</th>
+            <th class="num">base ASR</th>
+            <th class="num">base score</th>
+            <th class="num">adapted clean</th>
+            <th class="num">adapted ASR</th>
+            <th class="num">adapted score</th>
+            <th class="num">delta score</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>backdoor</td><td>clean</td><td class="num">0.772</td><td class="num">0.000</td><td class="num">0.772</td><td class="num">0.750</td><td class="num">0.000</td><td class="num">0.750</td><td class="num">-0.022</td></tr>
+          <tr><td>backdoor</td><td>bfl</td><td class="num">0.786</td><td class="num">0.000</td><td class="num">0.786</td><td class="num">0.750</td><td class="num">0.004</td><td class="num">0.746</td><td class="num">-0.040</td></tr>
+          <tr><td>backdoor</td><td>dba</td><td class="num">0.778</td><td class="num">0.000</td><td class="num">0.778</td><td class="num">0.756</td><td class="num">0.000</td><td class="num">0.756</td><td class="num">-0.022</td></tr>
+          <tr><td>backdoor</td><td>rl_backdoor</td><td class="num">0.762</td><td class="num">0.010</td><td class="num">0.752</td><td class="num">0.758</td><td class="num">0.008</td><td class="num">0.750</td><td class="num">-0.002</td></tr>
+          <tr><td>clean_mixed_backdoor</td><td>clean</td><td class="num">0.772</td><td class="num">0.000</td><td class="num">0.772</td><td class="num">0.748</td><td class="num">0.000</td><td class="num">0.748</td><td class="num">-0.024</td></tr>
+          <tr><td>clean_mixed_backdoor</td><td>mixed_backdoor</td><td class="num">0.752</td><td class="num">0.006</td><td class="num">0.746</td><td class="num">0.730</td><td class="num">0.008</td><td class="num">0.722</td><td class="num">-0.024</td></tr>
+        </tbody>
+      </table>
+
+      <div class="grid two">
+        <div class="panel">
+          <h3>Base 初始网络结论</h3>
+          <div class="bars">
+            <div class="bar-row">
+              <span>mean clean</span>
+              <div class="bar-track"><div class="bar-fill clean" style="width: 77%"></div></div>
+              <strong>0.770</strong>
+            </div>
+            <div class="bar-row">
+              <span>mean score</span>
+              <div class="bar-track"><div class="bar-fill score" style="width: 76.8%"></div></div>
+              <strong>0.768</strong>
+            </div>
+            <div class="bar-row">
+              <span>max ASR</span>
+              <div class="bar-track"><div class="bar-fill bd" style="width: 1%"></div></div>
+              <strong>0.010</strong>
+            </div>
+          </div>
+          <p class="small">base 网络已经能强力压制后门，但 clean accuracy 比训练中 31-40 的水平低。</p>
+        </div>
+
+        <div class="panel">
+          <h3>Native Adaptation 结论</h3>
+          <div class="bars">
+            <div class="bar-row">
+              <span>mean clean</span>
+              <div class="bar-track"><div class="bar-fill clean" style="width: 74.9%"></div></div>
+              <strong>0.749</strong>
+            </div>
+            <div class="bar-row">
+              <span>mean score</span>
+              <div class="bar-track"><div class="bar-fill score" style="width: 74.5%"></div></div>
+              <strong>0.745</strong>
+            </div>
+            <div class="bar-row">
+              <span>max ASR</span>
+              <div class="bar-track"><div class="bar-fill bd" style="width: 0.8%"></div></div>
+              <strong>0.008</strong>
+            </div>
+          </div>
+          <p class="small">ASR 只小幅下降，但 clean 和 score 同时下降，说明当前 adaptation 没有带来部署收益。</p>
+        </div>
+      </div>
+
+      <div class="note danger">
+        这不是说 adaptation 机制不需要，而是说明当前 checkpoint + 当前 online TD3 adaptation 配置下，
+        可学习信号过弱或更新方向不稳。后续需要继续做 horizon / update 数 / selection rule / reward 信号的消融，
+        并优先比较 iter 31-40 checkpoint。
+      </div>
+    </section>
+
+    <section>
+      <h2>8. 当前判断与下一步</h2>
+      <table aria-label="判断和建议">
+        <thead>
+          <tr>
+            <th>问题</th>
+            <th>当前证据</th>
+            <th>建议</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>为什么 5/50 轮效果看起来很好</td>
+            <td>动作空间只有三维，server_lr 很快被压低，ASR 因此容易下降；但 clean 也会被牺牲。</td>
+            <td>不要只看 ASR，要同时看 clean、score、query gain。</td>
+          </tr>
+          <tr>
+            <td>为什么不同攻击 action 很平均</td>
+            <td>当前学到的是共享初始化，且 base 已经很强；scenario-conditioned 差异不足。</td>
+            <td>检查观测是否包含足够攻击行为信号，尝试更强的 scenario evidence 或 context encoder。</td>
+          </tr>
+          <tr>
+            <td>为什么 adaptation 变差</td>
+            <td>native strict 下 adapted score 每行仍下降，平均 delta score 为 -0.022。</td>
+            <td>用 guarded selection、降低更新强度、扩展在线反馈窗口，并优先测 iter 31-40。</td>
+          </tr>
+          <tr>
+            <td>原 zero-attacker bug 的影响</td>
+            <td>bug 已修复；native 对比显示 zero 不是所有下降的唯一原因。</td>
+            <td>保留 zero 结果只作诊断，正式汇报使用 native rows。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>9. 附录：关键文件</h2>
+      <table aria-label="关键文件">
+        <thead>
+          <tr>
+            <th>用途</th>
+            <th>路径</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>训练摘要</td>
+            <td class="mono">runs/.../analysis/training_log_digest_20260704-iter0050/training_summary.md</td>
+          </tr>
+          <tr>
+            <td>H=200 direct/guarded eval</td>
+            <td class="mono">runs/.../analysis/training_log_digest_20260704-iter0050/eval_h200_iter0050_summary.md</td>
+          </tr>
+          <tr>
+            <td>native paper-online strict eval</td>
+            <td class="mono">runs/.../analysis/training_log_digest_20260704-iter0050/eval_h200_iter0050_paper_online_native_strict_summary.md</td>
+          </tr>
+          <tr>
+            <td>mixed_backdoor 实现</td>
+            <td class="mono">fl_sandbox/attacks/mixed_backdoor.py</td>
+          </tr>
+          <tr>
+            <td>三维 action decode</td>
+            <td class="mono">meta_sg/stackelberg/paper3d_action.py</td>
+          </tr>
+          <tr>
+            <td>TD3 actor/critic 网络</td>
+            <td class="mono">meta_sg/learning/policies.py</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    </div>
+
+    <div class="tab-panel" id="tab-epsilon" hidden>
+      <section>
+        <h2>3D epsilon / NeuroClip 实验总览</h2>
+        <p class="section-lead">
+          这条实验使用三维 defender action：<span class="mono">alpha, beta, neuroclip_epsilon</span>。
+          它与 server_lr 主线的关键区别是：第三维不直接缩放 FL 训练步长，而是在
+          <span class="mono">model_aware_neuroclip</span> post-defense 路径里控制 NeuroClip epsilon。
+          因此它更像“后处理防御强度调节”，不是“学习率刹车”。
+        </p>
+
+        <div class="chips">
+          <span class="chip good">完整结果: H=100, T=30</span>
+          <span class="chip">action: alpha / beta / neuroclip_eps</span>
+          <span class="chip">clients=20 attackers=4</span>
+          <span class="chip warn">H=200 epsilon run 仅 1 iter</span>
+        </div>
+        <div class="path">
+          runs/meta_sg_goal/paper_aligned_neuroclip_t30_k7_h100_l10_c20_a4/20260704-220756
+        </div>
+
+        <div class="note warning">
+          注意：同目录族里的 H=200 epsilon/neuroclip run
+          <span class="mono">paper_aligned_neuroclip_t30_k7_h200_l10_c20_a4/20260704-213151</span>
+          目前只有 1 行 metrics，不能作为正式训练结论。下面主结果采用已跑满 30 iter 的 H=100 版本。
+        </div>
+      </section>
+
+      <section>
+        <h2>1. 实验配置</h2>
+        <div class="grid three">
+          <div class="panel">
+            <h3>Meta Learning</h3>
+            <div class="metric"><span>backend</span><strong>fl_sandbox</strong></div>
+            <div class="metric"><span>attack-domain</span><strong>clean_backdoor_mixed</strong></div>
+            <div class="metric"><span>outer iterations T</span><strong>30</strong></div>
+            <div class="metric"><span>tasks per iteration K</span><strong>7</strong></div>
+            <div class="metric"><span>FL horizon H</span><strong>100</strong></div>
+            <div class="metric"><span>defender updates l</span><strong>10</strong></div>
+            <div class="metric"><span>meta objective</span><strong>query_targeted_reptile</strong></div>
+            <div class="metric"><span>meta step</span><strong>0.25</strong></div>
+          </div>
+
+          <div class="panel">
+            <h3>FL 配置</h3>
+            <div class="metric"><span>dataset</span><strong>MNIST</strong></div>
+            <div class="metric"><span>clients</span><strong>20</strong></div>
+            <div class="metric"><span>attackers</span><strong>4</strong></div>
+            <div class="metric"><span>attacker ratio</span><strong>20%</strong></div>
+            <div class="metric"><span>subsample rate</span><strong>0.2</strong></div>
+            <div class="metric"><span>sampled clients/round</span><strong>约 4</strong></div>
+            <div class="metric"><span>client samples</span><strong>64</strong></div>
+            <div class="metric"><span>eval samples</span><strong>500</strong></div>
+          </div>
+
+          <div class="panel">
+            <h3>Defender Action</h3>
+            <div class="metric"><span>action dim</span><strong>3</strong></div>
+            <div class="metric"><span>third action</span><strong>neuroclip</strong></div>
+            <div class="metric"><span>post-defense</span><strong>model_aware_neuroclip</strong></div>
+            <div class="metric"><span>epsilon range</span><strong>1.0 到 10.0</strong></div>
+            <div class="metric"><span>hidden dim</span><strong>256</strong></div>
+            <div class="metric"><span>device</span><strong>cuda:0</strong></div>
+            <div class="metric"><span>seed / rl-seed</span><strong>42 / 506</strong></div>
+            <div class="metric"><span>checkpoint interval</span><strong>5</strong></div>
+          </div>
+        </div>
+
+        <table aria-label="serverlr epsilon comparison">
+          <thead>
+            <tr>
+              <th>项目</th>
+              <th>3D server_lr 主线</th>
+              <th>3D epsilon / NeuroClip</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>动作结构</td>
+              <td><span class="mono">alpha, beta, server_lr</span></td>
+              <td><span class="mono">alpha, beta, neuroclip_epsilon</span></td>
+            </tr>
+            <tr>
+              <td>第三维含义</td>
+              <td>直接缩放 FL 全局更新步长</td>
+              <td>控制 NeuroClip post-defense 裁剪范围</td>
+            </tr>
+            <tr>
+              <td>主要风险</td>
+              <td>容易学成低 server_lr 的“停训防御”</td>
+              <td>不直接阻止训练，但可能压不住 BFL/RL-backdoor ASR</td>
+            </tr>
+            <tr>
+              <td>可比性</td>
+              <td>H=200, T=50 当前主线 checkpoint</td>
+              <td>完整可用结果为 H=100, T=30；H=200 仅 1 iter</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>2. 训练结果</h2>
+        <p class="section-lead">
+          epsilon/neuroclip 三维实验跑满 30 个 outer iterations。训练阶段 clean accuracy 基本稳定在 0.85-0.86，
+          backdoor accuracy 从前 10 轮均值 0.354 降到后 10 轮均值 0.300，下降幅度有限。
+        </p>
+
+        <table aria-label="epsilon training ranges">
+          <thead>
+            <tr>
+              <th>iteration range</th>
+              <th class="num">reward</th>
+              <th class="num">clean</th>
+              <th class="num">backdoor</th>
+              <th class="num">q_gain</th>
+              <th class="num">q_acc</th>
+              <th class="num">alpha</th>
+              <th class="num">beta</th>
+              <th class="num">epsilon</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>01-10</td><td class="num">0.507</td><td class="num">0.861</td><td class="num">0.354</td><td class="num">0.000</td><td class="num">0.61</td><td class="num">1.750</td><td class="num">0.298</td><td class="num">6.213</td></tr>
+            <tr><td>11-20</td><td class="num">0.535</td><td class="num">0.858</td><td class="num">0.322</td><td class="num">-0.001</td><td class="num">0.60</td><td class="num">1.789</td><td class="num">0.351</td><td class="num">7.123</td></tr>
+            <tr><td>21-30</td><td class="num">0.559</td><td class="num">0.859</td><td class="num">0.300</td><td class="num">-0.002</td><td class="num">0.54</td><td class="num">2.715</td><td class="num">0.348</td><td class="num">6.787</td></tr>
+            <tr><td>iter 30</td><td class="num">0.506</td><td class="num">0.849</td><td class="num">0.343</td><td class="num">-0.011</td><td class="num">0.29</td><td class="num">3.411</td><td class="num">0.341</td><td class="num">6.310</td></tr>
+          </tbody>
+        </table>
+
+        <div class="chart-grid">
+          <div class="chart-card">
+            <h3>训练性能曲线</h3>
+            <svg id="chart-epsilon-performance" role="img" aria-label="epsilon reward clean backdoor curves"></svg>
+            <div class="chart-legend" data-legend-for="chart-epsilon-performance"></div>
+            <p class="chart-caption">共享 y 轴 0-1；clean 整体稳定在 0.85-0.87，backdoor 有下降但波动明显。</p>
+          </div>
+
+          <div class="chart-card">
+            <h3>Query adaptation 指标</h3>
+            <svg id="chart-epsilon-query" role="img" aria-label="epsilon query gain and accept rate curves"></svg>
+            <div class="chart-legend" data-legend-for="chart-epsilon-query"></div>
+            <p class="chart-caption">q_gain 接近 0，说明训练期 few-shot adaptation 对策略增益很弱；accept rate 波动较大。</p>
+          </div>
+
+          <div class="chart-card">
+            <h3>Defender action 走势</h3>
+            <svg id="chart-epsilon-actions" role="img" aria-label="epsilon defender alpha beta neuroclip epsilon curves"></svg>
+            <div class="chart-legend" data-legend-for="chart-epsilon-actions"></div>
+            <p class="chart-caption">按物理范围归一化：alpha/5, beta/0.45, epsilon/10；后期 alpha 上升，epsilon 没有贴边。</p>
+          </div>
+
+          <div class="chart-card">
+            <h3>Reptile 更新强度</h3>
+            <svg id="chart-epsilon-reptile" role="img" aria-label="epsilon reptile delta curves"></svg>
+            <div class="chart-legend" data-legend-for="chart-epsilon-reptile"></div>
+            <p class="chart-caption">展示 full / actor / critic delta norm；epsilon run 的更新强度有间歇性尖峰。</p>
+          </div>
+        </div>
+
+        <div class="note">
+          与 server_lr 主线相比，epsilon/neuroclip 没有把 clean accuracy 压崩；但它对强后门任务的 ASR 压制明显不够。
+          这支持一个判断：三维 epsilon 保留学习能力，但缺少对训练过程的强控制；三维 server_lr 有强控制，但容易过度保守。
+        </div>
+      </section>
+
+      <section>
+        <h2>3. Direct 与 Adaptation 评估</h2>
+        <p class="section-lead">
+          final checkpoint 的 H=100 direct eval 显示 clean 很高，但 BFL 和 RL-backdoor 的 ASR 接近 0.91-0.97。
+          paper-online adaptation 对 backdoor-only 场景只有很小提升；在 mixed scenario set 中，always adaptation 对
+          LMP/RL 这类低 clean 场景有明显修复，但对 BFL/RL-backdoor 高 ASR 基本无能为力。
+        </p>
+
+        <table aria-label="epsilon aggregate eval">
+          <thead>
+            <tr>
+              <th>评估设置</th>
+              <th class="num">rows</th>
+              <th class="num">base clean</th>
+              <th class="num">adapted clean</th>
+              <th class="num">base score</th>
+              <th class="num">adapted score</th>
+              <th class="num">max base ASR</th>
+              <th class="num">max adapted ASR</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>backdoor direct</td><td class="num">4</td><td class="num">0.927</td><td class="num">0.927</td><td class="num">0.451</td><td class="num">0.451</td><td class="num">0.966</td><td class="num">0.966</td></tr>
+            <tr><td>backdoor paper-online always w10 h20 u10</td><td class="num">4</td><td class="num">0.927</td><td class="num">0.930</td><td class="num">0.448</td><td class="num">0.452</td><td class="num">0.970</td><td class="num">0.970</td></tr>
+            <tr><td>mixed direct</td><td class="num">7</td><td class="num">0.693</td><td class="num">0.693</td><td class="num">0.421</td><td class="num">0.421</td><td class="num">0.966</td><td class="num">0.966</td></tr>
+            <tr><td>mixed paper-online always w5 h40 u10</td><td class="num">7</td><td class="num">0.703</td><td class="num">0.830</td><td class="num">0.420</td><td class="num">0.554</td><td class="num">0.970</td><td class="num">0.970</td></tr>
+            <tr><td>mixed paper-online guarded w5 h40 u10</td><td class="num">7</td><td class="num">0.705</td><td class="num">0.783</td><td class="num">0.422</td><td class="num">0.508</td><td class="num">0.970</td><td class="num">0.970</td></tr>
+          </tbody>
+        </table>
+
+        <table aria-label="epsilon per scenario eval">
+          <thead>
+            <tr>
+              <th>scenario</th>
+              <th class="num">direct clean</th>
+              <th class="num">direct ASR</th>
+              <th class="num">direct score</th>
+              <th class="num">always adapted clean</th>
+              <th class="num">always adapted ASR</th>
+              <th class="num">always adapted score</th>
+              <th>读数</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>clean</td><td class="num">0.926</td><td class="num">0.006</td><td class="num">0.920</td><td class="num">0.928</td><td class="num">0.006</td><td class="num">0.922</td><td>clean 保持很好</td></tr>
+            <tr><td>bfl</td><td class="num">0.926</td><td class="num">0.910</td><td class="num">0.016</td><td class="num">0.928</td><td class="num">0.908</td><td class="num">0.020</td><td>ASR 基本没压住</td></tr>
+            <tr><td>dba</td><td class="num">0.926</td><td class="num">0.030</td><td class="num">0.896</td><td class="num">0.930</td><td class="num">0.028</td><td class="num">0.902</td><td>DBA 表现不错</td></tr>
+            <tr><td>rl_backdoor</td><td class="num">0.930</td><td class="num">0.970</td><td class="num">-0.040</td><td class="num">0.932</td><td class="num">0.970</td><td class="num">-0.038</td><td>RL 后门几乎未防住</td></tr>
+            <tr><td>lmp mixed w5h40</td><td class="num">0.214</td><td class="num">0.062</td><td class="num">0.152</td><td class="num">0.780</td><td class="num">0.008</td><td class="num">0.772</td><td>adaptation 明显修复低 clean 场景</td></tr>
+            <tr><td>rl mixed w5h40</td><td class="num">0.104</td><td class="num">0.000</td><td class="num">0.104</td><td class="num">0.422</td><td class="num">0.004</td><td class="num">0.418</td><td>clean 有提升，但仍偏弱</td></tr>
+          </tbody>
+        </table>
+
+        <div class="chart-grid">
+          <div class="chart-card">
+            <h3>Adaptation clean 曲线</h3>
+            <svg id="chart-epsilon-adapt-clean" role="img" aria-label="epsilon adaptation clean accuracy curves"></svg>
+            <div class="chart-legend" data-legend-for="chart-epsilon-adapt-clean"></div>
+            <p class="chart-caption">来源：mixed paper-online always w5 h40 u10；每个 window 记录 40 个 FL rounds 后的评估。</p>
+          </div>
+
+          <div class="chart-card">
+            <h3>Adaptation ASR 曲线</h3>
+            <svg id="chart-epsilon-adapt-asr" role="img" aria-label="epsilon adaptation attack success rate curves"></svg>
+            <div class="chart-legend" data-legend-for="chart-epsilon-adapt-asr"></div>
+            <p class="chart-caption">BFL/RL-backdoor 在 adaptation window 内 ASR 反而快速升高，解释了 final ASR 仍接近 0.97。</p>
+          </div>
+        </div>
+
+        <div class="note warning">
+          这些 eval 中有旧的 non-native adaptation 文件，也有 iter 10 native strict 文件。final checkpoint 的主要 direct/adaptation
+          读数用于“实验现象梳理”；若要作为正式论文式结论，还需要用修复后的 native-attacker 链路重新评估 final checkpoint。
+        </div>
+      </section>
+
+      <section>
+        <h2>4. 阶段性结论</h2>
+        <div class="grid two">
+          <div class="panel">
+            <h3>epsilon/neuroclip 三维看到的问题</h3>
+            <p class="small">
+              它没有出现 server_lr 主线那种 clean 后期崩掉的现象，说明不直接控制 server learning rate
+              能避免“停训防御”。但强后门场景下 ASR 过高，尤其 BFL 与 RL-backdoor 接近 0.91-0.97，
+              说明仅靠 epsilon 后处理不足以覆盖这些攻击。
+            </p>
+          </div>
+
+          <div class="panel">
+            <h3>与 server_lr 三维互补</h3>
+            <p class="small">
+              server_lr 三维能压 ASR，但容易牺牲 clean；epsilon 三维保 clean，但强攻击 ASR 压不住。
+              这就是为什么四维 <span class="mono">alpha,beta,neuroclip_epsilon,server_lr</span>
+              是合理下一步：把训练过程控制和后处理防御拆开，同时需要给 server_lr 加下限/惩罚。
+            </p>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="tab-panel" id="tab-four-d" hidden>
+      <section>
+        <h2>4D both 诊断实验总览</h2>
+        <p class="section-lead">
+          这条实验把三维 server_lr 与三维 epsilon 的思路合并成四维动作：
+          <span class="mono">alpha, beta, neuroclip_epsilon, server_lr</span>。
+          但当前报告里的 4D 曲线来自一条 H=100 diagnostic run，不是 H=200 paperlike 主线的严格四维复刻。
+          它可以帮助观察四维 action 的训练趋势，但不能和前两个主实验直接做结论级比较。
+        </p>
+
+        <div class="chips">
+          <span class="chip warn">diagnostic run, not aligned</span>
+          <span class="chip">checkpoint: final / iter 50</span>
+          <span class="chip">H=100</span>
+          <span class="chip">K=7</span>
+          <span class="chip">l=5</span>
+          <span class="chip">clients=12 attackers=2</span>
+          <span class="chip warn">server_lr_max=0.2</span>
+        </div>
+        <div class="path">
+          runs/meta_sg_goal/4d_both_h100_t50_k7_l5_c12_a2_resume20_adaptfix/20260705-164709
+        </div>
+      </section>
+
+      <section>
+        <h2>1. 实验配置</h2>
+        <div class="grid three">
+          <div class="panel">
+            <h3>Meta Learning</h3>
+            <div class="metric"><span>backend</span><strong>fl_sandbox</strong></div>
+            <div class="metric"><span>attack-domain</span><strong>clean_mixed</strong></div>
+            <div class="metric"><span>global iterations</span><strong>21 到 50</strong></div>
+            <div class="metric"><span>tasks per iteration K</span><strong>7</strong></div>
+            <div class="metric"><span>FL horizon H</span><strong>100</strong></div>
+            <div class="metric"><span>defender updates l</span><strong>5</strong></div>
+            <div class="metric"><span>meta objective</span><strong>reptile</strong></div>
+            <div class="metric"><span>meta step</span><strong>1.0</strong></div>
+          </div>
+
+          <div class="panel">
+            <h3>FL 配置</h3>
+            <div class="metric"><span>dataset</span><strong>MNIST</strong></div>
+            <div class="metric"><span>clients</span><strong>12</strong></div>
+            <div class="metric"><span>attackers</span><strong>2</strong></div>
+            <div class="metric"><span>subsample rate</span><strong>0.5</strong></div>
+            <div class="metric"><span>sampled clients/round</span><strong>约 6</strong></div>
+            <div class="metric"><span>client samples</span><strong>64</strong></div>
+            <div class="metric"><span>eval samples</span><strong>300</strong></div>
+            <div class="metric"><span>seed</span><strong>5252</strong></div>
+          </div>
+
+          <div class="panel">
+            <h3>4D Defender</h3>
+            <div class="metric"><span>action dim</span><strong>4</strong></div>
+            <div class="metric"><span>action layout</span><strong>alpha / beta / epsilon / server_lr</strong></div>
+            <div class="metric"><span>post-defense</span><strong>model_aware_neuroclip</strong></div>
+            <div class="metric"><span>epsilon range</span><strong>1.0 到 10.0</strong></div>
+            <div class="metric"><span>server_lr range</span><strong>0.0 到 0.2</strong></div>
+            <div class="metric"><span>server_lr penalty</span><strong>0.01</strong></div>
+            <div class="metric"><span>hidden dim</span><strong>64</strong></div>
+            <div class="metric"><span>device</span><strong>cuda:0</strong></div>
+          </div>
+        </div>
+
+        <div class="note warning">
+          这条 4D 训练和 H=200 paperlike 主线不对齐：任务域是 <span class="mono">clean_mixed</span>，
+          包含 clean/ipm/lmp/rl/bfl/dba/rl_backdoor，但没有 <span class="mono">mixed_backdoor</span>；
+          同时 H=100、K=7、l=5、clients=12、attackers=2，且 <span class="mono">server_lr_max=0.2</span>。
+          因此它只能作为四维动作诊断，不应作为正式 4D 主线结论。
+        </div>
+      </section>
+
+      <section>
+        <h2>2. 训练曲线</h2>
+        <p class="section-lead">
+          下面四张图直接来自 4D run 的 <span class="mono">metrics.jsonl</span>。横轴是 global iteration；
+          由于该段从 iter 20 的 checkpoint 继续训练，第一点是 iter 21。
+        </p>
+
+        <div class="chart-grid">
+          <div class="chart-card">
+            <h3>训练性能曲线</h3>
+            <svg id="chart-four-d-performance" role="img" aria-label="4D reward clean backdoor curves"></svg>
+            <div class="chart-legend" data-legend-for="chart-four-d-performance"></div>
+            <p class="chart-caption">reward 与 clean 在 iter 21-50 小幅上升；backdoor 大多接近 0，但有少量尖峰。</p>
+          </div>
+
+          <div class="chart-card">
+            <h3>四维 action 走势</h3>
+            <svg id="chart-four-d-actions" role="img" aria-label="4D defender action curves"></svg>
+            <div class="chart-legend" data-legend-for="chart-four-d-actions"></div>
+            <p class="chart-caption">归一化显示：alpha/5、beta/0.45、epsilon/10、server_lr/0.2；server_lr 后期贴近训练上限。</p>
+          </div>
+
+          <div class="chart-card">
+            <h3>Reptile 更新幅度</h3>
+            <svg id="chart-four-d-reptile" role="img" aria-label="4D reptile delta curves"></svg>
+            <div class="chart-legend" data-legend-for="chart-four-d-reptile"></div>
+            <p class="chart-caption">full / actor / critic delta norm 后期缓慢下降，说明 resume 后训练没有明显发散。</p>
+          </div>
+
+          <div class="chart-card">
+            <h3>Per-attack reward 曲线</h3>
+            <svg id="chart-four-d-per-attack" role="img" aria-label="4D per attack reward curves"></svg>
+            <div class="chart-legend" data-legend-for="chart-four-d-per-attack"></div>
+            <p class="chart-caption">本 run 没有 q_gain/q_accept 字段，所以这里展示各攻击任务的训练 reward 分解。</p>
+          </div>
+        </div>
+
+        <table aria-label="4D training ranges">
+          <thead>
+            <tr>
+              <th>iteration range</th>
+              <th class="num">reward</th>
+              <th class="num">clean</th>
+              <th class="num">backdoor</th>
+              <th class="num">alpha</th>
+              <th class="num">beta</th>
+              <th class="num">epsilon</th>
+              <th class="num">server_lr</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>21-30</td><td class="num">0.640</td><td class="num">0.668</td><td class="num">0.022</td><td class="num">4.632</td><td class="num">0.395</td><td class="num">1.943</td><td class="num">0.181</td></tr>
+            <tr><td>31-40</td><td class="num">0.650</td><td class="num">0.675</td><td class="num">0.018</td><td class="num">4.871</td><td class="num">0.433</td><td class="num">1.295</td><td class="num">0.194</td></tr>
+            <tr><td>41-50</td><td class="num">0.653</td><td class="num">0.683</td><td class="num">0.023</td><td class="num">4.899</td><td class="num">0.440</td><td class="num">1.194</td><td class="num">0.196</td></tr>
+            <tr><td>iter 50</td><td class="num">0.641</td><td class="num">0.683</td><td class="num">0.035</td><td class="num">4.900</td><td class="num">0.440</td><td class="num">1.203</td><td class="num">0.196</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>3. 当前读数</h2>
+        <div class="grid two">
+          <div class="panel">
+            <h3>训练过程结论</h3>
+            <p class="small">
+          这条 diagnostic 4D run 没有三维 server_lr 主线那种 clean 从 0.8 掉到 0.56 的明显崩塌；
+              clean 在 resume 段从约 0.648 上升到 0.683。与此同时，动作逐渐贴近强防御：
+              alpha 接近 4.9，beta 接近 0.44，epsilon 接近 1.2，server_lr 接近 0.196/0.2。
+            </p>
+          </div>
+
+          <div class="panel">
+            <h3>与刚才 learning rate 问题的关系</h3>
+            <p class="small">
+              训练期 server_lr 之所以“没什么变化”，主要是因为上限被设为 0.2，且 actor 已经输出接近上边界。
+              正式 4D aligned run 应改回 <span class="mono">server_lr_max=1.0</span>，并使用
+              <span class="mono">clean_backdoor_mixed</span>、H=200、K=10、l=10、clients=30/attackers=6。
+            </p>
+          </div>
+        </div>
+
+        <table aria-label="4D latest proxy adaptation">
+          <thead>
+            <tr>
+              <th>proxy adaptation 设置</th>
+              <th>scenario</th>
+              <th class="num">base clean</th>
+              <th class="num">base ASR</th>
+              <th class="num">adapted clean</th>
+              <th class="num">adapted ASR</th>
+              <th class="num">adapted server_lr</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>no offset</td><td>bfl</td><td class="num">0.853</td><td class="num">0.933</td><td class="num">0.854</td><td class="num">0.937</td><td class="num">1.000</td></tr>
+            <tr><td>no offset</td><td>rl_backdoor</td><td class="num">0.862</td><td class="num">0.986</td><td class="num">0.857</td><td class="num">0.985</td><td class="num">1.000</td></tr>
+            <tr><td>raw server_lr offset -0.5</td><td>bfl</td><td class="num">0.877</td><td class="num">0.976</td><td class="num">0.900</td><td class="num">0.982</td><td class="num">0.750</td></tr>
+            <tr><td>raw server_lr offset -0.5</td><td>rl_backdoor</td><td class="num">0.869</td><td class="num">0.938</td><td class="num">0.880</td><td class="num">0.900</td><td class="num">0.750</td></tr>
+            <tr><td>raw server_lr offset -1.0</td><td>bfl</td><td class="num">0.865</td><td class="num">0.982</td><td class="num">0.927</td><td class="num">0.981</td><td class="num">0.500</td></tr>
+            <tr><td>raw server_lr offset -1.0</td><td>rl_backdoor</td><td class="num">0.868</td><td class="num">0.931</td><td class="num">0.917</td><td class="num">0.885</td><td class="num">0.500</td></tr>
+          </tbody>
+        </table>
+
+        <div class="note">
+          这张 adaptation 表只是补充刚刚调试 server_lr 幅度的读数；正式曲线仍以上面的训练 metrics 为准。
+          下一步如果要把 4D 做成主线，需要系统扫 server_lr offset / learning-rate bound，而不是只看单点。
+        </div>
+      </section>
+    </div>
+
+    <div class="tab-panel" id="tab-current-4d" hidden>
+      <section>
+        <h2>当前 4D both 正式训练曲线</h2>
+        <p class="section-lead">
+          这个 tab 是正在跑的 H=200 四维正式 run 的当前快照，数据来自
+          <span class="mono">metrics.jsonl</span> 已经写出的 18 个 global iterations。
+          它还不是最终评估结果，主要用于现在观察训练曲线有没有明显异常。
+        </p>
+
+        <div class="chips">
+          <span class="chip">snapshot: iter 1-18 / 100</span>
+          <span class="chip">checkpoints: 5, 10, 15</span>
+          <span class="chip">H=200</span>
+          <span class="chip">K=8</span>
+          <span class="chip">l=10</span>
+          <span class="chip">clients=30 attackers=6</span>
+          <span class="chip">server_lr_max=1.0</span>
+        </div>
+        <div class="path">
+          runs/meta_sg_goal/4d_both_clean_global_backdoor_mixed_h200_t100_k8_l10_c30_a6/20260706-002622
+        </div>
+      </section>
+
+      <section>
+        <h2>1. 当前配置</h2>
+        <div class="grid three">
+          <div class="panel">
+            <h3>Meta Learning</h3>
+            <div class="metric"><span>backend</span><strong>fl_sandbox</strong></div>
+            <div class="metric"><span>attack-domain</span><strong>clean_global_backdoor_mixed</strong></div>
+            <div class="metric"><span>outer iterations T</span><strong>100</strong></div>
+            <div class="metric"><span>tasks per iteration K</span><strong>8</strong></div>
+            <div class="metric"><span>FL horizon H</span><strong>200</strong></div>
+            <div class="metric"><span>defender updates l</span><strong>10</strong></div>
+            <div class="metric"><span>checkpoint interval</span><strong>5 iterations</strong></div>
+          </div>
+
+          <div class="panel">
+            <h3>Task Mix</h3>
+            <div class="metric"><span>non-backdoor</span><strong>clean / ipm / lmp / rl</strong></div>
+            <div class="metric"><span>backdoor</span><strong>bfl / dba / rl_backdoor</strong></div>
+            <div class="metric"><span>mixed attack</span><strong>mixed_backdoor</strong></div>
+            <div class="metric"><span>latest batch</span><strong>mixed_backdoor, rl_backdoor, dba, rl, clean, lmp, bfl, ipm</strong></div>
+          </div>
+
+          <div class="panel">
+            <h3>4D Defender Action</h3>
+            <div class="metric"><span>dim 1</span><strong>alpha</strong></div>
+            <div class="metric"><span>dim 2</span><strong>beta</strong></div>
+            <div class="metric"><span>dim 3</span><strong>neuroclip_epsilon</strong></div>
+            <div class="metric"><span>dim 4</span><strong>server_lr</strong></div>
+            <div class="metric"><span>post-defense</span><strong>model_aware_neuroclip</strong></div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>2. 已有训练曲线</h2>
+        <p class="section-lead">
+          横轴是 global iteration。这里是轻量快照：只画已经落盘的 metrics，不额外轮询训练进程。
+        </p>
+
+        <div class="chart-grid">
+          <div class="chart-card">
+            <h3>训练性能曲线</h3>
+            <svg id="chart-current-4d-performance" role="img" aria-label="current 4D reward clean backdoor curves"></svg>
+            <div class="chart-legend" data-legend-for="chart-current-4d-performance"></div>
+            <p class="chart-caption">共享 y 轴 0-1；当前 clean 从 0.77 左右降到 0.73 左右，backdoor 从 0.26 降到 0.18 左右。</p>
+          </div>
+
+          <div class="chart-card">
+            <h3>Query / adaptation 训练信号</h3>
+            <svg id="chart-current-4d-query" role="img" aria-label="current 4D query gain and accept rate curves"></svg>
+            <div class="chart-legend" data-legend-for="chart-current-4d-query"></div>
+            <p class="chart-caption">q_gain 仍在 0 附近波动，说明当前内层 adaptation 增益还不稳定。</p>
+          </div>
+
+          <div class="chart-card">
+            <h3>四维 action 走势</h3>
+            <svg id="chart-current-4d-actions" role="img" aria-label="current 4D defender action curves"></svg>
+            <div class="chart-legend" data-legend-for="chart-current-4d-actions"></div>
+            <p class="chart-caption">归一化显示：alpha/5、beta/0.45、epsilon/10、server_lr/1；当前 server_lr 已从约 0.53 降到 0.35。</p>
+          </div>
+
+          <div class="chart-card">
+            <h3>Reptile 更新幅度</h3>
+            <svg id="chart-current-4d-reptile" role="img" aria-label="current 4D reptile delta curves"></svg>
+            <div class="chart-legend" data-legend-for="chart-current-4d-reptile"></div>
+            <p class="chart-caption">full / actor / critic delta norm 当前没有持续放大，iter 18 低于开头。</p>
+          </div>
+
+          <div class="chart-card">
+            <h3>Per-task reward 分解</h3>
+            <svg id="chart-current-4d-per-task" role="img" aria-label="current 4D per task reward curves"></svg>
+            <div class="chart-legend" data-legend-for="chart-current-4d-per-task"></div>
+            <p class="chart-caption">lmp reward 明显最低且波动大，是当前平均 reward 的主要拖累之一。</p>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>3. 完整 4D per-task eval curve</h2>
+        <p class="section-lead">
+          这张图是旧 4D 正式实验完成后的 per-task eval curve，横轴是 meta iteration，
+          展示每类任务的 clean accuracy、ASR、reward、gain 等训练期评估信号。
+        </p>
+        <object
+          class="embedded-report"
+          type="image/svg+xml"
+          data="../../runs/meta_sg_goal/4d_both_clean_global_backdoor_mixed_h200_t100_k8_l10_c30_a6/reports/old_experiment_per_task_eval_curves_20260707_2206.svg"
+          aria-label="old 4D per-task eval curves">
+        </object>
+        <div class="path">
+          /home/antik/rl/Meta_Stackelberg_Learning/runs/meta_sg_goal/4d_both_clean_global_backdoor_mixed_h200_t100_k8_l10_c30_a6/reports/old_experiment_per_task_eval_curves_20260707_2206.svg
+        </div>
+        <div class="chips">
+          <a class="chip" href="../../runs/meta_sg_goal/4d_both_clean_global_backdoor_mixed_h200_t100_k8_l10_c30_a6/reports/old_experiment_per_task_eval_curves_20260707_2206.svg">打开 SVG</a>
+          <a class="chip" href="../../runs/meta_sg_goal/4d_both_clean_global_backdoor_mixed_h200_t100_k8_l10_c30_a6/reports/old_experiment_per_task_eval_curves_20260707_2206.csv">打开 CSV</a>
+        </div>
+      </section>
+
+      <section>
+        <h2>4. 当前数值摘要</h2>
+        <table aria-label="current 4D training snapshot">
+          <thead>
+            <tr>
+              <th>iteration</th>
+              <th class="num">reward</th>
+              <th class="num">clean</th>
+              <th class="num">bd</th>
+              <th class="num">q_gain</th>
+              <th class="num">q_accept</th>
+              <th class="num">alpha</th>
+              <th class="num">beta</th>
+              <th class="num">epsilon</th>
+              <th class="num">server_lr</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>1</td><td class="num">0.504</td><td class="num">0.766</td><td class="num">0.261</td><td class="num">0.010</td><td class="num">0.375</td><td class="num">2.158</td><td class="num">0.230</td><td class="num">5.257</td><td class="num">0.527</td></tr>
+            <tr><td>5</td><td class="num">0.542</td><td class="num">0.773</td><td class="num">0.231</td><td class="num">0.011</td><td class="num">0.625</td><td class="num">1.901</td><td class="num">0.242</td><td class="num">5.879</td><td class="num">0.518</td></tr>
+            <tr><td>10</td><td class="num">0.575</td><td class="num">0.754</td><td class="num">0.178</td><td class="num">-0.012</td><td class="num">0.500</td><td class="num">2.042</td><td class="num">0.239</td><td class="num">6.363</td><td class="num">0.447</td></tr>
+            <tr><td>15</td><td class="num">0.522</td><td class="num">0.741</td><td class="num">0.219</td><td class="num">0.024</td><td class="num">0.500</td><td class="num">1.893</td><td class="num">0.238</td><td class="num">6.290</td><td class="num">0.387</td></tr>
+            <tr><td>18</td><td class="num">0.546</td><td class="num">0.729</td><td class="num">0.184</td><td class="num">-0.002</td><td class="num">0.625</td><td class="num">1.940</td><td class="num">0.247</td><td class="num">6.239</td><td class="num">0.345</td></tr>
+          </tbody>
+        </table>
+
+        <div class="note warning">
+          当前曲线只能说明 early training 状态：clean 确实在缓慢下降，backdoor 指标也有下降；
+          但 iter 18 还太早，不能替代训练完成后的 direct eval 和 adaptation eval。
+        </div>
+      </section>
+    </div>
+
+    <p class="footer">
+      Generated from local experiment logs on 2026-07-05. This is a local static report and has not been published to Miaoda.
+    </p>
+  </main>
+  <script>
+    const TRAINING_ROWS = [{"it":1,"run":"20260701-235621","reward":0.536873,"clean":0.879983,"backdoor":0.34311,"qGain":0.005256,"qAccept":0.7,"qGainAccept":0.4,"alpha":2.163996,"beta":0.250325,"serverLr":0.502097,"reptile":0.257028,"reptileActor":0.129948,"reptileCritic":0.221759},{"it":2,"run":"20260701-235621","reward":0.525708,"clean":0.881058,"backdoor":0.35535,"qGain":-0.013925,"qAccept":0.4,"qGainAccept":0.2,"alpha":2.028432,"beta":0.262927,"serverLr":0.513655,"reptile":0.328564,"reptileActor":0.176294,"reptileCritic":0.277263},{"it":3,"run":"20260701-235621","reward":0.545936,"clean":0.879691,"backdoor":0.333755,"qGain":-0.026731,"qAccept":0.4,"qGainAccept":0.4,"alpha":1.991314,"beta":0.28338,"serverLr":0.526408,"reptile":0.33627,"reptileActor":0.173614,"reptileCritic":0.287986},{"it":4,"run":"20260701-235621","reward":0.514551,"clean":0.882794,"backdoor":0.368243,"qGain":-0.013924,"qAccept":0.5,"qGainAccept":0.3,"alpha":1.978309,"beta":0.287368,"serverLr":0.528154,"reptile":0.289292,"reptileActor":0.15848,"reptileCritic":0.24202},{"it":5,"run":"20260701-235621","reward":0.48461,"clean":0.879201,"backdoor":0.394591,"qGain":0.018522,"qAccept":0.7,"qGainAccept":0.6,"alpha":1.709005,"beta":0.28974,"serverLr":0.524757,"reptile":0.244235,"reptileActor":0.128986,"reptileCritic":0.207396},{"it":6,"run":"20260701-235621","reward":0.517779,"clean":0.883004,"backdoor":0.365225,"qGain":0.016338,"qAccept":0.7,"qGainAccept":0.6,"alpha":1.893166,"beta":0.303536,"serverLr":0.560023,"reptile":0.244283,"reptileActor":0.132504,"reptileCritic":0.205224},{"it":7,"run":"20260701-235621","reward":0.510857,"clean":0.885881,"backdoor":0.375024,"qGain":0.01127,"qAccept":0.5,"qGainAccept":0.4,"alpha":1.843977,"beta":0.323706,"serverLr":0.585032,"reptile":0.28464,"reptileActor":0.147856,"reptileCritic":0.243226},{"it":8,"run":"20260701-235621","reward":0.454993,"clean":0.889242,"backdoor":0.434249,"qGain":0.020492,"qAccept":0.8,"qGainAccept":0.9,"alpha":1.749548,"beta":0.317984,"serverLr":0.58087,"reptile":0.222533,"reptileActor":0.119967,"reptileCritic":0.187427},{"it":9,"run":"20260701-235621","reward":0.516785,"clean":0.893232,"backdoor":0.376447,"qGain":0.019947,"qAccept":0.8,"qGainAccept":0.6,"alpha":1.623801,"beta":0.323665,"serverLr":0.593604,"reptile":0.222428,"reptileActor":0.117461,"reptileCritic":0.188883},{"it":10,"run":"20260701-235621","reward":0.554722,"clean":0.886679,"backdoor":0.331957,"qGain":0.014239,"qAccept":0.6,"qGainAccept":0.5,"alpha":1.6678,"beta":0.326502,"serverLr":0.587636,"reptile":0.255189,"reptileActor":0.143064,"reptileCritic":0.211315},{"it":11,"run":"20260701-235621","reward":0.542558,"clean":0.878323,"backdoor":0.335765,"qGain":0.047797,"qAccept":0.8,"qGainAccept":0.9,"alpha":1.50501,"beta":0.336266,"serverLr":0.576823,"reptile":0.218889,"reptileActor":0.117699,"reptileCritic":0.184551},{"it":12,"run":"20260701-235621","reward":0.527527,"clean":0.885479,"backdoor":0.357952,"qGain":-0.028202,"qAccept":0.8,"qGainAccept":0.3,"alpha":1.489477,"beta":0.347247,"serverLr":0.581353,"reptile":0.217615,"reptileActor":0.118231,"reptileCritic":0.182695},{"it":13,"run":"20260701-235621","reward":0.537722,"clean":0.879119,"backdoor":0.341397,"qGain":0.015293,"qAccept":0.6,"qGainAccept":0.6,"alpha":1.588113,"beta":0.352348,"serverLr":0.604653,"reptile":0.245376,"reptileActor":0.136866,"reptileCritic":0.203659},{"it":14,"run":"20260701-235621","reward":0.527261,"clean":0.892335,"backdoor":0.365074,"qGain":0.000008,"qAccept":0.6,"qGainAccept":0.5,"alpha":1.457558,"beta":0.366331,"serverLr":0.60526,"reptile":0.240357,"reptileActor":0.135645,"reptileCritic":0.198423},{"it":15,"run":"20260701-235621","reward":0.514241,"clean":0.889501,"backdoor":0.37526,"qGain":0.030514,"qAccept":0.6,"qGainAccept":0.5,"alpha":1.582023,"beta":0.365171,"serverLr":0.56827,"reptile":0.241461,"reptileActor":0.133224,"reptileCritic":0.201382},{"it":16,"run":"20260701-235621","reward":0.514185,"clean":0.881576,"backdoor":0.367391,"qGain":-0.003859,"qAccept":0.5,"qGainAccept":0.4,"alpha":1.583982,"beta":0.370883,"serverLr":0.572148,"reptile":0.261166,"reptileActor":0.148497,"reptileCritic":0.214841},{"it":17,"run":"20260701-235621","reward":0.562387,"clean":0.878186,"backdoor":0.315799,"qGain":-0.005637,"qAccept":0.4,"qGainAccept":0.4,"alpha":1.643889,"beta":0.372549,"serverLr":0.577821,"reptile":0.292951,"reptileActor":0.16501,"reptileCritic":0.242057},{"it":18,"run":"20260701-235621","reward":0.507951,"clean":0.871931,"backdoor":0.36398,"qGain":-0.002677,"qAccept":0.6,"qGainAccept":0.4,"alpha":1.895657,"beta":0.370603,"serverLr":0.569524,"reptile":0.238028,"reptileActor":0.13691,"reptileCritic":0.194712},{"it":19,"run":"20260701-235621","reward":0.515848,"clean":0.878048,"backdoor":0.3622,"qGain":0.030077,"qAccept":0.7,"qGainAccept":0.7,"alpha":2.029672,"beta":0.374973,"serverLr":0.560924,"reptile":0.22463,"reptileActor":0.128645,"reptileCritic":0.184144},{"it":20,"run":"20260701-235621","reward":0.564145,"clean":0.877454,"backdoor":0.313309,"qGain":0.026997,"qAccept":0.8,"qGainAccept":0.6,"alpha":1.978444,"beta":0.369038,"serverLr":0.545946,"reptile":0.207045,"reptileActor":0.118947,"reptileCritic":0.169468},{"it":21,"run":"20260703-210959","reward":0.570718,"clean":0.876123,"backdoor":0.305405,"qGain":0.011101,"qAccept":0.5,"qGainAccept":0.5,"alpha":2.032816,"beta":0.37662,"serverLr":0.511829,"reptile":0.264338,"reptileActor":0.1475,"reptileCritic":0.21936},{"it":22,"run":"20260703-210959","reward":0.528911,"clean":0.882077,"backdoor":0.353166,"qGain":0.024388,"qAccept":0.6,"qGainAccept":0.5,"alpha":2.222589,"beta":0.37287,"serverLr":0.524586,"reptile":0.24449,"reptileActor":0.147457,"reptileCritic":0.195018},{"it":23,"run":"20260703-210959","reward":0.559915,"clean":0.877185,"backdoor":0.31727,"qGain":0.04438,"qAccept":0.7,"qGainAccept":0.5,"alpha":2.380882,"beta":0.377092,"serverLr":0.494556,"reptile":0.222646,"reptileActor":0.134059,"reptileCritic":0.177762},{"it":24,"run":"20260703-210959","reward":0.556736,"clean":0.876365,"backdoor":0.319629,"qGain":0.058763,"qAccept":0.8,"qGainAccept":0.7,"alpha":2.434858,"beta":0.380308,"serverLr":0.466108,"reptile":0.203981,"reptileActor":0.121739,"reptileCritic":0.16367},{"it":25,"run":"20260703-210959","reward":0.577565,"clean":0.868938,"backdoor":0.291373,"qGain":0.082617,"qAccept":0.9,"qGainAccept":0.7,"alpha":2.501532,"beta":0.380087,"serverLr":0.431708,"reptile":0.196941,"reptileActor":0.120484,"reptileCritic":0.155786},{"it":26,"run":"20260703-210959","reward":0.574152,"clean":0.87885,"backdoor":0.304698,"qGain":0.05078,"qAccept":0.8,"qGainAccept":0.7,"alpha":2.726264,"beta":0.385188,"serverLr":0.436825,"reptile":0.202597,"reptileActor":0.12251,"reptileCritic":0.161359},{"it":27,"run":"20260703-210959","reward":0.593759,"clean":0.864371,"backdoor":0.270612,"qGain":0.028267,"qAccept":0.7,"qGainAccept":0.5,"alpha":2.726016,"beta":0.376802,"serverLr":0.401609,"reptile":0.221638,"reptileActor":0.136297,"reptileCritic":0.174776},{"it":28,"run":"20260703-210959","reward":0.6178,"clean":0.861309,"backdoor":0.243509,"qGain":0.086645,"qAccept":0.9,"qGainAccept":0.7,"alpha":2.87021,"beta":0.388174,"serverLr":0.362591,"reptile":0.193606,"reptileActor":0.123206,"reptileCritic":0.149344},{"it":29,"run":"20260704-020104","reward":0.638033,"clean":0.85481,"backdoor":0.216777,"qGain":0.057115,"qAccept":0.8,"qGainAccept":0.7,"alpha":3.005193,"beta":0.385317,"serverLr":0.36072,"reptile":0.200672,"reptileActor":0.12371,"reptileCritic":0.158003},{"it":30,"run":"20260704-020104","reward":0.631557,"clean":0.845346,"backdoor":0.213789,"qGain":0.039844,"qAccept":0.8,"qGainAccept":0.6,"alpha":3.232884,"beta":0.383355,"serverLr":0.324937,"reptile":0.19989,"reptileActor":0.123963,"reptileCritic":0.15681},{"it":31,"run":"20260704-020104","reward":0.652241,"clean":0.856332,"backdoor":0.204091,"qGain":0.019296,"qAccept":0.8,"qGainAccept":0.6,"alpha":3.314213,"beta":0.373662,"serverLr":0.310152,"reptile":0.20301,"reptileActor":0.124572,"reptileCritic":0.160296},{"it":32,"run":"20260704-020104","reward":0.655804,"clean":0.839038,"backdoor":0.183234,"qGain":0.054199,"qAccept":0.7,"qGainAccept":0.6,"alpha":3.273502,"beta":0.371097,"serverLr":0.281237,"reptile":0.208675,"reptileActor":0.130858,"reptileCritic":0.162546},{"it":33,"run":"20260704-020104","reward":0.667985,"clean":0.845443,"backdoor":0.177458,"qGain":0.045758,"qAccept":0.8,"qGainAccept":0.5,"alpha":3.592938,"beta":0.367978,"serverLr":0.287611,"reptile":0.200102,"reptileActor":0.1274,"reptileCritic":0.154305},{"it":34,"run":"20260704-020104","reward":0.699112,"clean":0.826228,"backdoor":0.127116,"qGain":-0.009974,"qAccept":0.7,"qGainAccept":0.5,"alpha":3.709582,"beta":0.374382,"serverLr":0.231988,"reptile":0.213127,"reptileActor":0.132945,"reptileCritic":0.16658},{"it":35,"run":"20260704-020104","reward":0.691105,"clean":0.823881,"backdoor":0.132776,"qGain":0.012401,"qAccept":0.8,"qGainAccept":0.3,"alpha":3.800638,"beta":0.365302,"serverLr":0.236215,"reptile":0.198026,"reptileActor":0.125836,"reptileCritic":0.152904},{"it":36,"run":"20260704-020104","reward":0.677077,"clean":0.8137,"backdoor":0.136623,"qGain":-0.001424,"qAccept":0.8,"qGainAccept":0.3,"alpha":3.963334,"beta":0.36818,"serverLr":0.199174,"reptile":0.197665,"reptileActor":0.121715,"reptileCritic":0.155746},{"it":37,"run":"20260704-020104","reward":0.717491,"clean":0.79827,"backdoor":0.080779,"qGain":-0.0172,"qAccept":0.7,"qGainAccept":0.2,"alpha":4.063462,"beta":0.367848,"serverLr":0.180795,"reptile":0.207442,"reptileActor":0.127286,"reptileCritic":0.163799},{"it":38,"run":"20260704-020104","reward":0.751499,"clean":0.803392,"backdoor":0.051893,"qGain":-0.044029,"qAccept":0.7,"qGainAccept":0.2,"alpha":4.157968,"beta":0.361846,"serverLr":0.18538,"reptile":0.211712,"reptileActor":0.130643,"reptileCritic":0.166597},{"it":39,"run":"20260704-020104","reward":0.756506,"clean":0.784612,"backdoor":0.028106,"qGain":-0.073084,"qAccept":0.5,"qGainAccept":0.2,"alpha":4.299958,"beta":0.364638,"serverLr":0.146761,"reptile":0.250995,"reptileActor":0.153365,"reptileCritic":0.19869},{"it":40,"run":"20260704-020104","reward":0.701418,"clean":0.775238,"backdoor":0.07382,"qGain":-0.076724,"qAccept":0.8,"qGainAccept":0.1,"alpha":4.415637,"beta":0.366512,"serverLr":0.14484,"reptile":0.189313,"reptileActor":0.116548,"reptileCritic":0.149184},{"it":41,"run":"20260704-020104","reward":0.733896,"clean":0.753869,"backdoor":0.019973,"qGain":-0.109956,"qAccept":0.5,"qGainAccept":0.1,"alpha":4.403534,"beta":0.353079,"serverLr":0.126513,"reptile":0.242426,"reptileActor":0.14728,"reptileCritic":0.192559},{"it":42,"run":"20260704-100848","reward":0.688993,"clean":0.723837,"backdoor":0.034844,"qGain":-0.11471,"qAccept":0.7,"qGainAccept":0.2,"alpha":4.515197,"beta":0.359996,"serverLr":0.105765,"reptile":0.205348,"reptileActor":0.128974,"reptileCritic":0.159792},{"it":43,"run":"20260704-100848","reward":0.643095,"clean":0.686985,"backdoor":0.04389,"qGain":-0.089408,"qAccept":0.6,"qGainAccept":0.2,"alpha":4.614804,"beta":0.363152,"serverLr":0.083785,"reptile":0.220936,"reptileActor":0.139418,"reptileCritic":0.171392},{"it":44,"run":"20260704-100848","reward":0.662302,"clean":0.71679,"backdoor":0.054488,"qGain":-0.196891,"qAccept":0.7,"qGainAccept":0.1,"alpha":4.571053,"beta":0.33756,"serverLr":0.096428,"reptile":0.204898,"reptileActor":0.127215,"reptileCritic":0.160622},{"it":45,"run":"20260704-100848","reward":0.580183,"clean":0.652083,"backdoor":0.0719,"qGain":-0.186816,"qAccept":0.6,"qGainAccept":0,"alpha":4.672666,"beta":0.321287,"serverLr":0.071902,"reptile":0.222066,"reptileActor":0.143495,"reptileCritic":0.169477},{"it":46,"run":"20260704-100848","reward":0.654098,"clean":0.67388,"backdoor":0.019782,"qGain":-0.159085,"qAccept":0.5,"qGainAccept":0,"alpha":4.665863,"beta":0.30914,"serverLr":0.072482,"reptile":0.244779,"reptileActor":0.15433,"reptileCritic":0.189997},{"it":47,"run":"20260704-100848","reward":0.511781,"clean":0.63283,"backdoor":0.121049,"qGain":-0.198975,"qAccept":0.4,"qGainAccept":0,"alpha":4.730758,"beta":0.293867,"serverLr":0.055838,"reptile":0.27794,"reptileActor":0.176651,"reptileCritic":0.214582},{"it":48,"run":"20260704-100848","reward":0.582446,"clean":0.629526,"backdoor":0.04708,"qGain":-0.178146,"qAccept":0.4,"qGainAccept":0,"alpha":4.751844,"beta":0.264174,"serverLr":0.054908,"reptile":0.267286,"reptileActor":0.167708,"reptileCritic":0.208124},{"it":49,"run":"20260704-100848","reward":0.531894,"clean":0.609996,"backdoor":0.078102,"qGain":-0.184242,"qAccept":0.7,"qGainAccept":0.1,"alpha":4.72436,"beta":0.258226,"serverLr":0.055243,"reptile":0.205545,"reptileActor":0.128046,"reptileCritic":0.160789},{"it":50,"run":"20260704-100848","reward":0.449871,"clean":0.567218,"backdoor":0.117347,"qGain":-0.140591,"qAccept":0.4,"qGainAccept":0,"alpha":4.774979,"beta":0.238126,"serverLr":0.045152,"reptile":0.267904,"reptileActor":0.166774,"reptileCritic":0.209664}];
+    const ADAPTATION_ROWS = [{"set":"backdoor","scenario":"clean","label":"clean","baseClean":0.772,"baseAsr":0,"adaptClean":0.75,"adaptAsr":0,"windows":[{"w":1,"round":100,"clean":0.628,"asr":0.002,"reward":0.4054},{"w":2,"round":200,"clean":0.666,"asr":0,"reward":0.64312},{"w":3,"round":300,"clean":0.696,"asr":0,"reward":0.6856},{"w":4,"round":400,"clean":0.716,"asr":0,"reward":0.71142},{"w":5,"round":500,"clean":0.71,"asr":0,"reward":0.71256},{"w":6,"round":600,"clean":0.768,"asr":0,"reward":0.73432},{"w":7,"round":700,"clean":0.792,"asr":0,"reward":0.7753},{"w":8,"round":800,"clean":0.804,"asr":0.002,"reward":0.7957},{"w":9,"round":900,"clean":0.824,"asr":0.002,"reward":0.81314},{"w":10,"round":1000,"clean":0.838,"asr":0.002,"reward":0.8303}],"numTransitions":1005,"numUpdates":100},{"set":"backdoor","scenario":"bfl","label":"bfl","baseClean":0.786,"baseAsr":0,"adaptClean":0.75,"adaptAsr":0.004,"windows":[{"w":1,"round":100,"clean":0.554,"asr":0.922,"reward":-0.02654},{"w":2,"round":200,"clean":0.658,"asr":0.758,"reward":-0.24608},{"w":3,"round":300,"clean":0.7,"asr":0.464,"reward":0.04042},{"w":4,"round":400,"clean":0.738,"asr":0.162,"reward":0.31494},{"w":5,"round":500,"clean":0.772,"asr":0.042,"reward":0.69572},{"w":6,"round":600,"clean":0.788,"asr":0.016,"reward":0.77344},{"w":7,"round":700,"clean":0.788,"asr":0.014,"reward":0.77196},{"w":8,"round":800,"clean":0.784,"asr":0.018,"reward":0.76898},{"w":9,"round":900,"clean":0.836,"asr":0.052,"reward":0.7651},{"w":10,"round":1000,"clean":0.856,"asr":0.04,"reward":0.81688}],"numTransitions":1005,"numUpdates":100},{"set":"backdoor","scenario":"dba","label":"dba","baseClean":0.778,"baseAsr":0,"adaptClean":0.756,"adaptAsr":0,"windows":[{"w":1,"round":100,"clean":0.612,"asr":0.056,"reward":0.37768},{"w":2,"round":200,"clean":0.678,"asr":0.012,"reward":0.6209},{"w":3,"round":300,"clean":0.712,"asr":0.002,"reward":0.69862},{"w":4,"round":400,"clean":0.722,"asr":0.002,"reward":0.71498},{"w":5,"round":500,"clean":0.76,"asr":0.006,"reward":0.74612},{"w":6,"round":600,"clean":0.778,"asr":0.008,"reward":0.76656},{"w":7,"round":700,"clean":0.792,"asr":0.004,"reward":0.77672},{"w":8,"round":800,"clean":0.796,"asr":0.004,"reward":0.79214},{"w":9,"round":900,"clean":0.84,"asr":0.002,"reward":0.81572},{"w":10,"round":1000,"clean":0.856,"asr":0.002,"reward":0.84812}],"numTransitions":1005,"numUpdates":100},{"set":"backdoor","scenario":"rl_backdoor","label":"rl_backdoor","baseClean":0.762,"baseAsr":0.01,"adaptClean":0.758,"adaptAsr":0.008,"windows":[{"w":1,"round":100,"clean":0.592,"asr":0.002,"reward":0.41138},{"w":2,"round":200,"clean":0.666,"asr":0.004,"reward":0.63418},{"w":3,"round":300,"clean":0.738,"asr":0.002,"reward":0.70472},{"w":4,"round":400,"clean":0.744,"asr":0.01,"reward":0.74896},{"w":5,"round":500,"clean":0.752,"asr":0.03,"reward":0.72594},{"w":6,"round":600,"clean":0.782,"asr":0.022,"reward":0.74476},{"w":7,"round":700,"clean":0.788,"asr":0.018,"reward":0.77652},{"w":8,"round":800,"clean":0.812,"asr":0.014,"reward":0.79118},{"w":9,"round":900,"clean":0.818,"asr":0.012,"reward":0.80652},{"w":10,"round":1000,"clean":0.828,"asr":0.004,"reward":0.81506}],"numTransitions":1005,"numUpdates":100},{"set":"clean_mixed_backdoor","scenario":"clean","label":"mixed_clean","baseClean":0.772,"baseAsr":0,"adaptClean":0.748,"adaptAsr":0,"windows":[{"w":1,"round":100,"clean":0.628,"asr":0.002,"reward":0.40532},{"w":2,"round":200,"clean":0.666,"asr":0,"reward":0.64312},{"w":3,"round":300,"clean":0.696,"asr":0,"reward":0.68534},{"w":4,"round":400,"clean":0.716,"asr":0,"reward":0.71124},{"w":5,"round":500,"clean":0.71,"asr":0,"reward":0.71278},{"w":6,"round":600,"clean":0.766,"asr":0,"reward":0.73338},{"w":7,"round":700,"clean":0.792,"asr":0,"reward":0.7731},{"w":8,"round":800,"clean":0.804,"asr":0.002,"reward":0.79412},{"w":9,"round":900,"clean":0.822,"asr":0.002,"reward":0.81264},{"w":10,"round":1000,"clean":0.84,"asr":0.002,"reward":0.83146}],"numTransitions":1005,"numUpdates":100},{"set":"clean_mixed_backdoor","scenario":"mixed_backdoor","label":"mixed_backdoor","baseClean":0.752,"baseAsr":0.006,"adaptClean":0.73,"adaptAsr":0.008,"windows":[{"w":1,"round":100,"clean":0.594,"asr":0.006,"reward":0.40372},{"w":2,"round":200,"clean":0.71,"asr":0,"reward":0.66092},{"w":3,"round":300,"clean":0.736,"asr":0,"reward":0.72734},{"w":4,"round":400,"clean":0.766,"asr":0,"reward":0.76274},{"w":5,"round":500,"clean":0.76,"asr":0.004,"reward":0.7666},{"w":6,"round":600,"clean":0.776,"asr":0.006,"reward":0.76016},{"w":7,"round":700,"clean":0.792,"asr":0.004,"reward":0.77836},{"w":8,"round":800,"clean":0.812,"asr":0.004,"reward":0.8037},{"w":9,"round":900,"clean":0.814,"asr":0,"reward":0.81788},{"w":10,"round":1000,"clean":0.832,"asr":0,"reward":0.82528}],"numTransitions":1005,"numUpdates":100}];
+    const EPSILON_TRAINING_ROWS = [{"it":1,"reward":0.36944,"clean":0.861751,"backdoor":0.492311,"qGain":-0.01112,"qAccept":0.857143,"qGainAccept":0.571429,"alpha":2.115005,"beta":0.248013,"epsilon":5.538158,"reptile":0.276905,"reptileActor":0.145539,"reptileCritic":0.235573},{"it":2,"reward":0.534714,"clean":0.860337,"backdoor":0.325623,"qGain":0.007289,"qAccept":0.285714,"qGainAccept":0.714286,"alpha":1.985052,"beta":0.270196,"epsilon":5.88765,"reptile":0.47502,"reptileActor":0.240123,"reptileCritic":0.409859},{"it":3,"reward":0.540754,"clean":0.863091,"backdoor":0.322337,"qGain":0.000263,"qAccept":0.428571,"qGainAccept":0.571429,"alpha":1.805811,"beta":0.281543,"epsilon":5.891617,"reptile":0.376199,"reptileActor":0.196569,"reptileCritic":0.320759},{"it":4,"reward":0.568874,"clean":0.857731,"backdoor":0.288857,"qGain":-0.001826,"qAccept":0.714286,"qGainAccept":0.428571,"alpha":1.742765,"beta":0.28753,"epsilon":5.821832,"reptile":0.29301,"reptileActor":0.153093,"reptileCritic":0.249835},{"it":5,"reward":0.536503,"clean":0.854437,"backdoor":0.317934,"qGain":0.002551,"qAccept":0.571429,"qGainAccept":0.571429,"alpha":1.627502,"beta":0.285179,"epsilon":6.116678,"reptile":0.326147,"reptileActor":0.179474,"reptileCritic":0.272325},{"it":6,"reward":0.49332,"clean":0.866223,"backdoor":0.372903,"qGain":-0.001734,"qAccept":0.428571,"qGainAccept":0.285714,"alpha":1.749548,"beta":0.294657,"epsilon":6.362743,"reptile":0.371583,"reptileActor":0.196329,"reptileCritic":0.315483},{"it":7,"reward":0.474003,"clean":0.857757,"backdoor":0.383754,"qGain":0.00492,"qAccept":0.714286,"qGainAccept":0.714286,"alpha":1.627856,"beta":0.326054,"epsilon":6.547075,"reptile":0.282961,"reptileActor":0.14773,"reptileCritic":0.241336},{"it":8,"reward":0.495914,"clean":0.861703,"backdoor":0.365789,"qGain":-0.002974,"qAccept":0.857143,"qGainAccept":0.428571,"alpha":1.624353,"beta":0.325839,"epsilon":6.510937,"reptile":0.256162,"reptileActor":0.143181,"reptileCritic":0.212411},{"it":9,"reward":0.523974,"clean":0.868331,"backdoor":0.344357,"qGain":0.00112,"qAccept":0.571429,"qGainAccept":0.571429,"alpha":1.565719,"beta":0.336139,"epsilon":6.689364,"reptile":0.312262,"reptileActor":0.164228,"reptileCritic":0.265587},{"it":10,"reward":0.529414,"clean":0.857923,"backdoor":0.328509,"qGain":0.004731,"qAccept":0.714286,"qGainAccept":0.714286,"alpha":1.652229,"beta":0.325575,"epsilon":6.763812,"reptile":0.277683,"reptileActor":0.155267,"reptileCritic":0.230218},{"it":11,"reward":0.576503,"clean":0.854857,"backdoor":0.278354,"qGain":-0.001029,"qAccept":0.714286,"qGainAccept":0.428571,"alpha":1.557467,"beta":0.33546,"epsilon":6.79356,"reptile":0.276537,"reptileActor":0.153367,"reptileCritic":0.230112},{"it":12,"reward":0.483229,"clean":0.860043,"backdoor":0.376814,"qGain":0.002774,"qAccept":0.857143,"qGainAccept":0.714286,"alpha":1.578258,"beta":0.346001,"epsilon":7.038198,"reptile":0.247152,"reptileActor":0.136699,"reptileCritic":0.205907},{"it":13,"reward":0.476511,"clean":0.852606,"backdoor":0.376094,"qGain":-0.000777,"qAccept":0.285714,"qGainAccept":0.428571,"alpha":1.613039,"beta":0.351611,"epsilon":7.048431,"reptile":0.422142,"reptileActor":0.229601,"reptileCritic":0.354242},{"it":14,"reward":0.614557,"clean":0.864149,"backdoor":0.249591,"qGain":-0.000537,"qAccept":0.571429,"qGainAccept":0.428571,"alpha":1.655949,"beta":0.349982,"epsilon":7.2175,"reptile":0.294769,"reptileActor":0.166391,"reptileCritic":0.243317},{"it":15,"reward":0.589089,"clean":0.865143,"backdoor":0.276054,"qGain":-0.002529,"qAccept":0.571429,"qGainAccept":0.428571,"alpha":1.823698,"beta":0.34092,"epsilon":6.946226,"reptile":0.296019,"reptileActor":0.164461,"reptileCritic":0.24613},{"it":16,"reward":0.460269,"clean":0.86074,"backdoor":0.400471,"qGain":-0.000934,"qAccept":0.714286,"qGainAccept":0.571429,"alpha":1.841796,"beta":0.358447,"epsilon":7.146318,"reptile":0.272492,"reptileActor":0.154882,"reptileCritic":0.224195},{"it":17,"reward":0.523346,"clean":0.856251,"backdoor":0.332906,"qGain":-0.00348,"qAccept":0.428571,"qGainAccept":0.428571,"alpha":1.829594,"beta":0.359698,"epsilon":7.144668,"reptile":0.327679,"reptileActor":0.18982,"reptileCritic":0.267099},{"it":18,"reward":0.572097,"clean":0.851366,"backdoor":0.279269,"qGain":0.004543,"qAccept":0.714286,"qGainAccept":0.571429,"alpha":1.944115,"beta":0.348504,"epsilon":7.308154,"reptile":0.259096,"reptileActor":0.145838,"reptileCritic":0.214154},{"it":19,"reward":0.519857,"clean":0.852451,"backdoor":0.332594,"qGain":-0.010069,"qAccept":0.714286,"qGainAccept":0.285714,"alpha":2.071444,"beta":0.363578,"epsilon":7.261423,"reptile":0.261487,"reptileActor":0.146368,"reptileCritic":0.216684},{"it":20,"reward":0.53728,"clean":0.857549,"backdoor":0.320269,"qGain":-0.001194,"qAccept":0.428571,"qGainAccept":0.285714,"alpha":1.976844,"beta":0.353743,"epsilon":7.322704,"reptile":0.335945,"reptileActor":0.190887,"reptileCritic":0.276444},{"it":21,"reward":0.567386,"clean":0.853549,"backdoor":0.286163,"qGain":-0.001794,"qAccept":0.714286,"qGainAccept":0.428571,"alpha":2.052313,"beta":0.350285,"epsilon":7.01217,"reptile":0.259929,"reptileActor":0.151994,"reptileCritic":0.210858},{"it":22,"reward":0.553351,"clean":0.862149,"backdoor":0.308797,"qGain":0.002414,"qAccept":0.285714,"qGainAccept":0.428571,"alpha":2.226395,"beta":0.352229,"epsilon":7.171652,"reptile":0.406481,"reptileActor":0.231256,"reptileCritic":0.334287},{"it":23,"reward":0.5297,"clean":0.861594,"backdoor":0.331894,"qGain":0.000134,"qAccept":0.571429,"qGainAccept":0.285714,"alpha":2.341495,"beta":0.360619,"epsilon":7.031305,"reptile":0.295329,"reptileActor":0.1705,"reptileCritic":0.241141},{"it":24,"reward":0.594166,"clean":0.86524,"backdoor":0.271074,"qGain":0.001169,"qAccept":0.714286,"qGainAccept":0.428571,"alpha":2.648698,"beta":0.359465,"epsilon":6.752409,"reptile":0.26774,"reptileActor":0.154207,"reptileCritic":0.218872},{"it":25,"reward":0.542311,"clean":0.857149,"backdoor":0.314837,"qGain":-0.004991,"qAccept":0.571429,"qGainAccept":0.428571,"alpha":2.609222,"beta":0.348901,"epsilon":6.611592,"reptile":0.28862,"reptileActor":0.162895,"reptileCritic":0.238258},{"it":26,"reward":0.573574,"clean":0.862869,"backdoor":0.289294,"qGain":-0.000877,"qAccept":0.571429,"qGainAccept":0.857143,"alpha":2.829772,"beta":0.353237,"epsilon":7.030817,"reptile":0.288103,"reptileActor":0.166277,"reptileCritic":0.235277},{"it":27,"reward":0.536911,"clean":0.854606,"backdoor":0.317694,"qGain":-0.010269,"qAccept":0.285714,"qGainAccept":0.0,"alpha":2.85593,"beta":0.336201,"epsilon":6.865835,"reptile":0.397345,"reptileActor":0.227518,"reptileCritic":0.325759},{"it":28,"reward":0.614537,"clean":0.860214,"backdoor":0.245677,"qGain":0.002043,"qAccept":0.428571,"qGainAccept":0.428571,"alpha":3.016942,"beta":0.336369,"epsilon":6.621987,"reptile":0.332917,"reptileActor":0.195292,"reptileCritic":0.26962},{"it":29,"reward":0.566611,"clean":0.857991,"backdoor":0.29138,"qGain":0.000423,"qAccept":1.0,"qGainAccept":0.857143,"alpha":3.163075,"beta":0.336613,"epsilon":6.463107,"reptile":0.216036,"reptileActor":0.127423,"reptileCritic":0.174456},{"it":30,"reward":0.506486,"clean":0.849189,"backdoor":0.342703,"qGain":-0.011431,"qAccept":0.285714,"qGainAccept":0.285714,"alpha":3.410533,"beta":0.341235,"epsilon":6.309927,"reptile":0.416718,"reptileActor":0.233384,"reptileCritic":0.345234}];
+    const EPSILON_ADAPTATION_ROWS = [{"set":"eval_h100_mixed_paper_online_always_w5_h40_u10_paper_aligned_neuroclip","scenario":"clean","label":"clean","baseClean":0.926,"baseAsr":0.006,"adaptClean":0.926,"adaptAsr":0.006,"windows":[{"w":1,"round":40,"clean":0.898,"asr":0.002,"reward":0.75005},{"w":2,"round":80,"clean":0.912,"asr":0.008,"reward":0.9046},{"w":3,"round":120,"clean":0.906,"asr":0.006,"reward":0.89},{"w":4,"round":160,"clean":0.848,"asr":0.004,"reward":0.8756},{"w":5,"round":200,"clean":0.85,"asr":0.004,"reward":0.8576}],"numTransitions":205,"numUpdates":50},{"set":"eval_h100_mixed_paper_online_always_w5_h40_u10_paper_aligned_neuroclip","scenario":"ipm","label":"ipm","baseClean":0.892,"baseAsr":0.002,"adaptClean":0.894,"adaptAsr":0.004,"windows":[{"w":1,"round":40,"clean":0.788,"asr":0.004,"reward":0.58025},{"w":2,"round":80,"clean":0.886,"asr":0.0,"reward":0.79425},{"w":3,"round":120,"clean":0.906,"asr":0.004,"reward":0.86135},{"w":4,"round":160,"clean":0.896,"asr":0.024,"reward":0.8827},{"w":5,"round":200,"clean":0.872,"asr":0.018,"reward":0.88345}],"numTransitions":205,"numUpdates":50},{"set":"eval_h100_mixed_paper_online_always_w5_h40_u10_paper_aligned_neuroclip","scenario":"lmp","label":"lmp","baseClean":0.214,"baseAsr":0.062,"adaptClean":0.78,"adaptAsr":0.008,"windows":[{"w":1,"round":40,"clean":0.754,"asr":0.002,"reward":0.2897},{"w":2,"round":80,"clean":0.63,"asr":0.308,"reward":0.5621},{"w":3,"round":120,"clean":0.322,"asr":0.0,"reward":0.432},{"w":4,"round":160,"clean":0.12,"asr":0.0,"reward":0.2318},{"w":5,"round":200,"clean":0.104,"asr":0.0,"reward":0.0808}],"numTransitions":205,"numUpdates":50},{"set":"eval_h100_mixed_paper_online_always_w5_h40_u10_paper_aligned_neuroclip","scenario":"rl","label":"rl","baseClean":0.104,"baseAsr":0.0,"adaptClean":0.422,"adaptAsr":0.004,"windows":[{"w":1,"round":40,"clean":0.102,"asr":0.0,"reward":0.16015},{"w":2,"round":80,"clean":0.098,"asr":0.0,"reward":0.0779},{"w":3,"round":120,"clean":0.204,"asr":0.004,"reward":0.1249},{"w":4,"round":160,"clean":0.212,"asr":0.068,"reward":0.12155},{"w":5,"round":200,"clean":0.156,"asr":0.124,"reward":0.0229}],"numTransitions":205,"numUpdates":50},{"set":"eval_h100_mixed_paper_online_always_w5_h40_u10_paper_aligned_neuroclip","scenario":"bfl","label":"bfl","baseClean":0.926,"baseAsr":0.91,"adaptClean":0.926,"adaptAsr":0.908,"windows":[{"w":1,"round":40,"clean":0.904,"asr":0.128,"reward":0.492},{"w":2,"round":80,"clean":0.91,"asr":0.948,"reward":0.08705},{"w":3,"round":120,"clean":0.91,"asr":0.978,"reward":-0.0856},{"w":4,"round":160,"clean":0.836,"asr":0.98,"reward":-0.09225},{"w":5,"round":200,"clean":0.848,"asr":0.98,"reward":-0.113}],"numTransitions":205,"numUpdates":50},{"set":"eval_h100_mixed_paper_online_always_w5_h40_u10_paper_aligned_neuroclip","scenario":"dba","label":"dba","baseClean":0.926,"baseAsr":0.03,"adaptClean":0.93,"adaptAsr":0.028,"windows":[{"w":1,"round":40,"clean":0.902,"asr":0.002,"reward":0.6794},{"w":2,"round":80,"clean":0.898,"asr":0.074,"reward":0.78055},{"w":3,"round":120,"clean":0.912,"asr":0.07,"reward":0.48055},{"w":4,"round":160,"clean":0.86,"asr":0.604,"reward":0.34865},{"w":5,"round":200,"clean":0.874,"asr":0.814,"reward":0.06255}],"numTransitions":205,"numUpdates":50},{"set":"eval_h100_mixed_paper_online_always_w5_h40_u10_paper_aligned_neuroclip","scenario":"rl_backdoor","label":"rl_backdoor","baseClean":0.93,"baseAsr":0.97,"adaptClean":0.93,"adaptAsr":0.97,"windows":[{"w":1,"round":40,"clean":0.894,"asr":0.264,"reward":0.63485},{"w":2,"round":80,"clean":0.914,"asr":0.902,"reward":0.09975},{"w":3,"round":120,"clean":0.9,"asr":0.986,"reward":-0.0658},{"w":4,"round":160,"clean":0.902,"asr":0.998,"reward":-0.0789},{"w":5,"round":200,"clean":0.882,"asr":0.998,"reward":-0.0954}],"numTransitions":205,"numUpdates":50}];
+    const FOUR_D_TRAINING_ROWS = [{"it":21,"local":1,"reward":0.639251,"clean":0.647933,"backdoor":0.001795,"alpha":4.423303,"beta":0.371934,"epsilon":2.553638,"serverLr":0.17017,"reptile":0.301012,"reptileActor":0.191819,"reptileCritic":0.231978,"cleanReward":0.655693,"bflReward":0.660386,"dbaReward":0.631226,"rlBackdoorReward":0.718511,"lmpReward":0.559984,"ipmReward":0.610954,"rlReward":0.638002},{"it":22,"local":2,"reward":0.594299,"clean":0.655671,"backdoor":0.05451,"alpha":4.455072,"beta":0.367419,"epsilon":2.392506,"serverLr":0.171652,"reptile":0.290767,"reptileActor":0.191598,"reptileCritic":0.218713,"cleanReward":0.679276,"bflReward":0.682746,"dbaReward":0.691136,"rlBackdoorReward":0.670324,"lmpReward":0.60669,"ipmReward":0.217915,"rlReward":0.612006},{"it":23,"local":3,"reward":0.639366,"clean":0.668052,"backdoor":0.021933,"alpha":4.573887,"beta":0.391217,"epsilon":2.048186,"serverLr":0.178324,"reptile":0.318792,"reptileActor":0.197189,"reptileCritic":0.250489,"cleanReward":0.625445,"bflReward":0.558665,"dbaReward":0.698647,"rlBackdoorReward":0.70665,"lmpReward":0.599418,"ipmReward":0.649735,"rlReward":0.637001},{"it":24,"local":4,"reward":0.61545,"clean":0.665369,"backdoor":0.043136,"alpha":4.51029,"beta":0.381418,"epsilon":2.141967,"serverLr":0.176454,"reptile":0.317764,"reptileActor":0.186716,"reptileCritic":0.257121,"cleanReward":0.64694,"bflReward":0.682362,"dbaReward":0.630869,"rlBackdoorReward":0.44614,"lmpReward":0.606605,"ipmReward":0.653423,"rlReward":0.641808},{"it":25,"local":5,"reward":0.625273,"clean":0.668719,"backdoor":0.036752,"alpha":4.609414,"beta":0.387821,"epsilon":1.920231,"serverLr":0.181913,"reptile":0.312253,"reptileActor":0.191054,"reptileCritic":0.246982,"cleanReward":0.683324,"bflReward":0.624651,"dbaReward":0.686893,"rlBackdoorReward":0.524835,"lmpReward":0.596547,"ipmReward":0.595169,"rlReward":0.665489},{"it":26,"local":6,"reward":0.654977,"clean":0.663376,"backdoor":0.001686,"alpha":4.6283,"beta":0.39267,"epsilon":2.053445,"serverLr":0.180739,"reptile":0.289015,"reptileActor":0.182277,"reptileCritic":0.224288,"cleanReward":0.654909,"bflReward":0.703561,"dbaReward":0.674546,"rlBackdoorReward":0.698078,"lmpReward":0.59535,"ipmReward":0.601505,"rlReward":0.656891},{"it":27,"local":7,"reward":0.657012,"clean":0.67241,"backdoor":0.008748,"alpha":4.743126,"beta":0.403677,"epsilon":1.701392,"serverLr":0.184589,"reptile":0.303685,"reptileActor":0.183329,"reptileCritic":0.242106,"cleanReward":0.710593,"bflReward":0.661702,"dbaReward":0.622442,"rlBackdoorReward":0.680318,"lmpReward":0.631296,"ipmReward":0.657099,"rlReward":0.635632},{"it":28,"local":8,"reward":0.651635,"clean":0.677529,"backdoor":0.019307,"alpha":4.793509,"beta":0.412994,"epsilon":1.614655,"serverLr":0.188485,"reptile":0.304566,"reptileActor":0.188128,"reptileCritic":0.239517,"cleanReward":0.649206,"bflReward":0.670156,"dbaReward":0.663897,"rlBackdoorReward":0.747177,"lmpReward":0.575083,"ipmReward":0.64878,"rlReward":0.607146},{"it":29,"local":9,"reward":0.662935,"clean":0.686543,"backdoor":0.017031,"alpha":4.783562,"beta":0.420584,"epsilon":1.584246,"serverLr":0.189081,"reptile":0.289862,"reptileActor":0.181863,"reptileCritic":0.225712,"cleanReward":0.726109,"bflReward":0.675363,"dbaReward":0.656055,"rlBackdoorReward":0.737035,"lmpReward":0.593342,"ipmReward":0.616225,"rlReward":0.636416},{"it":30,"local":10,"reward":0.656001,"clean":0.673514,"backdoor":0.010952,"alpha":4.798174,"beta":0.417177,"epsilon":1.420027,"serverLr":0.190035,"reptile":0.303435,"reptileActor":0.187753,"reptileCritic":0.238373,"cleanReward":0.711678,"bflReward":0.673557,"dbaReward":0.663685,"rlBackdoorReward":0.641952,"lmpReward":0.607953,"ipmReward":0.620937,"rlReward":0.672242},{"it":31,"local":11,"reward":0.642474,"clean":0.683586,"backdoor":0.034588,"alpha":4.856066,"beta":0.427955,"epsilon":1.387099,"serverLr":0.192353,"reptile":0.296463,"reptileActor":0.181238,"reptileCritic":0.234613,"cleanReward":0.686184,"bflReward":0.640945,"dbaReward":0.66731,"rlBackdoorReward":0.594593,"lmpReward":0.649191,"ipmReward":0.603682,"rlReward":0.655413},{"it":32,"local":12,"reward":0.634627,"clean":0.684102,"backdoor":0.042945,"alpha":4.831206,"beta":0.422933,"epsilon":1.431709,"serverLr":0.191967,"reptile":0.281688,"reptileActor":0.1785,"reptileCritic":0.217913,"cleanReward":0.643594,"bflReward":0.47372,"dbaReward":0.698319,"rlBackdoorReward":0.697139,"lmpReward":0.703303,"ipmReward":0.609922,"rlReward":0.616395},{"it":33,"local":13,"reward":0.657042,"clean":0.687448,"backdoor":0.023898,"alpha":4.859267,"beta":0.432302,"epsilon":1.324749,"serverLr":0.193294,"reptile":0.29033,"reptileActor":0.183774,"reptileCritic":0.224764,"cleanReward":0.691601,"bflReward":0.587049,"dbaReward":0.704182,"rlBackdoorReward":0.738514,"lmpReward":0.611724,"ipmReward":0.637886,"rlReward":0.628336},{"it":34,"local":14,"reward":0.661379,"clean":0.678807,"backdoor":0.010938,"alpha":4.893237,"beta":0.436991,"epsilon":1.260163,"serverLr":0.194417,"reptile":0.292975,"reptileActor":0.191039,"reptileCritic":0.222122,"cleanReward":0.668019,"bflReward":0.674568,"dbaReward":0.687794,"rlBackdoorReward":0.737851,"lmpReward":0.63972,"ipmReward":0.599378,"rlReward":0.622323},{"it":35,"local":15,"reward":0.649205,"clean":0.662633,"backdoor":0.006912,"alpha":4.857171,"beta":0.431836,"epsilon":1.327083,"serverLr":0.192799,"reptile":0.289177,"reptileActor":0.18089,"reptileCritic":0.225615,"cleanReward":0.675026,"bflReward":0.650322,"dbaReward":0.684291,"rlBackdoorReward":0.683425,"lmpReward":0.623991,"ipmReward":0.619673,"rlReward":0.607707},{"it":36,"local":16,"reward":0.661577,"clean":0.682512,"backdoor":0.014424,"alpha":4.861516,"beta":0.429976,"epsilon":1.327462,"serverLr":0.193097,"reptile":0.288545,"reptileActor":0.17717,"reptileCritic":0.227747,"cleanReward":0.665924,"bflReward":0.627551,"dbaReward":0.702117,"rlBackdoorReward":0.67602,"lmpReward":0.670436,"ipmReward":0.598963,"rlReward":0.690024},{"it":37,"local":17,"reward":0.651819,"clean":0.672143,"backdoor":0.013831,"alpha":4.873092,"beta":0.433657,"epsilon":1.249245,"serverLr":0.194228,"reptile":0.296322,"reptileActor":0.185542,"reptileCritic":0.231043,"cleanReward":0.706212,"bflReward":0.577004,"dbaReward":0.672486,"rlBackdoorReward":0.6771,"lmpReward":0.633641,"ipmReward":0.645461,"rlReward":0.650828},{"it":38,"local":18,"reward":0.649352,"clean":0.665112,"backdoor":0.009281,"alpha":4.890824,"beta":0.437599,"epsilon":1.239285,"serverLr":0.195082,"reptile":0.295112,"reptileActor":0.180756,"reptileCritic":0.233278,"cleanReward":0.681419,"bflReward":0.703631,"dbaReward":0.66355,"rlBackdoorReward":0.675046,"lmpReward":0.566207,"ipmReward":0.624802,"rlReward":0.630806},{"it":39,"local":19,"reward":0.645804,"clean":0.671579,"backdoor":0.019307,"alpha":4.891462,"beta":0.440274,"epsilon":1.206618,"serverLr":0.195826,"reptile":0.291396,"reptileActor":0.194071,"reptileCritic":0.217366,"cleanReward":0.688803,"bflReward":0.641655,"dbaReward":0.657364,"rlBackdoorReward":0.653071,"lmpReward":0.64264,"ipmReward":0.629493,"rlReward":0.607602},{"it":40,"local":20,"reward":0.649938,"clean":0.664712,"backdoor":0.008307,"alpha":4.900059,"beta":0.439383,"epsilon":1.195099,"serverLr":0.195855,"reptile":0.285805,"reptileActor":0.187445,"reptileCritic":0.215752,"cleanReward":0.700859,"bflReward":0.666337,"dbaReward":0.707545,"rlBackdoorReward":0.638622,"lmpReward":0.621338,"ipmReward":0.630072,"rlReward":0.584793},{"it":41,"local":21,"reward":0.633985,"clean":0.668938,"backdoor":0.028486,"alpha":4.893287,"beta":0.43883,"epsilon":1.199049,"serverLr":0.195814,"reptile":0.284588,"reptileActor":0.180768,"reptileCritic":0.219803,"cleanReward":0.69943,"bflReward":0.515136,"dbaReward":0.698424,"rlBackdoorReward":0.630752,"lmpReward":0.632179,"ipmReward":0.58787,"rlReward":0.674102},{"it":42,"local":22,"reward":0.65382,"clean":0.665917,"backdoor":0.005633,"alpha":4.906824,"beta":0.440982,"epsilon":1.179589,"serverLr":0.196072,"reptile":0.286403,"reptileActor":0.192565,"reptileCritic":0.212003,"cleanReward":0.647175,"bflReward":0.691151,"dbaReward":0.651476,"rlBackdoorReward":0.724064,"lmpReward":0.617933,"ipmReward":0.599297,"rlReward":0.645644},{"it":43,"local":23,"reward":0.658978,"clean":0.675243,"backdoor":0.0098,"alpha":4.904964,"beta":0.440679,"epsilon":1.192328,"serverLr":0.195999,"reptile":0.288608,"reptileActor":0.198793,"reptileCritic":0.209226,"cleanReward":0.693462,"bflReward":0.658608,"dbaReward":0.653521,"rlBackdoorReward":0.699431,"lmpReward":0.648811,"ipmReward":0.624085,"rlReward":0.634931},{"it":44,"local":24,"reward":0.662696,"clean":0.69891,"backdoor":0.029748,"alpha":4.893278,"beta":0.439707,"epsilon":1.201229,"serverLr":0.195919,"reptile":0.28253,"reptileActor":0.186306,"reptileCritic":0.212398,"cleanReward":0.719569,"bflReward":0.620165,"dbaReward":0.684838,"rlBackdoorReward":0.629909,"lmpReward":0.62831,"ipmReward":0.686619,"rlReward":0.669464},{"it":45,"local":25,"reward":0.624735,"clean":0.67216,"backdoor":0.040955,"alpha":4.89728,"beta":0.440816,"epsilon":1.185623,"serverLr":0.195654,"reptile":0.294702,"reptileActor":0.189024,"reptileCritic":0.226095,"cleanReward":0.645198,"bflReward":0.69357,"dbaReward":0.679805,"rlBackdoorReward":0.654735,"lmpReward":0.405952,"ipmReward":0.632517,"rlReward":0.661365},{"it":46,"local":26,"reward":0.655727,"clean":0.678624,"backdoor":0.016433,"alpha":4.898151,"beta":0.439969,"epsilon":1.178434,"serverLr":0.196044,"reptile":0.280072,"reptileActor":0.185845,"reptileCritic":0.209529,"cleanReward":0.69954,"bflReward":0.688903,"dbaReward":0.633745,"rlBackdoorReward":0.671196,"lmpReward":0.629497,"ipmReward":0.618045,"rlReward":0.649161},{"it":47,"local":27,"reward":0.656911,"clean":0.703529,"backdoor":0.040155,"alpha":4.898731,"beta":0.441024,"epsilon":1.191026,"serverLr":0.196093,"reptile":0.292391,"reptileActor":0.182759,"reptileCritic":0.228236,"cleanReward":0.576001,"bflReward":0.67735,"dbaReward":0.675752,"rlBackdoorReward":0.71411,"lmpReward":0.686433,"ipmReward":0.629305,"rlReward":0.639425},{"it":48,"local":28,"reward":0.672757,"clean":0.691312,"backdoor":0.012086,"alpha":4.89968,"beta":0.44037,"epsilon":1.220763,"serverLr":0.195696,"reptile":0.270417,"reptileActor":0.17368,"reptileCritic":0.20727,"cleanReward":0.702233,"bflReward":0.683393,"dbaReward":0.70179,"rlBackdoorReward":0.699342,"lmpReward":0.62283,"ipmReward":0.628564,"rlReward":0.671146},{"it":49,"local":29,"reward":0.669345,"clean":0.691248,"backdoor":0.015443,"alpha":4.901845,"beta":0.440422,"epsilon":1.190056,"serverLr":0.196273,"reptile":0.279856,"reptileActor":0.180133,"reptileCritic":0.214177,"cleanReward":0.622839,"bflReward":0.708691,"dbaReward":0.707605,"rlBackdoorReward":0.69844,"lmpReward":0.666994,"ipmReward":0.632146,"rlReward":0.648697},{"it":50,"local":30,"reward":0.64146,"clean":0.683136,"backdoor":0.035205,"alpha":4.899848,"beta":0.439584,"epsilon":1.203023,"serverLr":0.195602,"reptile":0.273345,"reptileActor":0.171349,"reptileCritic":0.212972,"cleanReward":0.683334,"bflReward":0.554056,"dbaReward":0.733011,"rlBackdoorReward":0.730125,"lmpReward":0.586729,"ipmReward":0.571322,"rlReward":0.631643}];
+
+    const CURRENT_4D_TRAINING_ROWS = [{"it":1,"reward":0.504342,"clean":0.765552,"backdoor":0.261211,"qGain":0.010482,"qAccept":0.375,"qGainAccept":0.25,"alpha":2.157651,"beta":0.229803,"epsilon":5.257398,"serverLr":0.526974,"reptile":0.3856,"reptileActor":0.190753,"reptileCritic":0.335112,"cleanReward":0.88422,"bflReward":0.22824,"dbaReward":0.88714,"rlBackdoorReward":0.22319,"mixedBackdoorReward":0.39323,"ipmReward":0.77045,"lmpReward":-0.19101,"rlReward":0.839275},{"it":2,"reward":0.540221,"clean":0.768232,"backdoor":0.228011,"qGain":-0.075737,"qAccept":0.5,"qGainAccept":0.375,"alpha":1.992999,"beta":0.243827,"epsilon":5.610571,"serverLr":0.502466,"reptile":0.328775,"reptileActor":0.169227,"reptileCritic":0.281878,"cleanReward":0.8707,"bflReward":0.24393,"dbaReward":0.85754,"rlBackdoorReward":0.2702,"mixedBackdoorReward":0.36596,"ipmReward":0.81596,"lmpReward":0.06362,"rlReward":0.833855},{"it":3,"reward":0.499514,"clean":0.714373,"backdoor":0.214859,"qGain":-0.019394,"qAccept":0.625,"qGainAccept":0.375,"alpha":1.958871,"beta":0.24484,"epsilon":5.775084,"serverLr":0.486442,"reptile":0.292656,"reptileActor":0.154501,"reptileCritic":0.24855,"cleanReward":0.88565,"bflReward":0.29834,"dbaReward":0.8317,"rlBackdoorReward":0.15833,"mixedBackdoorReward":0.4943,"ipmReward":0.3412,"lmpReward":0.14898,"rlReward":0.83761},{"it":4,"reward":0.514584,"clean":0.76643,"backdoor":0.251846,"qGain":-0.011981,"qAccept":0.375,"qGainAccept":0.25,"alpha":2.076534,"beta":0.239148,"epsilon":5.775603,"serverLr":0.503458,"reptile":0.371901,"reptileActor":0.200463,"reptileCritic":0.31325,"cleanReward":0.86894,"bflReward":0.22756,"dbaReward":0.85935,"rlBackdoorReward":0.19681,"mixedBackdoorReward":0.34345,"ipmReward":0.77649,"lmpReward":-0.00863,"rlReward":0.852705},{"it":5,"reward":0.542248,"clean":0.773073,"backdoor":0.230824,"qGain":0.011309,"qAccept":0.625,"qGainAccept":0.5,"alpha":1.901184,"beta":0.241964,"epsilon":5.879188,"serverLr":0.517792,"reptile":0.284346,"reptileActor":0.152891,"reptileCritic":0.239744,"cleanReward":0.87133,"bflReward":0.27378,"dbaReward":0.88896,"rlBackdoorReward":0.15672,"mixedBackdoorReward":0.38654,"ipmReward":0.78237,"lmpReward":0.13815,"rlReward":0.840135},{"it":6,"reward":0.532663,"clean":0.756535,"backdoor":0.223872,"qGain":0.089478,"qAccept":0.375,"qGainAccept":0.5,"alpha":2.006833,"beta":0.238565,"epsilon":6.236566,"serverLr":0.494446,"reptile":0.37046,"reptileActor":0.192201,"reptileCritic":0.316701,"cleanReward":0.86948,"bflReward":0.29278,"dbaReward":0.82672,"rlBackdoorReward":0.2034,"mixedBackdoorReward":0.4112,"ipmReward":0.71293,"lmpReward":0.08095,"rlReward":0.86384},{"it":7,"reward":0.442194,"clean":0.760767,"backdoor":0.318573,"qGain":-0.01434,"qAccept":0.5,"qGainAccept":0.375,"alpha":2.031436,"beta":0.256353,"epsilon":6.469024,"serverLr":0.47426,"reptile":0.315296,"reptileActor":0.162231,"reptileCritic":0.270357,"cleanReward":0.86054,"bflReward":0.4021,"dbaReward":0.85103,"rlBackdoorReward":0.1214,"mixedBackdoorReward":0.34976,"ipmReward":0.75922,"lmpReward":-0.64063,"rlReward":0.83413},{"it":8,"reward":0.492269,"clean":0.758004,"backdoor":0.265736,"qGain":0.001116,"qAccept":0.5,"qGainAccept":0.375,"alpha":2.082624,"beta":0.23901,"epsilon":6.454013,"serverLr":0.47317,"reptile":0.316253,"reptileActor":0.166646,"reptileCritic":0.268784,"cleanReward":0.87924,"bflReward":0.19435,"dbaReward":0.81529,"rlBackdoorReward":0.17785,"mixedBackdoorReward":0.35466,"ipmReward":0.77356,"lmpReward":-0.05595,"rlReward":0.79915},{"it":9,"reward":0.525788,"clean":0.772888,"backdoor":0.2471,"qGain":-0.018026,"qAccept":0.25,"qGainAccept":0.125,"alpha":1.909027,"beta":0.22647,"epsilon":6.199836,"serverLr":0.497104,"reptile":0.42871,"reptileActor":0.209045,"reptileCritic":0.37429,"cleanReward":0.87942,"bflReward":0.23544,"dbaReward":0.86287,"rlBackdoorReward":0.21704,"mixedBackdoorReward":0.34608,"ipmReward":0.73007,"lmpReward":0.15734,"rlReward":0.778045},{"it":10,"reward":0.575487,"clean":0.753574,"backdoor":0.178088,"qGain":-0.012486,"qAccept":0.5,"qGainAccept":0.375,"alpha":2.041763,"beta":0.238726,"epsilon":6.363075,"serverLr":0.447469,"reptile":0.320977,"reptileActor":0.177583,"reptileCritic":0.267377,"cleanReward":0.8495,"bflReward":0.3378,"dbaReward":0.83303,"rlBackdoorReward":0.16733,"mixedBackdoorReward":0.7511,"ipmReward":0.75432,"lmpReward":0.12953,"rlReward":0.781285},{"it":11,"reward":0.510321,"clean":0.730726,"backdoor":0.220406,"qGain":-0.01525,"qAccept":0.25,"qGainAccept":0.25,"alpha":1.960794,"beta":0.221353,"epsilon":6.569577,"serverLr":0.448551,"reptile":0.429042,"reptileActor":0.240142,"reptileCritic":0.355541,"cleanReward":0.88464,"bflReward":0.26814,"dbaReward":0.84973,"rlBackdoorReward":0.33315,"mixedBackdoorReward":0.3238,"ipmReward":0.67729,"lmpReward":0.06679,"rlReward":0.679025},{"it":12,"reward":0.511063,"clean":0.744433,"backdoor":0.23337,"qGain":0.06041,"qAccept":0.75,"qGainAccept":0.625,"alpha":1.992219,"beta":0.243622,"epsilon":6.534744,"serverLr":0.414588,"reptile":0.258359,"reptileActor":0.144639,"reptileCritic":0.214077,"cleanReward":0.85345,"bflReward":0.42992,"dbaReward":0.81933,"rlBackdoorReward":0.26012,"mixedBackdoorReward":0.416,"ipmReward":0.66233,"lmpReward":-0.12208,"rlReward":0.769435},{"it":13,"reward":0.542479,"clean":0.741161,"backdoor":0.198683,"qGain":0.029298,"qAccept":0.5,"qGainAccept":0.5,"alpha":1.916267,"beta":0.256909,"epsilon":6.315951,"serverLr":0.436305,"reptile":0.299429,"reptileActor":0.168586,"reptileCritic":0.24746,"cleanReward":0.86745,"bflReward":0.38539,"dbaReward":0.83009,"rlBackdoorReward":0.19107,"mixedBackdoorReward":0.51353,"ipmReward":0.77162,"lmpReward":0.04509,"rlReward":0.73559},{"it":14,"reward":0.542924,"clean":0.749484,"backdoor":0.206559,"qGain":0.017365,"qAccept":0.5,"qGainAccept":0.5,"alpha":1.864608,"beta":0.242116,"epsilon":6.317764,"serverLr":0.398458,"reptile":0.306357,"reptileActor":0.174135,"reptileCritic":0.252054,"cleanReward":0.83881,"bflReward":0.20466,"dbaReward":0.8669,"rlBackdoorReward":0.33099,"mixedBackdoorReward":0.50647,"ipmReward":0.73824,"lmpReward":0.14752,"rlReward":0.709805},{"it":15,"reward":0.521655,"clean":0.740572,"backdoor":0.218917,"qGain":0.024266,"qAccept":0.5,"qGainAccept":0.375,"alpha":1.892603,"beta":0.237993,"epsilon":6.290438,"serverLr":0.386628,"reptile":0.299118,"reptileActor":0.167198,"reptileCritic":0.248026,"cleanReward":0.8711,"bflReward":0.43181,"dbaReward":0.81665,"rlBackdoorReward":0.23196,"mixedBackdoorReward":0.38002,"ipmReward":0.75221,"lmpReward":-0.08008,"rlReward":0.76957},{"it":16,"reward":0.528686,"clean":0.732976,"backdoor":0.20429,"qGain":-0.006855,"qAccept":0.5,"qGainAccept":0.25,"alpha":1.905144,"beta":0.254222,"epsilon":6.416571,"serverLr":0.336079,"reptile":0.301478,"reptileActor":0.166412,"reptileCritic":0.251389,"cleanReward":0.86468,"bflReward":0.20602,"dbaReward":0.83708,"rlBackdoorReward":0.28356,"mixedBackdoorReward":0.5099,"ipmReward":0.7261,"lmpReward":0.05129,"rlReward":0.750855},{"it":17,"reward":0.571058,"clean":0.730051,"backdoor":0.158992,"qGain":-0.020851,"qAccept":0.5,"qGainAccept":0.375,"alpha":1.8045,"beta":0.246444,"epsilon":6.374984,"serverLr":0.329929,"reptile":0.290824,"reptileActor":0.162856,"reptileCritic":0.240949,"cleanReward":0.85497,"bflReward":0.44164,"dbaReward":0.83136,"rlBackdoorReward":0.29194,"mixedBackdoorReward":0.67656,"ipmReward":0.73624,"lmpReward":0.05701,"rlReward":0.678745},{"it":18,"reward":0.54585,"clean":0.729498,"backdoor":0.183648,"qGain":-0.001897,"qAccept":0.625,"qGainAccept":0.5,"alpha":1.94013,"beta":0.247364,"epsilon":6.239076,"serverLr":0.345454,"reptile":0.268581,"reptileActor":0.147511,"reptileCritic":0.224447,"cleanReward":0.85925,"bflReward":0.34605,"dbaReward":0.83326,"rlBackdoorReward":0.30177,"mixedBackdoorReward":0.48239,"ipmReward":0.64549,"lmpReward":0.16111,"rlReward":0.73748}];
+
+    const CHARTS = [
+      {
+        id: "chart-performance",
+        rows: TRAINING_ROWS,
+        yDomain: [0, 1],
+        xTicks: [1, 10, 20, 30, 40, 50],
+        series: [
+          { key: "reward", label: "reward_mean", color: "#24476f" },
+          { key: "clean", label: "clean_acc", color: "#2f7d4f" },
+          { key: "backdoor", label: "backdoor_acc", color: "#b23b3b" },
+        ],
+      },
+      {
+        id: "chart-query",
+        rows: TRAINING_ROWS,
+        yDomain: [-0.25, 0.95],
+        xTicks: [1, 10, 20, 30, 40, 50],
+        series: [
+          { key: "qGain", label: "query_gain_mean", color: "#24476f" },
+          { key: "qAccept", label: "query_accept_rate", color: "#0c7b72" },
+          { key: "qGainAccept", label: "query_gain_accept_rate", color: "#a76305" },
+        ],
+      },
+      {
+        id: "chart-actions",
+        rows: TRAINING_ROWS,
+        yDomain: [0, 1],
+        xTicks: [1, 10, 20, 30, 40, 50],
+        series: [
+          { key: "alpha", label: "alpha / 5", color: "#24476f", transform: value => value / 5 },
+          { key: "beta", label: "beta / 0.45", color: "#a76305", transform: value => value / 0.45 },
+          { key: "serverLr", label: "server_lr", color: "#0c7b72" },
+        ],
+      },
+      {
+        id: "chart-reptile",
+        rows: TRAINING_ROWS,
+        yDomain: [0, 0.36],
+        xTicks: [1, 10, 20, 30, 40, 50],
+        series: [
+          { key: "reptile", label: "reptile_delta_norm", color: "#24476f" },
+          { key: "reptileActor", label: "actor_delta_norm", color: "#0c7b72" },
+          { key: "reptileCritic", label: "critic_delta_norm", color: "#a76305" },
+        ],
+      },
+    ];
+
+    const EPSILON_CHARTS = [
+      {
+        id: "chart-epsilon-performance",
+        rows: EPSILON_TRAINING_ROWS,
+        yDomain: [0, 1],
+        xTicks: [1, 5, 10, 15, 20, 25, 30],
+        series: [
+          { key: "reward", label: "reward_mean", color: "#24476f" },
+          { key: "clean", label: "clean_acc", color: "#2f7d4f" },
+          { key: "backdoor", label: "backdoor_acc", color: "#b23b3b" },
+        ],
+      },
+      {
+        id: "chart-epsilon-query",
+        rows: EPSILON_TRAINING_ROWS,
+        yDomain: [-0.08, 1],
+        xTicks: [1, 5, 10, 15, 20, 25, 30],
+        series: [
+          { key: "qGain", label: "query_gain_mean", color: "#24476f" },
+          { key: "qAccept", label: "query_accept_rate", color: "#0c7b72" },
+          { key: "qGainAccept", label: "query_gain_accept_rate", color: "#a76305" },
+        ],
+      },
+      {
+        id: "chart-epsilon-actions",
+        rows: EPSILON_TRAINING_ROWS,
+        yDomain: [0, 1],
+        xTicks: [1, 5, 10, 15, 20, 25, 30],
+        series: [
+          { key: "alpha", label: "alpha / 5", color: "#24476f", transform: value => value / 5 },
+          { key: "beta", label: "beta / 0.45", color: "#a76305", transform: value => value / 0.45 },
+          { key: "epsilon", label: "epsilon / 10", color: "#0c7b72", transform: value => value / 10 },
+        ],
+      },
+      {
+        id: "chart-epsilon-reptile",
+        rows: EPSILON_TRAINING_ROWS,
+        yDomain: [0, 0.5],
+        xTicks: [1, 5, 10, 15, 20, 25, 30],
+        series: [
+          { key: "reptile", label: "reptile_delta_norm", color: "#24476f" },
+          { key: "reptileActor", label: "actor_delta_norm", color: "#0c7b72" },
+          { key: "reptileCritic", label: "critic_delta_norm", color: "#a76305" },
+        ],
+      },
+    ];
+
+    const FOUR_D_CHARTS = [
+      {
+        id: "chart-four-d-performance",
+        rows: FOUR_D_TRAINING_ROWS,
+        yDomain: [0, 1],
+        xTicks: [21, 25, 30, 35, 40, 45, 50],
+        series: [
+          { key: "reward", label: "reward_mean", color: "#24476f" },
+          { key: "clean", label: "clean_acc", color: "#2f7d4f" },
+          { key: "backdoor", label: "backdoor_acc", color: "#b23b3b" },
+        ],
+      },
+      {
+        id: "chart-four-d-actions",
+        rows: FOUR_D_TRAINING_ROWS,
+        yDomain: [0, 1.05],
+        xTicks: [21, 25, 30, 35, 40, 45, 50],
+        series: [
+          { key: "alpha", label: "alpha / 5", color: "#24476f", transform: value => value / 5 },
+          { key: "beta", label: "beta / 0.45", color: "#a76305", transform: value => value / 0.45 },
+          { key: "epsilon", label: "epsilon / 10", color: "#0c7b72", transform: value => value / 10 },
+          { key: "serverLr", label: "server_lr / 0.2", color: "#6254a3", transform: value => value / 0.2 },
+        ],
+      },
+      {
+        id: "chart-four-d-reptile",
+        rows: FOUR_D_TRAINING_ROWS,
+        yDomain: [0, 0.34],
+        xTicks: [21, 25, 30, 35, 40, 45, 50],
+        series: [
+          { key: "reptile", label: "reptile_delta_norm", color: "#24476f" },
+          { key: "reptileActor", label: "actor_delta_norm", color: "#0c7b72" },
+          { key: "reptileCritic", label: "critic_delta_norm", color: "#a76305" },
+        ],
+      },
+      {
+        id: "chart-four-d-per-attack",
+        rows: FOUR_D_TRAINING_ROWS,
+        yDomain: [0.2, 0.78],
+        xTicks: [21, 25, 30, 35, 40, 45, 50],
+        series: [
+          { key: "cleanReward", label: "clean", color: "#2f7d4f" },
+          { key: "bflReward", label: "bfl", color: "#a76305" },
+          { key: "dbaReward", label: "dba", color: "#b23b3b" },
+          { key: "rlBackdoorReward", label: "rl_backdoor", color: "#6254a3" },
+          { key: "lmpReward", label: "lmp", color: "#c16b2a" },
+          { key: "ipmReward", label: "ipm", color: "#0c7b72" },
+          { key: "rlReward", label: "rl", color: "#6d7582" },
+        ],
+      },
+    ];
+
+    const CURRENT_4D_CHARTS = [
+      {
+        id: "chart-current-4d-performance",
+        rows: CURRENT_4D_TRAINING_ROWS,
+        yDomain: [0, 1],
+        xTicks: [1, 5, 10, 15, 18],
+        series: [
+          { key: "reward", label: "reward_mean", color: "#24476f" },
+          { key: "clean", label: "clean_acc", color: "#2f7d4f" },
+          { key: "backdoor", label: "bd / backdoor_acc", color: "#b23b3b" },
+        ],
+      },
+      {
+        id: "chart-current-4d-query",
+        rows: CURRENT_4D_TRAINING_ROWS,
+        yDomain: [-0.12, 0.82],
+        xTicks: [1, 5, 10, 15, 18],
+        series: [
+          { key: "qGain", label: "query_gain_mean", color: "#24476f" },
+          { key: "qAccept", label: "query_accept_rate", color: "#0c7b72" },
+          { key: "qGainAccept", label: "query_gain_accept_rate", color: "#a76305" },
+        ],
+      },
+      {
+        id: "chart-current-4d-actions",
+        rows: CURRENT_4D_TRAINING_ROWS,
+        yDomain: [0, 1],
+        xTicks: [1, 5, 10, 15, 18],
+        series: [
+          { key: "alpha", label: "alpha / 5", color: "#24476f", transform: value => value / 5 },
+          { key: "beta", label: "beta / 0.45", color: "#a76305", transform: value => value / 0.45 },
+          { key: "epsilon", label: "epsilon / 10", color: "#0c7b72", transform: value => value / 10 },
+          { key: "serverLr", label: "server_lr", color: "#6254a3" },
+        ],
+      },
+      {
+        id: "chart-current-4d-reptile",
+        rows: CURRENT_4D_TRAINING_ROWS,
+        yDomain: [0, 0.46],
+        xTicks: [1, 5, 10, 15, 18],
+        series: [
+          { key: "reptile", label: "reptile_delta_norm", color: "#24476f" },
+          { key: "reptileActor", label: "actor_delta_norm", color: "#0c7b72" },
+          { key: "reptileCritic", label: "critic_delta_norm", color: "#a76305" },
+        ],
+      },
+      {
+        id: "chart-current-4d-per-task",
+        rows: CURRENT_4D_TRAINING_ROWS,
+        yDomain: [-0.7, 0.92],
+        xTicks: [1, 5, 10, 15, 18],
+        series: [
+          { key: "cleanReward", label: "clean", color: "#2f7d4f" },
+          { key: "bflReward", label: "bfl", color: "#a76305" },
+          { key: "dbaReward", label: "dba", color: "#b23b3b" },
+          { key: "rlBackdoorReward", label: "rl_backdoor", color: "#6254a3" },
+          { key: "mixedBackdoorReward", label: "mixed_backdoor", color: "#24476f" },
+          { key: "ipmReward", label: "ipm", color: "#0c7b72" },
+          { key: "lmpReward", label: "lmp", color: "#c16b2a" },
+          { key: "rlReward", label: "rl", color: "#6d7582" },
+        ],
+      },
+    ];
+
+    const ADAPT_COLORS = {
+      clean: "#2f7d4f",
+      ipm: "#0c7b72",
+      lmp: "#c16b2a",
+      rl: "#6d7582",
+      bfl: "#a76305",
+      dba: "#b23b3b",
+      rl_backdoor: "#6254a3",
+      mixed_clean: "#0c7b72",
+      mixed_backdoor: "#24476f",
+    };
+
+    const SVG_NS = "http://www.w3.org/2000/svg";
+
+    function drawLineChart(config) {
+      const svg = document.getElementById(config.id);
+      if (!svg) return;
+      svg.setAttribute("viewBox", "0 0 720 250");
+      svg.textContent = "";
+
+      const rows = config.rows || TRAINING_ROWS;
+      const margin = { top: 16, right: 18, bottom: 34, left: 48 };
+      const width = 720 - margin.left - margin.right;
+      const height = 250 - margin.top - margin.bottom;
+      const xMin = rows[0].it;
+      const xMax = rows[rows.length - 1].it;
+      const [yMin, yMax] = config.yDomain;
+
+      const x = it => margin.left + ((it - xMin) / (xMax - xMin)) * width;
+      const y = value => margin.top + (1 - ((value - yMin) / (yMax - yMin))) * height;
+      const add = (name, attrs, parent = svg) => {
+        const node = document.createElementNS(SVG_NS, name);
+        Object.entries(attrs).forEach(([key, value]) => node.setAttribute(key, value));
+        parent.appendChild(node);
+        return node;
+      };
+
+      add("rect", { x: margin.left, y: margin.top, width, height, fill: "#fbfcfd", stroke: "#d9e1e8" });
+
+      const yTicks = config.yDomain[0] < 0 ? [-0.2, 0, 0.2, 0.6, 0.9] : [0, yMax / 2, yMax];
+      yTicks.forEach(tick => {
+        if (tick < yMin || tick > yMax) return;
+        const yy = y(tick);
+        add("line", { x1: margin.left, y1: yy, x2: margin.left + width, y2: yy, stroke: "#e4eaf0", "stroke-width": 1 });
+        add("text", { x: margin.left - 8, y: yy + 4, "text-anchor": "end", "font-size": 11, fill: "#617080" }).textContent = formatTick(tick);
+      });
+
+      (config.xTicks || [xMin, xMax]).forEach(tick => {
+        const xx = x(tick);
+        add("line", { x1: xx, y1: margin.top + height, x2: xx, y2: margin.top + height + 5, stroke: "#8a98a5" });
+        add("text", { x: xx, y: margin.top + height + 20, "text-anchor": "middle", "font-size": 11, fill: "#617080" }).textContent = tick;
+      });
+
+      for (let i = 1; i < rows.length; i += 1) {
+        if (!rows[i].run || rows[i].run === rows[i - 1].run) continue;
+        const xx = x(rows[i].it);
+        add("line", { x1: xx, y1: margin.top, x2: xx, y2: margin.top + height, stroke: "#9aa7b2", "stroke-width": 1, "stroke-dasharray": "4 4" });
+      }
+
+      if (yMin < 0 && yMax > 0) {
+        const yy = y(0);
+        add("line", { x1: margin.left, y1: yy, x2: margin.left + width, y2: yy, stroke: "#788895", "stroke-width": 1.2 });
+      }
+
+      config.series.forEach(series => {
+        const points = rows.map(row => {
+          const rawValue = row[series.key];
+          const value = series.transform ? series.transform(rawValue) : rawValue;
+          return `${x(row.it).toFixed(2)},${y(value).toFixed(2)}`;
+        }).join(" ");
+        add("polyline", {
+          points,
+          fill: "none",
+          stroke: series.color,
+          "stroke-width": 2.4,
+          "stroke-linecap": "round",
+          "stroke-linejoin": "round",
+        });
+      });
+
+      add("text", { x: margin.left + width, y: margin.top + height + 31, "text-anchor": "end", "font-size": 11, fill: "#617080" }).textContent = "iteration";
+      renderLegend(config);
+    }
+
+    function renderLegend(config) {
+      const target = document.querySelector(`[data-legend-for="${config.id}"]`);
+      if (!target) return;
+      target.textContent = "";
+      config.series.forEach(series => {
+        const item = document.createElement("span");
+        item.className = "legend-item";
+        item.style.color = series.color;
+        const swatch = document.createElement("span");
+        swatch.className = "legend-swatch";
+        const label = document.createElement("span");
+        label.textContent = series.label;
+        item.appendChild(swatch);
+        item.appendChild(label);
+        target.appendChild(item);
+      });
+    }
+
+    function formatTick(value) {
+      if (Math.abs(value) >= 1) return value.toFixed(1);
+      return value.toFixed(2).replace(/0$/, "").replace(/\.0$/, "");
+    }
+
+    CHARTS.forEach(drawLineChart);
+    EPSILON_CHARTS.forEach(drawLineChart);
+    FOUR_D_CHARTS.forEach(drawLineChart);
+    CURRENT_4D_CHARTS.forEach(drawLineChart);
+    drawAdaptationChart({
+      id: "chart-adapt-clean",
+      key: "clean",
+      rows: ADAPTATION_ROWS,
+      yDomain: [0.5, 0.9],
+      yTicks: [0.5, 0.6, 0.7, 0.8, 0.9],
+    });
+    drawAdaptationChart({
+      id: "chart-adapt-asr",
+      key: "asr",
+      rows: ADAPTATION_ROWS,
+      yDomain: [0, 1],
+      yTicks: [0, 0.25, 0.5, 0.75, 1],
+    });
+    drawAdaptationChart({
+      id: "chart-epsilon-adapt-clean",
+      key: "clean",
+      rows: EPSILON_ADAPTATION_ROWS,
+      yDomain: [0, 1],
+      yTicks: [0, 0.25, 0.5, 0.75, 1],
+    });
+    drawAdaptationChart({
+      id: "chart-epsilon-adapt-asr",
+      key: "asr",
+      rows: EPSILON_ADAPTATION_ROWS,
+      yDomain: [0, 1],
+      yTicks: [0, 0.25, 0.5, 0.75, 1],
+    });
+
+    function drawAdaptationChart(config) {
+      const svg = document.getElementById(config.id);
+      if (!svg) return;
+      svg.setAttribute("viewBox", "0 0 720 250");
+      svg.textContent = "";
+
+      const rows = config.rows || ADAPTATION_ROWS;
+      const margin = { top: 16, right: 18, bottom: 34, left: 48 };
+      const width = 720 - margin.left - margin.right;
+      const height = 250 - margin.top - margin.bottom;
+      const [yMin, yMax] = config.yDomain;
+      const maxWindow = Math.max(...rows.flatMap(row => row.windows.map(item => item.w)));
+      const x = windowIndex => margin.left + ((windowIndex - 1) / Math.max(1, maxWindow - 1)) * width;
+      const y = value => margin.top + (1 - ((value - yMin) / (yMax - yMin))) * height;
+      const add = (name, attrs, parent = svg) => {
+        const node = document.createElementNS(SVG_NS, name);
+        Object.entries(attrs).forEach(([key, value]) => node.setAttribute(key, value));
+        parent.appendChild(node);
+        return node;
+      };
+
+      add("rect", { x: margin.left, y: margin.top, width, height, fill: "#fbfcfd", stroke: "#d9e1e8" });
+      config.yTicks.forEach(tick => {
+        const yy = y(tick);
+        add("line", { x1: margin.left, y1: yy, x2: margin.left + width, y2: yy, stroke: "#e4eaf0", "stroke-width": 1 });
+        add("text", { x: margin.left - 8, y: yy + 4, "text-anchor": "end", "font-size": 11, fill: "#617080" }).textContent = formatTick(tick);
+      });
+      const xTicks = maxWindow <= 5 ? [1, 2, 3, 4, 5] : [1, 2, 4, 6, 8, 10];
+      xTicks.forEach(tick => {
+        const xx = x(tick);
+        add("line", { x1: xx, y1: margin.top + height, x2: xx, y2: margin.top + height + 5, stroke: "#8a98a5" });
+        add("text", { x: xx, y: margin.top + height + 20, "text-anchor": "middle", "font-size": 11, fill: "#617080" }).textContent = tick;
+      });
+
+      rows.forEach(row => {
+        const color = ADAPT_COLORS[row.label] || "#24476f";
+        const points = row.windows.map(item => `${x(item.w).toFixed(2)},${y(item[config.key]).toFixed(2)}`).join(" ");
+        add("polyline", {
+          points,
+          fill: "none",
+          stroke: color,
+          "stroke-width": 2.25,
+          "stroke-linecap": "round",
+          "stroke-linejoin": "round",
+        });
+        const last = row.windows[row.windows.length - 1];
+        add("circle", { cx: x(last.w), cy: y(last[config.key]), r: 3, fill: color });
+      });
+      add("text", { x: margin.left + width, y: margin.top + height + 31, "text-anchor": "end", "font-size": 11, fill: "#617080" }).textContent = "adaptation window";
+      renderAdaptLegend(config.id, rows);
+    }
+
+    function renderAdaptLegend(id, rows = ADAPTATION_ROWS) {
+      const target = document.querySelector(`[data-legend-for="${id}"]`);
+      if (!target) return;
+      target.textContent = "";
+      rows.forEach(row => {
+        const item = document.createElement("span");
+        item.className = "legend-item";
+        item.style.color = ADAPT_COLORS[row.label] || "#24476f";
+        const swatch = document.createElement("span");
+        swatch.className = "legend-swatch";
+        const label = document.createElement("span");
+        label.textContent = row.label;
+        item.appendChild(swatch);
+        item.appendChild(label);
+        target.appendChild(item);
+      });
+    }
+
+    document.querySelectorAll("[data-tab-target]").forEach(button => {
+      button.addEventListener("click", () => {
+        const target = button.getAttribute("data-tab-target");
+        document.querySelectorAll("[data-tab-target]").forEach(item => {
+          item.classList.toggle("active", item === button);
+        });
+        document.querySelectorAll(".tab-panel").forEach(panel => {
+          panel.hidden = panel.id !== `tab-${target}`;
+        });
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      });
+    });
+  </script>
+</body>
+</html>

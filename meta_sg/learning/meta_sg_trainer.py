@@ -14,6 +14,7 @@ from __future__ import annotations
 import math
 import os
 import json
+import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -144,8 +145,16 @@ class MetaSGTrainer:
             batch_types = self._sample_attack_types(cfg.K)
             adapted_params: List[Dict] = []
             task_results: List[TaskResult] = []
+            iter_started_at = time.perf_counter()
 
-            for xi in batch_types:
+            for task_index, xi in enumerate(batch_types, start=1):
+                task_started_at = time.perf_counter()
+                if self.log_interval <= 1:
+                    print(
+                        f"[MetaSG] iter {t + 1}/{self.total_iterations} "
+                        f"task {task_index}/{len(batch_types)} start attack={xi.name}",
+                        flush=True,
+                    )
                 task_result = self.task_runner.run(
                     attack_type=xi,
                     meta_defender=self.defender,
@@ -153,6 +162,14 @@ class MetaSGTrainer:
                 )
                 adapted_params.append(task_result.adapted_params)
                 task_results.append(task_result)
+                if self.log_interval <= 1:
+                    print(
+                        f"[MetaSG] iter {t + 1}/{self.total_iterations} "
+                        f"task {task_index}/{len(batch_types)} done attack={xi.name} "
+                        f"elapsed={time.perf_counter() - task_started_at:.1f}s "
+                        f"r_D={task_result.mean_defender_reward:.4f}",
+                        flush=True,
+                    )
 
             # Reptile meta-update θ ← θ + (1/K) Σ (θ_ξ - θ)
             meta_update_params = _meta_update_adapted_params(
@@ -190,7 +207,9 @@ class MetaSGTrainer:
                     f"r_D={mean_d_rew:.4f}  "
                     f"reptile_δ={reptile_norms['actor']:.5f}  "
                     f"{query_suffix}  "
-                    f"batch={[xi.name for xi in batch_types]}"
+                    f"elapsed={time.perf_counter() - iter_started_at:.1f}s  "
+                    f"batch={[xi.name for xi in batch_types]}",
+                    flush=True,
                 )
 
             if self.writer is not None:
@@ -495,6 +514,11 @@ def _query_metric_values(task_results: List[TaskResult]) -> Dict[str, float]:
     base = [r.query_base_reward for r in task_results if not math.isnan(r.query_base_reward)]
     adapted = [r.query_adapted_reward for r in task_results if not math.isnan(r.query_adapted_reward)]
     accepted = [float(r.query_accepted) for r in task_results if not math.isnan(r.query_gain)]
+    gain_accepted = [
+        float(r.query_gain_accepted)
+        for r in task_results
+        if not math.isnan(r.query_gain)
+    ]
     base_clean = [
         r.query_base_clean_acc
         for r in task_results
@@ -544,8 +568,11 @@ def _query_metric_values(task_results: List[TaskResult]) -> Dict[str, float]:
         "query_adapted_reward_mean": float(np.mean(adapted)) if adapted else float("nan"),
         "query_gain_mean": float(np.mean(gains)),
         "query_gain_min": float(np.min(gains)),
+        "query_gain_median": float(np.median(gains)),
         "query_accept_rate": float(np.mean(accepted)) if accepted else float("nan"),
     }
+    if gain_accepted:
+        metrics["query_gain_accept_rate"] = float(np.mean(gain_accepted))
     if base_clean:
         metrics["query_base_clean_acc_mean"] = float(np.mean(base_clean))
     if adapted_clean:
@@ -577,6 +604,8 @@ def _query_metric_values(task_results: List[TaskResult]) -> Dict[str, float]:
         metrics[f"{attack_prefix}gain"] = float(result.query_gain)
         metrics[f"query_attack_{attack_name}_accepted"] = float(result.query_accepted)
         metrics[f"{attack_prefix}accepted"] = float(result.query_accepted)
+        metrics[f"query_attack_{attack_name}_gain_accepted"] = float(result.query_gain_accepted)
+        metrics[f"{attack_prefix}gain_accepted"] = float(result.query_gain_accepted)
         metrics[f"query_attack_{attack_name}_clean_accepted"] = float(result.query_clean_accepted)
         metrics[f"{attack_prefix}clean_accepted"] = float(result.query_clean_accepted)
         metrics[f"query_attack_{attack_name}_backdoor_accepted"] = float(result.query_backdoor_accepted)

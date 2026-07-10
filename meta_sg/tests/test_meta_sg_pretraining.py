@@ -1,6 +1,7 @@
 """Tests for paper-aligned Meta-SG model-poisoning pretraining wiring."""
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -104,6 +105,58 @@ def test_pretraining_script_mixed_domain_combines_global_and_backdoor_attacks():
     ]
 
 
+def test_pretraining_script_clean_mixed_domain_includes_clean_global_and_backdoor_attacks():
+    from meta_sg.scripts.run_meta_sg_pretraining import attack_domain_from_name
+
+    domain = attack_domain_from_name("clean_mixed")
+
+    assert [attack.name for attack in domain] == [
+        "clean",
+        "ipm",
+        "lmp",
+        "rl",
+        "bfl",
+        "dba",
+        "rl_backdoor",
+    ]
+
+
+def test_pretraining_script_clean_global_backdoor_mixed_domain_has_each_task_once():
+    from meta_sg.scripts.run_meta_sg_pretraining import attack_domain_from_name
+
+    domain = attack_domain_from_name("clean_global_backdoor_mixed")
+
+    assert [attack.name for attack in domain] == [
+        "clean",
+        "ipm",
+        "lmp",
+        "rl",
+        "bfl",
+        "dba",
+        "rl_backdoor",
+        "mixed_backdoor",
+    ]
+    assert [attack.objective for attack in domain] == [
+        "clean",
+        "untargeted",
+        "untargeted",
+        "untargeted",
+        "targeted",
+        "targeted",
+        "targeted",
+        "targeted",
+    ]
+
+
+def test_pretraining_script_accepts_clean_global_backdoor_mixed_domain():
+    from meta_sg.scripts.run_meta_sg_pretraining import parse_args
+
+    args = parse_args(["--attack-domain", "clean_global_backdoor_mixed", "--K", "8"])
+
+    assert args.attack_domain == "clean_global_backdoor_mixed"
+    assert args.K == 8
+
+
 def test_pretraining_script_clean_backdoor_domain_includes_clean_and_backdoor_attacks():
     from meta_sg.scripts.run_meta_sg_pretraining import attack_domain_from_name
 
@@ -131,6 +184,203 @@ def test_attack_task_runner_uses_no_attack_strategy_for_clean_task():
     )
 
     assert runner._build_attack_strategy(ATTACK_DOMAIN["clean"]) is None
+
+
+def test_pretraining_script_accepts_model_aware_neuroclip_and_log_epsilon_args():
+    from meta_sg.scripts.run_meta_sg_pretraining import parse_args
+
+    args = parse_args(
+        [
+            "--attack-domain",
+            "clean_mixed",
+            "--defender-third-action",
+            "both",
+            "--post-defense-mode",
+            "model_aware_neuroclip",
+            "--neuroclip-eps-min",
+            "0.1",
+            "--neuroclip-eps-max",
+            "10.0",
+            "--neuroclip-log-scale",
+        ]
+    )
+
+    assert args.attack_domain == "clean_mixed"
+    assert args.defender_third_action == "both"
+    assert args.post_defense_mode == "model_aware_neuroclip"
+    assert args.neuroclip_eps_min == pytest.approx(0.1)
+    assert args.neuroclip_eps_max == pytest.approx(10.0)
+    assert args.neuroclip_log_scale is True
+
+
+def test_attack_task_runner_uses_model_aware_neuroclip_post_training_evaluator(monkeypatch):
+    import meta_sg.learning.task_runner as task_runner
+
+    calls = []
+
+    class ModelAwareCoordinator(StubCoordinator):
+        def __init__(self):
+            super().__init__(num_clients=6, num_attackers=1, seed=0)
+            self.runner = SimpleNamespace(model="base-model")
+
+        def evaluate_weights(self, weights):
+            return {
+                "clean_acc": 0.1,
+                "clean_loss": 0.9,
+                "backdoor_acc": 0.8,
+            }
+
+        def evaluate_model(self, model, weights):
+            return {
+                "clean_acc": 0.93 if model == "wrapped-base-model" else 0.0,
+                "clean_loss": 0.07,
+                "backdoor_acc": 0.04,
+            }
+
+    def fake_apply_post_defense(model, defense_type, param, **kwargs):
+        calls.append((model, defense_type, param, kwargs))
+        return f"wrapped-{model}"
+
+    monkeypatch.setattr(task_runner, "apply_post_defense", fake_apply_post_defense)
+
+    td3_cfg = TD3Config(hidden_dim=8, batch_size=2, buffer_capacity=16, warmup_steps=0)
+    meta_cfg = MetaSGConfig(
+        T=1,
+        K=1,
+        H_mnist=1,
+        l=0,
+        N_A=0,
+        post_br_defender_updates=0,
+        lambda_bd=1.0,
+        reward_mode="accuracy",
+        eval_every=1,
+        warmup_steps=0,
+        defender_third_action="both",
+        post_defense_mode="model_aware_neuroclip",
+        eps_min=0.1,
+        eps_max=10.0,
+        eps_log_scale=True,
+    )
+    runner = AttackTaskRunner(
+        coordinator_factory=lambda **_: ModelAwareCoordinator(),
+        td3_config=td3_cfg,
+        meta_config=meta_cfg,
+        obs_dim=1290,
+        act_dim=4,
+        attacker_agents={},
+        attacker_buffers={},
+        best_response=AttackerBestResponse({}, {}, n_a=0),
+    )
+    defender = TD3Agent(1290, 4, td3_cfg, torch.device("cpu"))
+
+    result = runner.run(ATTACK_DOMAIN["clean"], defender, seed_base=321)
+
+    assert calls
+    assert calls[0][0] == "base-model"
+    assert calls[0][1] == "neuroclip"
+    assert 0.1 <= calls[0][2] <= 10.0
+    assert result.mean_defender_reward == pytest.approx(0.89)
+    assert result.diagnostics["clean_acc"] == pytest.approx(0.93)
+    assert result.diagnostics["backdoor_acc"] == pytest.approx(0.04)
+
+
+def test_attack_task_runner_can_collect_multiple_support_episodes(monkeypatch):
+    update_calls = 0
+    original_update = TD3Agent.update
+
+    def counting_update(self, *args, **kwargs):
+        nonlocal update_calls
+        update_calls += 1
+        return original_update(self, *args, **kwargs)
+
+    monkeypatch.setattr(TD3Agent, "update", counting_update)
+
+    def factory():
+        return StubCoordinator(num_clients=6, num_attackers=1, seed=0)
+
+    obs_dim = 1290
+    act_dim = 3
+    td3_cfg = TD3Config(hidden_dim=8, batch_size=1, buffer_capacity=16, warmup_steps=0)
+    meta_cfg = MetaSGConfig(
+        T=1,
+        K=1,
+        H_mnist=1,
+        l=2,
+        N_A=0,
+        post_br_defender_updates=0,
+        support_episodes=3,
+        warmup_steps=0,
+    )
+    runner = AttackTaskRunner(
+        coordinator_factory=factory,
+        td3_config=td3_cfg,
+        meta_config=meta_cfg,
+        obs_dim=obs_dim,
+        act_dim=act_dim,
+        attacker_agents={},
+        attacker_buffers={"clean": ReplayBuffer(td3_cfg.buffer_capacity, obs_dim, act_dim)},
+        best_response=AttackerBestResponse({}, {}, n_a=0),
+    )
+    defender = TD3Agent(obs_dim, act_dim, td3_cfg, torch.device("cpu"))
+
+    result = runner.run(ATTACK_DOMAIN["clean"], defender, seed_base=123)
+
+    assert result.trajectories_collected == 3
+    assert result.transitions_collected == 3
+    assert result.diagnostics["support_episodes"] == 3
+    assert result.diagnostics["support_update_calls"] == 6
+    assert update_calls == 6
+
+
+def test_attack_task_runner_can_log_query_diagnostics_without_gating_reptile():
+    def factory():
+        return StubCoordinator(num_clients=6, num_attackers=1, seed=0)
+
+    obs_dim = 1290
+    act_dim = 3
+    td3_cfg = TD3Config(hidden_dim=8, batch_size=1, buffer_capacity=16, warmup_steps=0)
+    meta_cfg = MetaSGConfig(
+        T=1,
+        K=1,
+        H_mnist=1,
+        l=0,
+        N_A=0,
+        post_br_defender_updates=0,
+        meta_objective="reptile",
+        query_diagnostics_horizon=1,
+        query_accept_margin=999.0,
+        warmup_steps=0,
+    )
+    runner = AttackTaskRunner(
+        coordinator_factory=factory,
+        td3_config=td3_cfg,
+        meta_config=meta_cfg,
+        obs_dim=obs_dim,
+        act_dim=act_dim,
+        attacker_agents={},
+        attacker_buffers={"clean": ReplayBuffer(td3_cfg.buffer_capacity, obs_dim, act_dim)},
+        best_response=AttackerBestResponse({}, {}, n_a=0),
+    )
+    defender = TD3Agent(obs_dim, act_dim, td3_cfg, torch.device("cpu"))
+
+    result = runner.run(ATTACK_DOMAIN["clean"], defender, seed_base=123)
+
+    assert not np.isnan(result.query_gain)
+    assert result.query_gain_accepted is False
+    assert result.diagnostics["query_diagnostics_only"] == 1.0
+
+    from meta_sg.learning.meta_sg_trainer import _meta_update_adapted_params, _query_metric_values
+
+    params = _meta_update_adapted_params(
+        [result],
+        meta_objective="reptile",
+        query_accept_margin=999.0,
+    )
+    metrics = _query_metric_values([result])
+
+    assert params[0] is result.adapted_params
+    assert metrics["query_gain_accept_rate"] == pytest.approx(0.0)
+    assert metrics["query_attack_clean_gain_accepted"] == pytest.approx(0.0)
 
 
 def test_meta_sg_trainer_uses_iid_attack_sampling_by_default():
@@ -188,9 +438,40 @@ def test_pretraining_script_meta_config_uses_requested_horizon_for_each_dataset(
     stratified_args = parse_args(
         ["--backend", "stub", "--dataset", "mnist", "--H", "7", "--task-sampler", "stratified"]
     )
+    support_args = parse_args(
+        ["--backend", "stub", "--dataset", "mnist", "--H", "7", "--support-episodes", "3"]
+    )
+    diagnostic_args = parse_args(
+        [
+            "--backend",
+            "stub",
+            "--dataset",
+            "mnist",
+            "--H",
+            "7",
+            "--task-warmup-steps",
+            "5",
+            "--query-diagnostics-horizon",
+            "50",
+        ]
+    )
+    global_backdoor_args = parse_args(
+        [
+            "--backend",
+            "fl_sandbox",
+            "--attack-domain",
+            "clean_global_backdoor_mixed",
+            "--K",
+            "8",
+        ]
+    )
 
     assert build_meta_config(mnist_args).H == 7
     assert build_meta_config(cifar_args).H == 9
+    assert build_meta_config(mnist_args).support_episodes == 1
+    assert build_meta_config(support_args).support_episodes == 3
+    assert build_meta_config(diagnostic_args).warmup_steps == 5
+    assert build_meta_config(diagnostic_args).query_diagnostics_horizon == 50
     assert build_meta_config(mnist_args).lambda_bd == pytest.approx(0.0)
     assert build_meta_config(mnist_args).reward_mode == "accuracy"
     assert build_meta_config(mnist_args).task_sampler == "iid"
@@ -198,6 +479,8 @@ def test_pretraining_script_meta_config_uses_requested_horizon_for_each_dataset(
     assert build_meta_config(server_lr_args).defender_third_action == "server_lr"
     assert build_meta_config(both_args).lambda_bd == pytest.approx(1.0)
     assert build_meta_config(both_args).native_sandbox_attacks is False
+    assert build_meta_config(global_backdoor_args).lambda_bd == pytest.approx(1.0)
+    assert build_meta_config(global_backdoor_args).native_sandbox_attacks is True
     assert defender_action_dim(server_lr_args) == 3
     assert defender_action_dim(both_args) == 4
 
@@ -372,6 +655,23 @@ def test_pretraining_script_can_append_clean_backdoor_attack_context_names():
     assert cfg.attack_context_names == ("clean", "bfl", "dba", "rl_backdoor")
 
 
+def test_pretraining_script_supports_clean_global_attack_domain():
+    from meta_sg.scripts.run_meta_sg_pretraining import (
+        attack_domain_from_name,
+        build_meta_config,
+        parse_args,
+    )
+
+    args = parse_args(["--attack-domain", "clean_global", "--attack-context"])
+
+    cfg = build_meta_config(args)
+    attack_domain = attack_domain_from_name(args.attack_domain)
+
+    assert [attack.name for attack in attack_domain] == ["clean", "ipm", "lmp", "rl"]
+    assert cfg.lambda_bd == pytest.approx(0.0)
+    assert cfg.attack_context_names == ("clean", "ipm", "lmp", "rl")
+
+
 def test_pretraining_sandbox_config_disables_attackers_for_clean_task():
     from meta_sg.scripts.run_meta_sg_pretraining import build_sandbox_config, parse_args
 
@@ -424,6 +724,147 @@ def test_direct_eval_script_threads_server_lr_penalty_to_bsmg_config():
     cfg = _bsmg_config(args)
 
     assert cfg.server_lr_penalty_weight == pytest.approx(0.5)
+
+
+def test_direct_eval_script_accepts_model_aware_neuroclip_overlay_args():
+    from meta_sg.scripts.evaluate_meta_sg_direct import parse_args
+
+    args = parse_args(
+        [
+            "--checkpoint",
+            "dummy.pt",
+            "--output-json",
+            "out.json",
+            "--post-defense-mode",
+            "model_aware_neuroclip",
+            "--fixed-neuroclip-epsilon",
+            "0.075",
+        ]
+    )
+
+    assert args.post_defense_mode == "model_aware_neuroclip"
+    assert args.fixed_neuroclip_epsilon == pytest.approx(0.075)
+
+
+def test_direct_eval_model_aware_neuroclip_evaluator_wraps_model_without_pruning(monkeypatch):
+    import meta_sg.scripts.evaluate_meta_sg_direct as direct_eval
+
+    calls = []
+    coordinator = SimpleNamespace(
+        runner=SimpleNamespace(model="base-model"),
+        evaluate_weights=lambda weights: {
+            "clean_acc": 0.1,
+            "clean_loss": 0.9,
+            "backdoor_acc": 0.8,
+        },
+        evaluate_model=lambda model, weights: {
+            "clean_acc": 0.91 if model == "neuroclip-model" and weights == ["w"] else 0.0,
+            "clean_loss": 0.09,
+            "backdoor_acc": 0.02,
+        },
+    )
+
+    def fake_apply_post_defense(model, defense_type, param, **kwargs):
+        calls.append((model, defense_type, param, kwargs))
+        return "neuroclip-model"
+
+    monkeypatch.setattr(direct_eval, "apply_post_defense", fake_apply_post_defense)
+    args = direct_eval.parse_args(
+        [
+            "--checkpoint",
+            "dummy.pt",
+            "--output-json",
+            "out.json",
+            "--post-defense-mode",
+            "model_aware_neuroclip",
+            "--fixed-neuroclip-epsilon",
+            "0.075",
+        ]
+    )
+    evaluator = direct_eval._post_training_evaluator_for_args(args, coordinator)
+
+    metrics = evaluator(
+        ["w"],
+        DefenseDecision(
+            norm_bound_alpha=1.0,
+            trimmed_mean_beta=0.2,
+            neuroclip_epsilon=None,
+            server_lr=0.8,
+        ),
+    )
+
+    assert calls == [("base-model", "neuroclip", pytest.approx(0.075), {})]
+    assert metrics == {
+        "clean_acc": pytest.approx(0.91),
+        "clean_loss": pytest.approx(0.09),
+        "backdoor_acc": pytest.approx(0.02),
+    }
+
+
+def test_direct_eval_model_aware_neuroclip_evaluator_uses_latest_runner_model(monkeypatch):
+    import meta_sg.scripts.evaluate_meta_sg_direct as direct_eval
+
+    runner = SimpleNamespace(model="initial-model")
+    calls = []
+    coordinator = SimpleNamespace(
+        runner=runner,
+        evaluate_model=lambda model, weights: {
+            "clean_acc": 0.9 if model == "wrapped-latest-model" else 0.0,
+            "clean_loss": 0.1,
+            "backdoor_acc": 0.0,
+        },
+    )
+
+    def fake_apply_post_defense(model, defense_type, param, **kwargs):
+        calls.append(model)
+        return f"wrapped-{model}"
+
+    monkeypatch.setattr(direct_eval, "apply_post_defense", fake_apply_post_defense)
+    args = direct_eval.parse_args(
+        [
+            "--checkpoint",
+            "dummy.pt",
+            "--output-json",
+            "out.json",
+            "--post-defense-mode",
+            "model_aware_neuroclip",
+            "--fixed-neuroclip-epsilon",
+            "1000000.0",
+        ]
+    )
+    evaluator = direct_eval._post_training_evaluator_for_args(args, coordinator)
+    runner.model = "latest-model"
+
+    metrics = evaluator(
+        ["w"],
+        DefenseDecision(norm_bound_alpha=1.0, trimmed_mean_beta=0.2),
+    )
+
+    assert calls == ["latest-model"]
+    assert metrics["clean_acc"] == pytest.approx(0.9)
+
+
+def test_direct_eval_script_threads_td3_adaptation_batch_and_warmup_options():
+    from meta_sg.scripts.evaluate_meta_sg_direct import parse_args
+
+    args = parse_args(
+        [
+            "--checkpoint",
+            "dummy.pt",
+            "--output-json",
+            "out.json",
+            "--few-shot",
+            "--few-shot-method",
+            "td3",
+            "--adaptation-batch-size",
+            "32",
+            "--adaptation-warmup-steps",
+            "5",
+        ]
+    )
+
+    assert args.adaptation_batch_size == 32
+    assert args.adaptation_warmup_steps == 5
 
 
 def test_direct_eval_script_can_append_attack_context_names_to_bsmg_config():
@@ -3891,3 +4332,35 @@ def test_pretraining_script_can_resume_from_checkpoint_with_global_iteration(tmp
     assert config["resume_from"] == str(first_run / "checkpoints" / "latest")
     assert config["start_iteration"] == 1
     assert config["total_iterations"] == 2
+
+
+def test_4d_global_backdoor_job_defaults_to_checkpoint_every_five_iterations():
+    script = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "run_4d_both_global_backdoor_mixed_h200_job.sh"
+    )
+
+    assert 'CHECKPOINT_INTERVAL="${CHECKPOINT_INTERVAL:-5}"' in script.read_text()
+
+
+def test_curriculum_job_runs_three_domains_with_short_then_full_schedule():
+    script = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "run_4d_curriculum_global_backdoor_mixed_h200_job.sh"
+    )
+
+    text = script.read_text()
+
+    assert 'STAGE1_DOMAIN="${STAGE1_DOMAIN:-clean_global}"' in text
+    assert 'STAGE2_DOMAIN="${STAGE2_DOMAIN:-clean_backdoor_mixed}"' in text
+    assert 'STAGE3_DOMAIN="${STAGE3_DOMAIN:-clean_global_backdoor_mixed}"' in text
+    assert 'STAGE1_T="${STAGE1_T:-10}"' in text
+    assert 'STAGE2_T="${STAGE2_T:-10}"' in text
+    assert 'STAGE3_T="${STAGE3_T:-30}"' in text
+    assert 'STAGE1_K="${STAGE1_K:-4}"' in text
+    assert 'STAGE2_K="${STAGE2_K:-5}"' in text
+    assert 'STAGE3_K="${STAGE3_K:-8}"' in text
+    assert 'STAGE3_META_STEP="${STAGE3_META_STEP:-0.1}"' in text
+    assert '--resume-from "$resume_from"' in text

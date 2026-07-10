@@ -49,9 +49,61 @@ def clean_backdoor_attack_domain() -> list[AttackType]:
     return [ATTACK_DOMAIN["clean"], *backdoor_attack_domain()]
 
 
+def clean_mixed_backdoor_attack_domain() -> list[AttackType]:
+    """Return clean plus one task where BFL/DBA/RL-backdoor coexist among attackers."""
+    return [
+        ATTACK_DOMAIN["clean"],
+        AttackType(name="mixed_backdoor", objective="targeted", adaptive=False),
+    ]
+
+
+def clean_backdoor_mixed_attack_domain() -> list[AttackType]:
+    """Return clean, each single backdoor task, and the mixed-client backdoor task."""
+    return [
+        ATTACK_DOMAIN["clean"],
+        *backdoor_attack_domain(),
+        AttackType(name="mixed_backdoor", objective="targeted", adaptive=False),
+    ]
+
+
 def mixed_attack_domain() -> list[AttackType]:
     """Return global model-poisoning plus targeted backdoor task domain."""
     return [*poisoning_attack_domain(), *backdoor_attack_domain()]
+
+
+def clean_mixed_attack_domain() -> list[AttackType]:
+    """Return clean plus global model-poisoning and targeted backdoor tasks."""
+    return [ATTACK_DOMAIN["clean"], *mixed_attack_domain()]
+
+
+def clean_global_attack_domain() -> list[AttackType]:
+    """Return clean plus global model-poisoning tasks."""
+    return [ATTACK_DOMAIN["clean"], *poisoning_attack_domain()]
+
+
+def clean_global_backdoor_mixed_attack_domain() -> list[AttackType]:
+    """Return clean, global poisoning, single backdoors, and mixed-client backdoor."""
+    return [
+        ATTACK_DOMAIN["clean"],
+        *poisoning_attack_domain(),
+        *backdoor_attack_domain(),
+        AttackType(name="mixed_backdoor", objective="targeted", adaptive=False),
+    ]
+
+
+NATIVE_BACKDOOR_ATTACK_DOMAINS = {
+    "backdoor",
+    "clean_backdoor",
+    "clean_mixed_backdoor",
+    "clean_backdoor_mixed",
+    "mixed",
+    "clean_mixed",
+    "clean_global_backdoor_mixed",
+}
+
+
+def domain_uses_native_backdoor_attacks(name: str) -> bool:
+    return str(name) in NATIVE_BACKDOOR_ATTACK_DOMAINS
 
 
 def attack_domain_from_name(name: str) -> list[AttackType]:
@@ -61,8 +113,18 @@ def attack_domain_from_name(name: str) -> list[AttackType]:
         return backdoor_attack_domain()
     if name == "clean_backdoor":
         return clean_backdoor_attack_domain()
+    if name == "clean_mixed_backdoor":
+        return clean_mixed_backdoor_attack_domain()
+    if name == "clean_backdoor_mixed":
+        return clean_backdoor_mixed_attack_domain()
     if name == "mixed":
         return mixed_attack_domain()
+    if name == "clean_mixed":
+        return clean_mixed_attack_domain()
+    if name == "clean_global":
+        return clean_global_attack_domain()
+    if name == "clean_global_backdoor_mixed":
+        return clean_global_backdoor_mixed_attack_domain()
     raise ValueError(f"Unsupported attack domain: {name}")
 
 
@@ -77,7 +139,17 @@ def parse_args(argv=None):
     parser.add_argument("--dataset", choices=["mnist", "cifar10"], default="mnist")
     parser.add_argument(
         "--attack-domain",
-        choices=["model_poisoning", "backdoor", "clean_backdoor", "mixed"],
+        choices=[
+            "model_poisoning",
+            "backdoor",
+            "clean_backdoor",
+            "clean_mixed_backdoor",
+            "clean_backdoor_mixed",
+            "mixed",
+            "clean_mixed",
+            "clean_global",
+            "clean_global_backdoor_mixed",
+        ],
         default="model_poisoning",
         help="Meta-training attack task domain.",
     )
@@ -85,6 +157,15 @@ def parse_args(argv=None):
     parser.add_argument("--K", type=int, default=10, help="Attack tasks per outer iteration")
     parser.add_argument("--H", type=int, default=200, help="FL rollout horizon per task")
     parser.add_argument("--l", type=int, default=10, help="Defender inner TD3 updates")
+    parser.add_argument(
+        "--support-episodes",
+        type=int,
+        default=1,
+        help=(
+            "Number of support trajectories collected per attack task. "
+            "Each episode collects H FL rounds and then runs l defender TD3 updates."
+        ),
+    )
     parser.add_argument("--N-A", dest="N_A", type=int, default=10, help="Adaptive attacker BR updates")
     parser.add_argument("--post-br-defender-updates", type=int, default=1)
     parser.add_argument("--meta-step", type=float, default=1.0)
@@ -104,6 +185,12 @@ def parse_args(argv=None):
         help="Held-out query rollout horizon for query_gated_reptile. Defaults to H.",
     )
     parser.add_argument("--query-seed-offset", type=int, default=50_000)
+    parser.add_argument(
+        "--query-diagnostics-horizon",
+        type=int,
+        default=None,
+        help="Held-out query horizon used only for diagnostics when the meta objective is vanilla Reptile.",
+    )
     parser.add_argument("--query-accept-margin", type=float, default=0.0)
     parser.add_argument(
         "--query-clean-floor",
@@ -164,6 +251,12 @@ def parse_args(argv=None):
         help="Attack task sampler: iid matches the paper; stratified guarantees coverage when possible.",
     )
     parser.add_argument(
+        "--task-warmup-steps",
+        type=int,
+        default=0,
+        help="Random warmup transitions collected inside each task before support adaptation.",
+    )
+    parser.add_argument(
         "--attack-context",
         action="store_true",
         help="Append a one-hot attack-domain context vector to every Meta-SG observation.",
@@ -173,6 +266,19 @@ def parse_args(argv=None):
         choices=["neuroclip", "server_lr", "both"],
         default="neuroclip",
         help="Third defender action: neuroclip is reward-only post training; server_lr scales the FL transition.",
+    )
+    parser.add_argument(
+        "--post-defense-mode",
+        choices=["weight_copy", "model_aware_neuroclip"],
+        default="weight_copy",
+        help="Post-training reward/eval path used during Meta-SG rollouts.",
+    )
+    parser.add_argument("--neuroclip-eps-min", type=float, default=1.0)
+    parser.add_argument("--neuroclip-eps-max", type=float, default=10.0)
+    parser.add_argument(
+        "--neuroclip-log-scale",
+        action="store_true",
+        help="Decode the NeuroClip epsilon action logarithmically.",
     )
     parser.add_argument("--server-lr-min", type=float, default=0.0)
     parser.add_argument("--server-lr-max", type=float, default=1.0)
@@ -223,7 +329,7 @@ def parse_args(argv=None):
 def build_meta_config(args) -> MetaSGConfig:
     lambda_bd = args.lambda_bd
     if lambda_bd is None:
-        lambda_bd = 1.0 if args.attack_domain in {"backdoor", "clean_backdoor", "mixed"} else 0.0
+        lambda_bd = 1.0 if domain_uses_native_backdoor_attacks(args.attack_domain) else 0.0
     attack_context_names = (
         tuple(attack.name for attack in attack_domain_from_name(args.attack_domain))
         if args.attack_context
@@ -235,12 +341,14 @@ def build_meta_config(args) -> MetaSGConfig:
         H_mnist=args.H,
         H_cifar=args.H,
         l=args.l,
+        support_episodes=args.support_episodes,
         N_A=args.N_A,
         post_br_defender_updates=args.post_br_defender_updates,
         meta_update_step=args.meta_step,
         meta_objective=args.meta_objective,
         query_horizon=args.query_horizon,
         query_seed_offset=args.query_seed_offset,
+        query_diagnostics_horizon=args.query_diagnostics_horizon,
         query_accept_margin=args.query_accept_margin,
         query_clean_floor=args.query_clean_floor,
         query_clean_drop_tolerance=args.query_clean_drop_tolerance,
@@ -251,17 +359,20 @@ def build_meta_config(args) -> MetaSGConfig:
         query_targeted_min_base_backdoor=args.query_targeted_min_base_backdoor,
         task_sampler=args.task_sampler,
         eval_every=1,
-        warmup_steps=0,
+        warmup_steps=args.task_warmup_steps,
         history_len=0,
         lambda_bd=float(lambda_bd),
         reward_mode="accuracy",
         defender_third_action=args.defender_third_action,
+        post_defense_mode=args.post_defense_mode,
+        eps_min=float(args.neuroclip_eps_min),
+        eps_max=float(args.neuroclip_eps_max),
+        eps_log_scale=bool(args.neuroclip_log_scale),
         server_lr_min=float(args.server_lr_min),
         server_lr_max=float(args.server_lr_max),
         server_lr_penalty_weight=float(args.server_lr_penalty_weight),
         native_sandbox_attacks=(
-            args.backend == "fl_sandbox"
-            and args.attack_domain in {"backdoor", "clean_backdoor", "mixed"}
+            args.backend == "fl_sandbox" and domain_uses_native_backdoor_attacks(args.attack_domain)
         ),
         attack_context_names=attack_context_names,
         dataset=args.dataset,
@@ -384,6 +495,9 @@ def probe_obs_dim(args, meta_config: MetaSGConfig) -> int:
             lambda_bd=meta_config.lambda_bd,
             reward_mode=meta_config.reward_mode,
             third_action=meta_config.defender_third_action,
+            eps_min=meta_config.eps_min,
+            eps_max=meta_config.eps_max,
+            eps_log_scale=meta_config.eps_log_scale,
             server_lr_min=meta_config.server_lr_min,
             server_lr_max=meta_config.server_lr_max,
             server_lr_penalty_weight=meta_config.server_lr_penalty_weight,

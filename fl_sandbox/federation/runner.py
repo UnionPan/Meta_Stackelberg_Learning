@@ -91,13 +91,14 @@ class MinimalFLRunner:
         self.poisoned_train_loaders = self._prepare_poisoned_train_loaders()
         self.poisoned_eval_loader = self._prepare_poisoned_eval_loader()
 
-    def reset_model(self) -> None:
+    def reset_model(self, *, rebuild_poisoned_loaders: bool = False) -> None:
         self._set_seed(self.config.runtime.seed)
         self.model, self.client_model = self._initialize_model_pair()
         self.client_optimizer = torch.optim.SGD(self.client_model.parameters(), lr=self.config.runtime.lr)
         self.current_weights = self._capture_weights(self.model)
-        self.poisoned_train_loaders = self._prepare_poisoned_train_loaders()
-        self.poisoned_eval_loader = self._prepare_poisoned_eval_loader()
+        if rebuild_poisoned_loaders:
+            self.poisoned_train_loaders = self._prepare_poisoned_train_loaders()
+            self.poisoned_eval_loader = self._prepare_poisoned_eval_loader()
 
     def run_round(
         self,

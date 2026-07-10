@@ -33,6 +33,7 @@ class BSMGConfig:
     beta_max: float = 0.45            # max trimmed mean ratio
     eps_min: float = 1.0              # min NeuroClip clip range
     eps_max: float = 10.0             # max NeuroClip clip range
+    eps_log_scale: bool = False       # decode epsilon on log scale when True
     third_action: str = "neuroclip"   # "neuroclip", "server_lr", or "both"
     server_lr_min: float = 0.0
     server_lr_max: float = 1.0
@@ -67,6 +68,9 @@ class BSMGEnv:
         defense_strategy: DefenseStrategy,
         config: Optional[BSMGConfig] = None,
         evaluator: Optional[Callable[[Weights], dict[str, float]]] = None,
+        post_training_evaluator: Optional[
+            Callable[[Weights, DefenseDecision], dict[str, float]]
+        ] = None,
     ) -> None:
         self.coordinator = coordinator
         self.attack_type = attack_type
@@ -74,6 +78,7 @@ class BSMGEnv:
         self.defense_strategy = defense_strategy
         self.config = config or BSMGConfig()
         self._evaluator = evaluator
+        self._post_training_evaluator = post_training_evaluator
 
         self._round = 0
         self._obs: Optional[np.ndarray] = None
@@ -98,7 +103,7 @@ class BSMGEnv:
     def step(
         self,
         defender_action: np.ndarray,
-        attacker_action: np.ndarray,
+        attacker_action: Optional[np.ndarray],
     ) -> Tuple[np.ndarray, float, float, bool, Dict[str, Any]]:
         """
         Execute one FL round.
@@ -119,12 +124,13 @@ class BSMGEnv:
             beta_max=self.config.beta_max,
             eps_min=self.config.eps_min,
             eps_max=self.config.eps_max,
+            eps_log_scale=self.config.eps_log_scale,
             use_neuroclip=self.config.use_neuroclip,
             third_action=self.config.third_action,
             server_lr_min=self.config.server_lr_min,
             server_lr_max=self.config.server_lr_max,
         )
-        attack_decision = AttackDecision.from_raw(attacker_action)
+        attack_decision = None if attacker_action is None else AttackDecision.from_raw(attacker_action)
 
         # If adaptive attacker: inject current obs for action selection
         if hasattr(self.attack_strategy, "set_obs") and self._obs is not None:
@@ -144,12 +150,19 @@ class BSMGEnv:
             evaluate=should_evaluate,
         )
 
-        # Post-training defense applied to a COPY of W_{t+1} for reward only
+        # Post-training defense applied only for reward/evaluation; W_{t+1}
+        # remains the deployed FL state used by the next round.
         w_next = self.coordinator.current_weights
-        w_eval = self.defense_strategy.apply_post_training(w_next, defense_decision)
-
-        # Reward-only summary on post-training weights
-        eval_summary = _patch_summary_with_eval(summary, w_eval, evaluator=self._evaluator)
+        if self._post_training_evaluator is not None:
+            eval_summary = _patch_summary_with_post_eval(
+                summary,
+                w_next,
+                defense_decision,
+                evaluator=self._post_training_evaluator,
+            )
+        else:
+            w_eval = self.defense_strategy.apply_post_training(w_next, defense_decision)
+            eval_summary = _patch_summary_with_eval(summary, w_eval, evaluator=self._evaluator)
 
         action_penalty = self._action_prior_penalty(defender_action)
         server_lr_penalty = self._server_lr_penalty(defense_decision)
@@ -262,7 +275,7 @@ class BSMGEnv:
         self,
         *,
         defender_action: np.ndarray,
-        attacker_action: np.ndarray,
+        attacker_action: Optional[np.ndarray],
         defender_reward: float,
         attacker_reward: float,
         summary,
@@ -271,7 +284,7 @@ class BSMGEnv:
         if self.config.history_len <= 0:
             return
         d_raw = _fixed_len(defender_action, 3)
-        a_raw = _fixed_len(attacker_action, 3)
+        reserved_attacker_slots = np.zeros(3, dtype=np.float32)
         benign_norms = np.asarray(getattr(summary, "benign_update_norms", []), dtype=np.float32)
         malicious_norms = np.asarray(getattr(summary, "malicious_update_norms", []), dtype=np.float32)
         malicious_cos = np.asarray(getattr(summary, "malicious_cosines_to_benign", []), dtype=np.float32)
@@ -286,7 +299,7 @@ class BSMGEnv:
         features = np.asarray(
             [
                 *d_raw,
-                *a_raw,
+                *reserved_attacker_slots,
                 defender_reward,
                 attacker_reward,
                 _finite(summary.clean_acc),
@@ -367,7 +380,25 @@ def _patch_summary_with_eval(
     )
 
 
-def _fixed_len(value: np.ndarray, length: int) -> np.ndarray:
+def _patch_summary_with_post_eval(
+    summary: RoundSummary,
+    weights: Weights,
+    decision: DefenseDecision,
+    *,
+    evaluator: Callable[[Weights, DefenseDecision], dict[str, float]],
+) -> RoundSummary:
+    metrics = evaluator(weights, decision)
+    return replace(
+        summary,
+        clean_acc=float(metrics.get("clean_acc", summary.clean_acc)),
+        clean_loss=float(metrics.get("clean_loss", summary.clean_loss)),
+        backdoor_acc=float(metrics.get("backdoor_acc", summary.backdoor_acc)),
+    )
+
+
+def _fixed_len(value: Optional[np.ndarray], length: int) -> np.ndarray:
+    if value is None:
+        return np.zeros(length, dtype=np.float32)
     arr = np.asarray(value, dtype=np.float32).ravel()
     if arr.shape[0] < length:
         arr = np.pad(arr, (0, length - arr.shape[0]))

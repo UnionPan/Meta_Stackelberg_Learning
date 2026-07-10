@@ -33,6 +33,11 @@ class PostMetricStubCoordinator(StubCoordinator):
         return summary
 
 
+class NoPostTrainingCopyPaperDefense(PaperDefenseStrategy):
+    def apply_post_training(self, weights, decision):
+        raise AssertionError("weight-copy post-training defense should not run")
+
+
 # ── reset ─────────────────────────────────────────────────────────────────
 
 def test_reset_returns_weights_for_every_layer():
@@ -213,6 +218,57 @@ def test_bsmg_env_can_penalize_extreme_defender_actions():
     assert reward == pytest.approx(info["clean_acc"] - info["backdoor_acc"] - 0.5)
 
 
+def test_bsmg_env_accepts_native_attacker_action_none():
+    class RecordingCoordinator(StubCoordinator):
+        def __init__(self):
+            super().__init__(num_clients=2, num_attackers=1, subsample_rate=1.0, seed=0)
+            self.seen_attack_decisions = []
+
+        def run_round(self, *args, **kwargs):
+            self.seen_attack_decisions.append(kwargs["attack_decision"])
+            return super().run_round(*args, **kwargs)
+
+    class NativeTolerantAttack(IPMAttack):
+        def execute(self, old_weights, benign_weights, decision, num_malicious=1):
+            assert decision is None
+            return [old_weights] * num_malicious
+
+    coordinator = RecordingCoordinator()
+    env = BSMGEnv(
+        coordinator=coordinator,
+        attack_type=ATTACK_DOMAIN["ipm"],
+        attack_strategy=NativeTolerantAttack(),
+        defense_strategy=PaperDefenseStrategy(),
+        config=BSMGConfig(horizon=1, history_len=0),
+    )
+    env.reset(seed=3)
+
+    _, _, _, _, info = env.step(
+        np.asarray([0.0, 0.0, 0.0], dtype=np.float32),
+        None,
+    )
+
+    assert coordinator.seen_attack_decisions == [None]
+    assert info["attack_decision"] is None
+
+
+def test_bsmg_env_history_does_not_expose_attacker_raw_action():
+    env = BSMGEnv(
+        coordinator=_make_coord(),
+        attack_type=ATTACK_DOMAIN["ipm"],
+        attack_strategy=IPMAttack(),
+        defense_strategy=PaperDefenseStrategy(),
+        config=BSMGConfig(horizon=1, history_len=1),
+    )
+    env.reset(seed=3)
+    attacker_action = np.asarray([1.0, -1.0, 0.25], dtype=np.float32)
+
+    env.step(np.zeros(3, dtype=np.float32), attacker_action)
+
+    assert len(env._history) == 1
+    assert env._history[-1][3:6].tolist() == pytest.approx([0.0, 0.0, 0.0])
+
+
 def test_bsmg_env_can_penalize_low_server_lr():
     env = BSMGEnv(
         coordinator=_make_coord(),
@@ -255,6 +311,34 @@ def test_defense_decision_can_decode_neuroclip_and_server_lr_from_four_dim_actio
     assert decision.trimmed_mean_beta == pytest.approx(0.225)
     assert decision.neuroclip_epsilon == pytest.approx(2.0)
     assert decision.server_lr == pytest.approx(0.5)
+
+
+def test_defense_decision_can_decode_log_scale_neuroclip_epsilon():
+    low = DefenseDecision.from_raw(
+        np.asarray([0.0, 0.0, -1.0, 0.0], dtype=np.float32),
+        third_action="both",
+        eps_min=0.1,
+        eps_max=10.0,
+        eps_log_scale=True,
+    )
+    middle = DefenseDecision.from_raw(
+        np.asarray([0.0, 0.0, 0.0, 0.0], dtype=np.float32),
+        third_action="both",
+        eps_min=0.1,
+        eps_max=10.0,
+        eps_log_scale=True,
+    )
+    high = DefenseDecision.from_raw(
+        np.asarray([0.0, 0.0, 1.0, 0.0], dtype=np.float32),
+        third_action="both",
+        eps_min=0.1,
+        eps_max=10.0,
+        eps_log_scale=True,
+    )
+
+    assert low.neuroclip_epsilon == pytest.approx(0.1)
+    assert middle.neuroclip_epsilon == pytest.approx(1.0)
+    assert high.neuroclip_epsilon == pytest.approx(10.0)
 
 
 def test_bsmg_env_uses_four_defender_actions_for_combined_defense():
@@ -373,6 +457,49 @@ def test_bsmg_env_uses_post_training_evaluator_for_reward_and_info():
     assert info["post_clean_loss"] == pytest.approx(0.2)
     assert info["post_backdoor_acc"] == pytest.approx(0.4)
     assert "pre_clean_acc" in info
+
+
+def test_bsmg_env_post_training_evaluator_receives_decision_without_weight_copy_path():
+    calls = []
+
+    def post_training_evaluator(weights, decision):
+        calls.append((weights, decision))
+        return {
+            "clean_acc": 0.88,
+            "clean_loss": 0.12,
+            "backdoor_acc": 0.03,
+        }
+
+    env = BSMGEnv(
+        coordinator=_make_coord(),
+        attack_type=ATTACK_DOMAIN["ipm"],
+        attack_strategy=IPMAttack(),
+        defense_strategy=NoPostTrainingCopyPaperDefense(),
+        config=BSMGConfig(
+            horizon=1,
+            third_action="both",
+            eps_min=2.0,
+            eps_max=10.0,
+            server_lr_min=0.4,
+            server_lr_max=1.0,
+            lambda_bd=1.0,
+        ),
+        post_training_evaluator=post_training_evaluator,
+    )
+    env.reset(seed=9)
+
+    _, reward, _, _, info = env.step(
+        np.asarray([0.0, 0.0, -1.0, 1.0], dtype=np.float32),
+        np.zeros(3, dtype=np.float32),
+    )
+
+    assert len(calls) == 1
+    _, decision = calls[0]
+    assert decision.neuroclip_epsilon == pytest.approx(2.0)
+    assert decision.server_lr == pytest.approx(1.0)
+    assert info["clean_acc"] == pytest.approx(0.88)
+    assert info["backdoor_acc"] == pytest.approx(0.03)
+    assert reward == pytest.approx(0.85)
 
 
 def test_bsmg_env_raises_when_post_training_evaluator_fails():

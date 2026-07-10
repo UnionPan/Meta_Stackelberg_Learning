@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
+import torch
 
 from fl_sandbox.federation.runner import MinimalFLRunner
 from meta_sg.simulation.fl_sandbox_adapter import FLSandboxCoordinatorAdapter, MetaSGSandboxAttack
@@ -87,3 +88,40 @@ def test_minimal_fl_runner_preserves_zero_server_lr_defense_decision():
     )
 
     assert defender.server_lr == pytest.approx(0.0)
+
+
+def test_minimal_fl_runner_reset_model_reuses_poisoned_loaders_by_default():
+    runner = object.__new__(MinimalFLRunner)
+    runner.config = SimpleNamespace(runtime=SimpleNamespace(seed=5, lr=0.1))
+    runner._set_seed = lambda seed: setattr(runner, "seed_seen", seed)
+    runner._initialize_model_pair = lambda: (torch.nn.Linear(1, 1), torch.nn.Linear(1, 1))
+    runner._capture_weights = lambda model: ["weights"]
+    runner._prepare_poisoned_train_loaders = lambda: (_ for _ in ()).throw(
+        AssertionError("poisoned train loaders should be reused")
+    )
+    runner._prepare_poisoned_eval_loader = lambda: (_ for _ in ()).throw(
+        AssertionError("poisoned eval loader should be reused")
+    )
+    runner.poisoned_train_loaders = {"existing": object()}
+    runner.poisoned_eval_loader = object()
+
+    runner.reset_model()
+
+    assert runner.seed_seen == 5
+    assert runner.current_weights == ["weights"]
+    assert runner.poisoned_train_loaders.keys() == {"existing"}
+
+
+def test_minimal_fl_runner_reset_model_can_rebuild_poisoned_loaders():
+    runner = object.__new__(MinimalFLRunner)
+    runner.config = SimpleNamespace(runtime=SimpleNamespace(seed=5, lr=0.1))
+    runner._set_seed = lambda seed: None
+    runner._initialize_model_pair = lambda: (torch.nn.Linear(1, 1), torch.nn.Linear(1, 1))
+    runner._capture_weights = lambda model: ["weights"]
+    runner._prepare_poisoned_train_loaders = lambda: {"fresh": object()}
+    runner._prepare_poisoned_eval_loader = lambda: "fresh_eval"
+
+    runner.reset_model(rebuild_poisoned_loaders=True)
+
+    assert runner.poisoned_train_loaders.keys() == {"fresh"}
+    assert runner.poisoned_eval_loader == "fresh_eval"
