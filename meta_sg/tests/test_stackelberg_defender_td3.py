@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 import torch
 
+import meta_sg.scripts.run_stackelberg_defender_td3 as defender_runner
 from meta_sg.learning.config import TD3Config
 from meta_sg.learning.td3 import TD3Agent
 from meta_sg.scripts.run_stackelberg_defender_td3 import (
@@ -28,10 +29,14 @@ from meta_sg.scripts.run_stackelberg_defender_td3 import (
 )
 
 
-def test_resolve_attacker_checkpoint_uses_repository_80k_policy_by_default():
+def test_resolve_attacker_checkpoint_uses_configured_default(tmp_path, monkeypatch):
+    checkpoint = tmp_path / "rl_policy_latest.pt"
+    torch.save({}, checkpoint)
+    monkeypatch.setattr(defender_runner, "DEFAULT_PRETRAINED_ATTACKER_CHECKPOINT", checkpoint)
+
     path = resolve_attacker_checkpoint("")
 
-    assert path == DEFAULT_PRETRAINED_ATTACKER_CHECKPOINT
+    assert path == checkpoint
     assert path.name == "rl_policy_latest.pt"
     assert path.exists()
 
@@ -43,11 +48,15 @@ def test_resolve_attacker_checkpoint_rejects_missing_explicit_path(tmp_path):
         resolve_attacker_checkpoint(str(missing))
 
 
-def test_resolve_distribution_dir_reads_repository_checkpoint_config():
-    path = resolve_distribution_dir("", DEFAULT_PRETRAINED_ATTACKER_CHECKPOINT)
+def test_resolve_distribution_dir_reads_checkpoint_config(tmp_path):
+    distribution_dir = tmp_path / "mnist_clipping_median_q_0.1_init_pre_label"
+    distribution_dir.mkdir()
+    checkpoint = tmp_path / "rl_policy_latest.pt"
+    torch.save({"config": {"rl_distribution_dir": str(distribution_dir)}}, checkpoint)
 
-    assert path.name == "mnist_clipping_median_q_0.1_init_pre_label"
-    assert path.exists()
+    path = resolve_distribution_dir("", checkpoint)
+
+    assert path == distribution_dir
 
 
 def test_initialize_defender_actor_constant3_sets_all_raw_dimensions():

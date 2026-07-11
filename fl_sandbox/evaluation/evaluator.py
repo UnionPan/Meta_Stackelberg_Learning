@@ -17,7 +17,7 @@ def test_model(model, data_loader, device=None) -> tuple[float, float]:
         raise RuntimeError("torch is required to evaluate FL models")
     criterion = torch.nn.CrossEntropyLoss()
     runtime_device = device or next(model.parameters()).device
-    correct, total, loss = 0, 0, 0.0
+    correct, total, total_loss = 0, 0, 0.0
     model.to(runtime_device)
     model.eval()
     with torch.no_grad():
@@ -25,12 +25,14 @@ def test_model(model, data_loader, device=None) -> tuple[float, float]:
             images = images.to(runtime_device)
             labels = labels.to(runtime_device)
             outputs = model(images)
-            loss += criterion(outputs, labels).item()
+            batch_size = labels.size(0)
+            total_loss += criterion(outputs, labels).item() * batch_size
             predicted = outputs.argmax(dim=1)
-            total += labels.size(0)
+            total += batch_size
             correct += (predicted == labels).sum().item()
     accuracy = correct / total if total else 0.0
-    return loss, accuracy
+    mean_loss = total_loss / total if total else 0.0
+    return mean_loss, accuracy
 
 
 @dataclass

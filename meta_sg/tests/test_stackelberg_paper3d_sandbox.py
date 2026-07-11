@@ -9,7 +9,8 @@ from meta_sg.strategies.types import DefenseDecision
 
 
 def test_paper3d_coordinator_starts_at_attack_window():
-    coordinator = Paper3DSandboxCoordinator(SandboxConfig(start_round_idx=101))
+    coordinator = object.__new__(Paper3DSandboxCoordinator)
+    coordinator.config = SandboxConfig(start_round_idx=101)
 
     assert coordinator._initial_round_idx() == 100
 
