@@ -103,7 +103,7 @@ def test_pretraining_starts_at_learning_starts_before_batch_size() -> None:
     assert result.td3_update_count == 3
 
 
-def test_high_level_runner_builds_krum_and_clipmed_domain() -> None:
+def test_high_level_runner_builds_krum_and_clipmed_domain(tmp_path) -> None:
     config = AttackPolicyPretrainingConfig(
         fl_rounds=4,
         batch_size=2,
@@ -129,6 +129,8 @@ def test_high_level_runner_builds_krum_and_clipmed_domain() -> None:
         ),
         hidden_sizes=(8,),
         seed=20,
+        checkpoint_directory=tmp_path,
+        checkpoint_interval=2,
     )
 
     assert tuple(result.domain.snapshots) == ('rl-krum', 'rl-clipmed')
@@ -138,3 +140,34 @@ def test_high_level_runner_builds_krum_and_clipmed_domain() -> None:
     }
     assert [item.fl_round_count for item in result.tasks] == [4, 4]
     assert result.total_fl_round_count == 8
+    assert (tmp_path / 'rl-krum.pt').is_file()
+    assert (tmp_path / 'rl-clipmed.pt').is_file()
+
+    resumed = pretrain_attack_type_domain(
+        config=config,
+        paper=PaperMetaSGConfig(),
+        env_factory=lambda seed, horizon, task_id: make_deterministic_paper_env(
+            seed=seed, horizon=horizon, task_id=task_id,
+        ),
+        tasks=(
+            AttackPretrainingTaskSpec(
+                'rl-krum', 'krum', byzantine_count=0,
+            ),
+            AttackPretrainingTaskSpec(
+                'rl-clipmed', 'clipmed', clip_radius=1.0,
+            ),
+        ),
+        hidden_sizes=(8,),
+        seed=20,
+        checkpoint_directory=tmp_path,
+        checkpoint_interval=2,
+        resume_checkpoints=True,
+    )
+    for label in result.domain.snapshots:
+        snapshot = result.domain.snapshots[label]
+        obs_dim = next(iter(snapshot.actor.values())).shape[1]
+        first = _agent(obs_dim, 'attacker', 1)
+        first.restore(snapshot)
+        second = _agent(obs_dim, 'attacker', 2)
+        second.restore(resumed.domain.snapshots[label])
+        assert first.fingerprint() == second.fingerprint()

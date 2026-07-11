@@ -41,6 +41,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--partition-seed', type=int, default=17)
     parser.add_argument('--model-seed', type=int, default=99)
     parser.add_argument('--local-search-batch-size', type=int, default=128)
+    parser.add_argument('--checkpoint-dir')
+    parser.add_argument('--checkpoint-interval', type=int, default=25)
+    parser.add_argument('--resume', action='store_true')
     return parser
 
 
@@ -85,8 +88,16 @@ def make_task_specs(
     )
 
 
+def validate_checkpoint_args(args) -> None:
+    if args.resume and not args.checkpoint_dir:
+        raise ValueError('--resume requires --checkpoint-dir')
+    if args.checkpoint_dir and args.checkpoint_interval <= 0:
+        raise ValueError('--checkpoint-interval must be positive')
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    validate_checkpoint_args(args)
     paper = PaperMetaSGConfig()
     config, hidden_sizes = make_pretraining_config(args)
     sample_size = int(paper.workers * paper.subsampling_rate)
@@ -146,6 +157,9 @@ def main(argv: list[str] | None = None) -> int:
         tasks=tasks,
         hidden_sizes=hidden_sizes,
         seed=args.seed,
+        checkpoint_directory=args.checkpoint_dir,
+        checkpoint_interval=args.checkpoint_interval,
+        resume_checkpoints=args.resume,
     )
     output = Path(args.output)
     save_attack_type_domain(output, result.domain)
@@ -162,6 +176,12 @@ def main(argv: list[str] | None = None) -> int:
         'total_fl_round_count': result.total_fl_round_count,
         'td3_update_counts': {
             task.label: task.td3_update_count for task in result.tasks
+        },
+        'checkpointing': {
+            'directory': args.checkpoint_dir,
+            'interval': args.checkpoint_interval if args.checkpoint_dir else None,
+            'resumed': args.resume,
+            'boundary': 'completed-fl-round-before-next-attacker-observation',
         },
         'parameter_sources': {
             'fl_rounds': 'paper.rl_training_rounds',

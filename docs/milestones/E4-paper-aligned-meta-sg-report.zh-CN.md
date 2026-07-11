@@ -248,6 +248,14 @@ Algorithm 1 另修正一项原文级语义：第 14 行 Attacker BR 现冻结并
 `theta_xi`，而不是未适应的 `theta_t`；generic trace 与真实 TD3 policy runner 均用 fingerprint
 测试锁定该条件。
 
+300-round attack pre-training 现支持 FL round boundary checkpoint/resume。单个 checkpoint 原子保存
+RoundState 与父环境 RNG、`observed_max_norm`、最后 epsilon、尚未写入 replay 的 pending Attacker
+transition、Attacker/targets/critics/optimizers/RNG、完整 replay/cursor/RNG、transition/update 计数、
+固定 Defender fingerprint、aggregator 参数和预训练配置。恢复时上述身份不匹配会拒绝执行。
+CLI 参数为 `--checkpoint-dir`、`--checkpoint-interval` 与 `--resume`；manifest 记录恢复边界和来源。
+真实 MNIST micro 已从 Krum/ClipMed 各自的 round-2 checkpoint 恢复，两类最终完整 TD3 fingerprint
+均与不中断运行逐位一致。
+
 ## CIFAR-10 / ResNet-18 路径
 
 已实现 paper CIFAR ResNet-18 与 5130 维尾部状态（`linear.weight=5120`、`linear.bias=10`）。
@@ -279,7 +287,7 @@ profiles 为 `micro / actor-active / declared-scaled / paper`；`paper` 必须�
 科学 Gate failed 返回非零状态。真实 MNIST `micro` CLI 已完整执行并生成 937 KB `policies.pt`
 与 4.3 KB `manifest.json`，随后成功重新加载 Algorithm 1 Defender 和 `rl-0` Attacker snapshots。
 - Algorithm 1、policy-level BR、Algorithm 2 和 Reptile 隔离测试均通过。
-- 2026-07-12 全仓库测试：`887 passed in 70.24s`。
+- 2026-07-12 全仓库测试：`889 passed in 69.66s`。
 
 ## 尚未宣称的结果
 

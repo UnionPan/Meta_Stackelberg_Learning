@@ -4,6 +4,7 @@ from meta_stackelberg.experiments.run_attack_pretraining import (
     build_parser,
     make_pretraining_config,
     make_task_specs,
+    validate_checkpoint_args,
 )
 
 
@@ -38,3 +39,13 @@ def test_cli_specs_separate_fixed_defense_parameters_from_meta_k() -> None:
     assert specs[0].byzantine_count == 2
     assert specs[1].clip_radius == 0.1
     assert not hasattr(args, 'K')
+
+
+def test_resume_requires_checkpoint_directory() -> None:
+    args = _args('--resume')
+    with pytest.raises(ValueError, match='checkpoint-dir'):
+        validate_checkpoint_args(args)
+
+    args.checkpoint_dir = '/tmp/checkpoints'
+    validate_checkpoint_args(args)
+    assert args.checkpoint_interval == 25

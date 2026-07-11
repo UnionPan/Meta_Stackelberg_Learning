@@ -118,6 +118,11 @@ from meta_stackelberg.experiments.attack_pretraining import (
     fixed_pretraining_aggregator,
     pretrain_attack_type_domain,
 )
+from meta_stackelberg.experiments.attack_pretraining_checkpoint import (
+    AttackPretrainingCheckpoint,
+    load_attack_pretraining_checkpoint,
+    save_attack_pretraining_checkpoint,
+)
 
 __all__ = [
     'ClipControllabilityGate',
@@ -208,4 +213,7 @@ __all__ = [
     'build_attack_type_domain',
     'fixed_pretraining_aggregator',
     'pretrain_attack_type_domain',
+    'AttackPretrainingCheckpoint',
+    'load_attack_pretraining_checkpoint',
+    'save_attack_pretraining_checkpoint',
 ]

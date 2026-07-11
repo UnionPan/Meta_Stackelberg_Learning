@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from pathlib import Path
 
 import numpy as np
 
@@ -11,6 +12,11 @@ from meta_stackelberg.agents.td3.config import PaperMetaSGConfig
 from meta_stackelberg.agents.td3.replay import TD3ReplayBuffer, flatten_observation
 from meta_stackelberg.environments.paper_bsmg import PaperBSMGEnv
 from meta_stackelberg.experiments.attack_domain import AttackTypeDomainSource
+from meta_stackelberg.experiments.attack_pretraining_checkpoint import (
+    AttackPretrainingCheckpoint,
+    load_attack_pretraining_checkpoint,
+    save_attack_pretraining_checkpoint,
+)
 from meta_stackelberg.experiments.paper_meta_sg import (
     ATTACKER_OBSERVATION_KEYS,
     DEFENDER_OBSERVATION_KEYS,
@@ -150,6 +156,22 @@ def fixed_pretraining_aggregator(
     raise ValueError('defense must be krum or clipmed')
 
 
+def _aggregator_spec(aggregator) -> dict[str, object]:
+    if isinstance(aggregator, Krum):
+        return {
+            'defense': 'krum',
+            'byzantine_count': aggregator.byzantine_count,
+        }
+    if isinstance(aggregator, ClippedAggregator) and isinstance(
+        aggregator.base, CoordinateMedian,
+    ):
+        return {
+            'defense': 'clipmed',
+            'clip_radius': aggregator.clip_radius,
+        }
+    raise ValueError('unsupported fixed pre-training aggregator')
+
+
 def pretrain_attack_type_domain(
     *,
     config: AttackPolicyPretrainingConfig,
@@ -158,6 +180,9 @@ def pretrain_attack_type_domain(
     tasks: tuple[AttackPretrainingTaskSpec, ...],
     hidden_sizes: tuple[int, ...],
     seed: int,
+    checkpoint_directory: str | Path | None = None,
+    checkpoint_interval: int = 25,
+    resume_checkpoints: bool = False,
 ) -> AttackTypeDomainPretrainingResult:
     if not tasks or len({task.label for task in tasks}) != len(tasks):
         raise ValueError('pre-training tasks must have unique non-empty labels')
@@ -180,29 +205,69 @@ def pretrain_attack_type_domain(
         paper, defender_obs_dim, 'defender', seed + 1, hidden_sizes,
     )
     trainer = AttackPolicyPretrainer(config)
+    checkpoint_root = (
+        Path(checkpoint_directory) if checkpoint_directory is not None else None
+    )
+    if resume_checkpoints and checkpoint_root is None:
+        raise ValueError('resume_checkpoints requires checkpoint_directory')
+    if checkpoint_root is not None and (
+        isinstance(checkpoint_interval, bool)
+        or not isinstance(checkpoint_interval, int)
+        or checkpoint_interval <= 0
+    ):
+        raise ValueError('checkpoint_interval must be a positive integer')
     results = []
     for index, task in enumerate(tasks):
         attacker = _pretraining_agent(
             paper, attacker_obs_dim, 'attacker', seed + 10 + index,
             hidden_sizes,
         )
-        results.append(trainer.train(
-            label=task.label,
-            origin=task.origin,
-            env=env_factory(
-                seed + 100 + index,
-                config.fl_rounds,
-                f'attack-pretraining-{task.label}',
-            ),
-            defender=defender,
-            attacker=attacker,
-            aggregator=fixed_pretraining_aggregator(
-                task.defense,
-                byzantine_count=task.byzantine_count,
-                clip_radius=task.clip_radius,
-            ),
-            replay_seed=seed + 1_000 + index,
-        ))
+        env = env_factory(
+            seed + 100 + index,
+            config.fl_rounds,
+            f'attack-pretraining-{task.label}',
+        )
+        aggregator = fixed_pretraining_aggregator(
+            task.defense,
+            byzantine_count=task.byzantine_count,
+            clip_radius=task.clip_radius,
+        )
+        checkpoint_path = (
+            checkpoint_root / f'{task.label}.pt'
+            if checkpoint_root is not None else None
+        )
+        checkpoint_callback = (
+            lambda checkpoint, path=checkpoint_path: save_attack_pretraining_checkpoint(
+                path, checkpoint,
+            )
+            if checkpoint_path is not None else None
+        )
+        if resume_checkpoints and checkpoint_path is not None and checkpoint_path.exists():
+            checkpoint = load_attack_pretraining_checkpoint(checkpoint_path)
+            if (checkpoint.label, checkpoint.origin) != (task.label, task.origin):
+                raise ValueError('checkpoint attack task identity mismatch')
+            result = trainer.resume(
+                checkpoint=checkpoint,
+                env=env,
+                defender=defender,
+                attacker=attacker,
+                aggregator=aggregator,
+                checkpoint_callback=checkpoint_callback,
+                checkpoint_interval=checkpoint_interval,
+            )
+        else:
+            result = trainer.train(
+                label=task.label,
+                origin=task.origin,
+                env=env,
+                defender=defender,
+                attacker=attacker,
+                aggregator=aggregator,
+                replay_seed=seed + 1_000 + index,
+                checkpoint_callback=checkpoint_callback,
+                checkpoint_interval=checkpoint_interval,
+            )
+        results.append(result)
     values = tuple(results)
     return AttackTypeDomainPretrainingResult(
         build_attack_type_domain(values),
@@ -251,28 +316,171 @@ class AttackPolicyPretrainer:
         attacker: TD3Agent,
         aggregator,
         replay_seed: int,
+        checkpoint_callback=None,
+        checkpoint_interval: int = 1,
     ) -> AttackPolicyPretrainingResult:
-        if not label or not origin:
-            raise ValueError('label and origin must not be empty')
-        if defender.role != 'defender' or attacker.role != 'attacker':
-            raise ValueError('policy roles do not match pre-training protocol')
-        if env.state.round_index != 0 or env.horizon != self.config.fl_rounds:
-            raise ValueError('environment must start at zero with fl_rounds horizon')
-        if not callable(getattr(aggregator, 'aggregate', None)):
-            raise TypeError('aggregator must provide aggregate(updates)')
-        env.aggregator_factory = lambda action: aggregator
-        env.post_defense_factory = lambda model, epsilon: model
+        replay = self._new_replay(attacker, replay_seed)
+        result = self._execute(
+            label=label,
+            origin=origin,
+            env=env,
+            defender=defender,
+            attacker=attacker,
+            aggregator=aggregator,
+            replay=replay,
+            pending_attacker=None,
+            transition_count=0,
+            stats=[],
+            stop_after_round=None,
+            checkpoint_callback=checkpoint_callback,
+            checkpoint_interval=checkpoint_interval,
+        )
+        if not isinstance(result, AttackPolicyPretrainingResult):
+            raise RuntimeError('uninterrupted pre-training did not complete')
+        return result
+
+    def pause(
+        self,
+        *,
+        label: str,
+        origin: str,
+        env: PaperBSMGEnv,
+        defender: TD3Agent,
+        attacker: TD3Agent,
+        aggregator,
+        replay_seed: int,
+        stop_after_round: int,
+    ) -> AttackPretrainingCheckpoint:
+        if (
+            isinstance(stop_after_round, bool)
+            or not isinstance(stop_after_round, int)
+            or stop_after_round <= 0
+            or stop_after_round >= self.config.fl_rounds
+        ):
+            raise ValueError('stop_after_round must be within [1, fl_rounds)')
+        result = self._execute(
+            label=label,
+            origin=origin,
+            env=env,
+            defender=defender,
+            attacker=attacker,
+            aggregator=aggregator,
+            replay=self._new_replay(attacker, replay_seed),
+            pending_attacker=None,
+            transition_count=0,
+            stats=[],
+            stop_after_round=stop_after_round,
+            checkpoint_callback=None,
+            checkpoint_interval=1,
+        )
+        if not isinstance(result, AttackPretrainingCheckpoint):
+            raise RuntimeError('pre-training completed before pause boundary')
+        return result
+
+    def resume(
+        self,
+        *,
+        checkpoint: AttackPretrainingCheckpoint,
+        env: PaperBSMGEnv,
+        defender: TD3Agent,
+        attacker: TD3Agent,
+        aggregator,
+        checkpoint_callback=None,
+        checkpoint_interval: int = 1,
+    ) -> AttackPolicyPretrainingResult:
+        if not isinstance(checkpoint, AttackPretrainingCheckpoint):
+            raise TypeError('checkpoint must be AttackPretrainingCheckpoint')
+        if dict(checkpoint.config) != asdict(self.config):
+            raise ValueError('checkpoint pre-training config mismatch')
+        if checkpoint.defender_fingerprint != defender.fingerprint():
+            raise ValueError('checkpoint frozen Defender fingerprint mismatch')
+        if checkpoint.aggregator_spec != _aggregator_spec(aggregator):
+            raise ValueError('checkpoint fixed aggregator mismatch')
+        if env.horizon != self.config.fl_rounds or env.state.round_index != 0:
+            raise ValueError('resume environment must be fresh with fl_rounds horizon')
+        attacker.restore(checkpoint.attacker_snapshot)
         replay = TD3ReplayBuffer(
+            checkpoint.replay_snapshot.capacity,
+            obs_dim=checkpoint.replay_snapshot.obs_dim,
+            action_dim=checkpoint.replay_snapshot.action_dim,
+            role='attacker',
+            seed=0,
+        )
+        replay.restore(checkpoint.replay_snapshot)
+        env.state = checkpoint.round_state
+        env.rng.restore(checkpoint.round_state.random_snapshot)
+        env.observed_max_norm = checkpoint.observed_max_norm
+        env._last_epsilon = checkpoint.last_epsilon
+        result = self._execute(
+            label=checkpoint.label,
+            origin=checkpoint.origin,
+            env=env,
+            defender=defender,
+            attacker=attacker,
+            aggregator=aggregator,
+            replay=replay,
+            pending_attacker=(
+                checkpoint.pending_observation.copy(),
+                checkpoint.pending_action.copy(),
+                checkpoint.pending_reward,
+            ),
+            transition_count=checkpoint.transition_count,
+            stats=list(checkpoint.update_stats),
+            stop_after_round=None,
+            checkpoint_callback=checkpoint_callback,
+            checkpoint_interval=checkpoint_interval,
+        )
+        if not isinstance(result, AttackPolicyPretrainingResult):
+            raise RuntimeError('resumed pre-training did not complete')
+        return result
+
+    def _new_replay(
+        self,
+        attacker: TD3Agent,
+        replay_seed: int,
+    ) -> TD3ReplayBuffer:
+        return TD3ReplayBuffer(
             self.config.replay_capacity,
             obs_dim=attacker.obs_dim,
             action_dim=attacker.action_dim,
             role='attacker',
             seed=replay_seed,
         )
+
+    def _execute(
+        self,
+        *,
+        label: str,
+        origin: str,
+        env: PaperBSMGEnv,
+        defender: TD3Agent,
+        attacker: TD3Agent,
+        aggregator,
+        replay: TD3ReplayBuffer,
+        pending_attacker,
+        transition_count: int,
+        stats: list[TD3UpdateStats],
+        stop_after_round: int | None,
+        checkpoint_callback,
+        checkpoint_interval: int,
+    ) -> AttackPolicyPretrainingResult | AttackPretrainingCheckpoint:
+        if not label or not origin:
+            raise ValueError('label and origin must not be empty')
+        if defender.role != 'defender' or attacker.role != 'attacker':
+            raise ValueError('policy roles do not match pre-training protocol')
+        if env.horizon != self.config.fl_rounds:
+            raise ValueError('environment horizon must equal fl_rounds')
+        if not callable(getattr(aggregator, 'aggregate', None)):
+            raise TypeError('aggregator must provide aggregate(updates)')
+        if (
+            isinstance(checkpoint_interval, bool)
+            or not isinstance(checkpoint_interval, int)
+            or checkpoint_interval <= 0
+        ):
+            raise ValueError('checkpoint_interval must be a positive integer')
+        env.aggregator_factory = lambda action: aggregator
+        env.post_defense_factory = lambda model, epsilon: model
         defender_guard = defender.freeze_guard()
-        pending_attacker = None
-        stats: list[TD3UpdateStats] = []
-        transition_count = 0
 
         while env.state.round_index < env.horizon:
             defender_action = np.asarray(
@@ -297,6 +505,22 @@ class AttackPolicyPretrainer:
                 attacker_observation, attacker_action, step.attacker_reward.scalar,
             )
             defender_guard.verify()
+            should_stop = stop_after_round == env.state.round_index
+            should_checkpoint = (
+                checkpoint_callback is not None
+                and env.state.round_index % checkpoint_interval == 0
+                and env.state.round_index < env.horizon
+            )
+            if should_stop or should_checkpoint:
+                checkpoint = self._checkpoint(
+                    label, origin, env, attacker, replay, pending_attacker,
+                    transition_count, stats, defender_guard.fingerprint,
+                    aggregator,
+                )
+                if should_checkpoint:
+                    checkpoint_callback(checkpoint)
+                if should_stop:
+                    return checkpoint
 
         if pending_attacker is not None:
             observation, action, reward = pending_attacker
@@ -316,6 +540,37 @@ class AttackPolicyPretrainer:
             len(stats),
             tuple(stats),
             self.config.fixed_defender_raw_action,
+        )
+
+    def _checkpoint(
+        self,
+        label,
+        origin,
+        env,
+        attacker,
+        replay,
+        pending_attacker,
+        transition_count,
+        stats,
+        defender_fingerprint,
+        aggregator,
+    ) -> AttackPretrainingCheckpoint:
+        return AttackPretrainingCheckpoint(
+            label=label,
+            origin=origin,
+            config=asdict(self.config),
+            aggregator_spec=_aggregator_spec(aggregator),
+            round_state=env.state,
+            observed_max_norm=env.observed_max_norm,
+            last_epsilon=env._last_epsilon,
+            pending_observation=pending_attacker[0],
+            pending_action=pending_attacker[1],
+            pending_reward=pending_attacker[2],
+            attacker_snapshot=attacker.snapshot(),
+            replay_snapshot=replay.snapshot(),
+            transition_count=transition_count,
+            update_stats=tuple(stats),
+            defender_fingerprint=defender_fingerprint,
         )
 
     def _update_if_due(
