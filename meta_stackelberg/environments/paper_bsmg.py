@@ -116,6 +116,7 @@ class PaperBSMGEnv:
         local_search_learning_rate: float,
         local_search_batch_size: int,
         local_search_trajectories: int,
+        aggregator_factory=None,
     ) -> None:
         if not task_id:
             raise ValueError('task_id must not be empty')
@@ -142,6 +143,11 @@ class PaperBSMGEnv:
         self.local_search_learning_rate = float(local_search_learning_rate)
         self.local_search_batch_size = int(local_search_batch_size)
         self.local_search_trajectories = int(local_search_trajectories)
+        self.aggregator_factory = (
+            aggregator_factory
+            if aggregator_factory is not None
+            else lambda action: ClippedTrimmedMean(action.alpha, action.beta)
+        )
         self.defender_codec = PaperDefenderActionCodec()
         self.attacker_codec = RLAttackActionCodec()
         self._pending: _PendingExecution | None = None
@@ -244,7 +250,7 @@ class PaperBSMGEnv:
             parent_rng=self.rng,
             sampled_clients=pending.sampled_clients,
             ordered_updates=ordered,
-            aggregator=ClippedTrimmedMean(action.alpha, action.beta),
+            aggregator=self.aggregator_factory(action),
             server_optimizer=self.server_optimizer,
             private_diagnostics={
                 'malicious_client_count': len(malicious_ids),

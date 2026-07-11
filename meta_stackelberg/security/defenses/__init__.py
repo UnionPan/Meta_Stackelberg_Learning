@@ -19,6 +19,7 @@ from meta_stackelberg.security.defenses.paper_action import (
     PaperDefenderActionCodec,
 )
 from meta_stackelberg.security.defenses.neuroclip import NeuroClipCopy
+from meta_stackelberg.security.defenses.krum import Krum
 
 __all__ = [
     'ClipRadiusActionCodec',
@@ -33,4 +34,5 @@ __all__ = [
     'PaperDefenderAction',
     'PaperDefenderActionCodec',
     'NeuroClipCopy',
+    'Krum',
 ]

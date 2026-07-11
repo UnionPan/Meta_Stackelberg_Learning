@@ -198,6 +198,11 @@ training samples/100 epochs、CIFAR conditional diffusion 的 50,000 samples/30 
 root seed samples。当前真实 MNIST executions 标记为 `torchvision`，不能再被误报为论文生成数据
 pre-training；已有生成数据 artifact 可通过 typed bundle 接入同一 Algorithm 1/2 与 Gate runner。
 
+为对齐论文“initial RL attacks pre-trained against Krum/ClipMed”的 attack-type domain，新增
+deterministic single-Krum（要求 `n>2f+2`，固定 tie-break）以及 task-specific aggregator factory。
+因此 attacker pre-training trajectory 可固定使用 Krum 或 ClipMed，而 Meta-SG 主环境仍由每 round
+Defender action 生成动态 clipped-trimmed-mean；不同 attack types 不再只是同一环境的随机 seed。
+
 ## CIFAR-10 / ResNet-18 路径
 
 已实现 paper CIFAR ResNet-18 与 5130 维尾部状态（`linear.weight=5120`、`linear.bias=10`）。

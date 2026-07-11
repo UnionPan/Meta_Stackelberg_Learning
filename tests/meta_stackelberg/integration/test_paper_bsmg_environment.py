@@ -135,3 +135,18 @@ def test_round_with_no_sampled_malicious_client_is_a_valid_no_attack_transition(
 
     assert step.transition.private_diagnostics['malicious_client_count'] == 0
     assert step.transition.state_after.round_index == 1
+
+
+def test_task_specific_training_aggregator_can_replace_dynamic_defense() -> None:
+    class ZeroAggregator:
+        def aggregate(self, updates):
+            return ModelState.from_tensors(
+                np.zeros_like(tensor) for tensor in updates[0].delta.tensors
+            )
+
+    env = _make_env()
+    before = env.state.global_model.vector()
+    env.aggregator_factory = lambda action: ZeroAggregator()
+    env.begin_round(np.zeros(3, dtype=np.float32))
+    env.finish_round(np.zeros(3, dtype=np.float32))
+    np.testing.assert_array_equal(env.state.global_model.vector(), before)
