@@ -104,6 +104,7 @@ from meta_stackelberg.experiments.scaled_artifact import (
 )
 from meta_stackelberg.experiments.attack_domain import (
     AttackTypeDomainSource,
+    UniformAttackTypeSampler,
     load_attack_type_domain,
     save_attack_type_domain,
 )
@@ -111,8 +112,11 @@ from meta_stackelberg.experiments.attack_pretraining import (
     AttackPolicyPretrainingConfig,
     AttackPolicyPretrainingResult,
     AttackPolicyPretrainer,
+    AttackPretrainingTaskSpec,
+    AttackTypeDomainPretrainingResult,
     build_attack_type_domain,
     fixed_pretraining_aggregator,
+    pretrain_attack_type_domain,
 )
 
 __all__ = [
@@ -193,11 +197,15 @@ __all__ = [
     'load_scaled_evidence_snapshots',
     'save_scaled_evidence_artifact',
     'AttackTypeDomainSource',
+    'UniformAttackTypeSampler',
     'load_attack_type_domain',
     'save_attack_type_domain',
     'AttackPolicyPretrainingConfig',
     'AttackPolicyPretrainingResult',
     'AttackPolicyPretrainer',
+    'AttackPretrainingTaskSpec',
+    'AttackTypeDomainPretrainingResult',
     'build_attack_type_domain',
     'fixed_pretraining_aggregator',
+    'pretrain_attack_type_domain',
 ]

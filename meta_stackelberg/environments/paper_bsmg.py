@@ -117,6 +117,7 @@ class PaperBSMGEnv:
         local_search_batch_size: int,
         local_search_trajectories: int,
         aggregator_factory=None,
+        post_defense_factory=None,
     ) -> None:
         if not task_id:
             raise ValueError('task_id must not be empty')
@@ -148,6 +149,13 @@ class PaperBSMGEnv:
             if aggregator_factory is not None
             else lambda action: ClippedTrimmedMean(action.alpha, action.beta)
         )
+        self.post_defense_factory = (
+            post_defense_factory
+            if post_defense_factory is not None
+            else lambda model, epsilon: NeuroClipCopy(model, epsilon)
+        )
+        if not callable(self.post_defense_factory):
+            raise TypeError('post_defense_factory must be callable')
         self.defender_codec = PaperDefenderActionCodec()
         self.attacker_codec = RLAttackActionCodec()
         self._pending: _PendingExecution | None = None
@@ -279,17 +287,17 @@ class PaperBSMGEnv:
             done=self.state.round_index >= self.horizon,
         )
 
-    def final_delivered_model(self) -> NeuroClipCopy | None:
+    def final_delivered_model(self) -> torch.nn.Module | None:
         if self._last_epsilon is None:
             return None
         model = self.model_factory()
         self.codec.load(model, self.state.global_model)
-        return NeuroClipCopy(model, self._last_epsilon)
+        return self.post_defense_factory(model, self._last_epsilon)
 
     def _post_defense_loss(self, state: RoundState, epsilon: float) -> float:
         model = self.model_factory()
         self.codec.load(model, state.global_model)
-        defended = NeuroClipCopy(model, epsilon)
+        defended = self.post_defense_factory(model, epsilon)
         defended.eval()
         total_loss = 0.0
         total = 0

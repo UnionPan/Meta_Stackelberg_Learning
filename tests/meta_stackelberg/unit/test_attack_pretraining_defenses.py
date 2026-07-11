@@ -42,4 +42,5 @@ def test_pretraining_config_has_one_paper_parameter_mapping() -> None:
     assert config.train_freq == paper.train_freq == 1
     assert config.gradient_steps == paper.gradient_steps == 1
     assert config.replay_capacity == paper.replay_capacity == 1_000_000
+    assert config.fixed_defender_raw_action == (0.0, 0.0, 1.0)
     assert not hasattr(config, 'N_A')

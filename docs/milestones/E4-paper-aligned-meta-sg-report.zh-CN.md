@@ -39,7 +39,7 @@
 Algorithm 2 的 `l` 是另一套 Reptile 任务适应计数，不与 `N_D` 或 `N_A`互为别名。
 
 Algorithm 1 严格区分两个 Defender 参数点：先按原文第 11 行用 `eta` 做一次适应得到
-`theta_xi`；Attacker 随后按第 14 行针对未适应的 meta policy `theta_t` 做 `N_A` 次更新；
+`theta_xi`；Attacker 随后按第 14 行针对该适应后 policy `theta_xi` 做 `N_A` 次更新；
 Defender 梯度再按第 17 行于 `theta_xi`、`phi_xi(N_A)` 条件下估计。各任务的
 `kappa_D`-scaled 更新差量最后按第 24 行以 `1/K` 汇总到 `theta_t`。`kappa_A`、`eta`、
 `kappa_D`各自只进入对应 optimizer 一次，不重复缩放。
@@ -217,6 +217,37 @@ Krum 预训练显式要求 `byzantine_count`；ClipMed 精确定义为 fixed nor
 median，并显式要求 `clip_radius`，因为论文没有给出可安全冒充为默认值的半径。多个预训练结果可
 直接组装为带 origins 的 attack-domain artifact。该协议不包含 `N_A` 字段。
 
+进一步核对原文后修正了 `K` 的实现含义：untargeted Meta-SG attack domain 是针对 Krum 与
+ClipMed 预训练的两类 RL attacks，而 `K=10` 是每次迭代从 `Q(Xi)` 均匀采样的 batch size，
+不是 artifact 必须包含 10 个策略。训练 runner 现从任意非空 typed domain 中按 seed 确定性、均匀、
+有放回地采样恰好 `K` 次，并记录 `attack_domain_size`、sampling distribution 与 seed。由此正式
+配置是“domain size 2、每次 sample K=10”，而不是制造 10 个随机 seed 冒充 10 种攻击类型。
+
+预训练 replay 也按 TD3 语义支持有放回采样：即使 `batch_size=256`，仍在
+`learning_starts=100` 时开始更新，不再错误等待 replay 累积到 256。独立 CLI 为：
+
+```bash
+python -m meta_stackelberg.experiments.run_attack_pretraining \
+  --dataset mnist --profile paper --allow-paper-scale \
+  --data-root /path/to/data --output /path/to/attack-domain.pt \
+  --clip-radius 0.1
+```
+
+CLI 原子生成 attack-domain 与 manifest；后者明确记录 `K`、`N_A` 不参与攻击预训练、Krum `f`
+的来源及显式 ClipMed radius。真实 torchvision MNIST `micro` 已完成 Krum/ClipMed 各 4 rounds，
+生成两类 domain（总计 8 FL rounds），随后同一 artifact 已被 evidence CLI 成功加载并贯通
+Algorithm 1/2 与六项 Gate。该 micro Gate 仍为 failed，不能替代论文规模性能证据。
+
+固定防御预训练不再调用随机冻结 Defender 产生随状态变化的动作：公开 raw action 固定为
+`(0,0,1)`，其中 alpha/beta 被 Krum/ClipMed aggregator override，untargeted 预训练同时禁用额外
+NeuroClip post-defense，避免把“Krum attack”实际训练成“Krum + 随机 NeuroClip attack”。这一
+固定动作与 post-defense 偏差均写入 manifest。Meta-SG 主环境不受影响，仍逐 round 执行完整三维
+Defender policy。
+
+Algorithm 1 另修正一项原文级语义：第 14 行 Attacker BR 现冻结并响应第 11 行适应后的
+`theta_xi`，而不是未适应的 `theta_t`；generic trace 与真实 TD3 policy runner 均用 fingerprint
+测试锁定该条件。
+
 ## CIFAR-10 / ResNet-18 路径
 
 已实现 paper CIFAR ResNet-18 与 5130 维尾部状态（`linear.weight=5120`、`linear.bias=10`）。
@@ -248,7 +279,7 @@ profiles 为 `micro / actor-active / declared-scaled / paper`；`paper` 必须�
 科学 Gate failed 返回非零状态。真实 MNIST `micro` CLI 已完整执行并生成 937 KB `policies.pt`
 与 4.3 KB `manifest.json`，随后成功重新加载 Algorithm 1 Defender 和 `rl-0` Attacker snapshots。
 - Algorithm 1、policy-level BR、Algorithm 2 和 Reptile 隔离测试均通过。
-- 2026-07-12 全仓库测试：`881 passed in 68.25s`。
+- 2026-07-12 全仓库测试：`887 passed in 70.24s`。
 
 ## 尚未宣称的结果
 

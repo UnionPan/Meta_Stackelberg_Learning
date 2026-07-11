@@ -15,7 +15,10 @@ from meta_stackelberg.agents.td3.replay import flatten_observation
 from meta_stackelberg.experiments.deterministic_paper_env import (
     make_deterministic_paper_env,
 )
-from meta_stackelberg.experiments.attack_domain import AttackTypeDomainSource
+from meta_stackelberg.experiments.attack_domain import (
+    AttackTypeDomainSource,
+    UniformAttackTypeSampler,
+)
 from meta_stackelberg.experiments.paper_meta_sg import (
     ATTACKER_OBSERVATION_KEYS,
     DEFENDER_OBSERVATION_KEYS,
@@ -120,8 +123,6 @@ def run_scaled_evidence(
         attack_origins = {task: 'random-untrained' for task in tasks}
         attack_protocol = 'random-untrained-explicit-v1'
     else:
-        if len(attack_domain.snapshots) != config.K:
-            raise ValueError('attack domain size must equal K')
         tasks = tuple(attack_domain.snapshots)
         initial_attackers = {}
         for index, task in enumerate(tasks):
@@ -131,6 +132,10 @@ def run_scaled_evidence(
         attack_origins = dict(attack_domain.origins)
         attack_protocol = attack_domain.protocol
 
+    attack_sampling_seed = seed + 1_000
+    task_sampler = UniformAttackTypeSampler(
+        tasks, seed=attack_sampling_seed,
+    )
     training = ScaledPaperMetaSGTrainingRunner(
         config=config,
         env_factory=env_factory,
@@ -141,7 +146,7 @@ def run_scaled_evidence(
     ).run(
         initial_defender=initial_defender,
         initial_attackers=initial_attackers,
-        sample_tasks=lambda iteration, count: tasks,
+        sample_tasks=task_sampler,
     )
     first_attacker = initial_attackers[tasks[0]]
     scientific = PaperScientificGateRunner(
@@ -191,6 +196,9 @@ def run_scaled_evidence(
         'replay_capacity': config.replay_capacity,
         'scale_provenance': config.scale_provenance,
         'attack_domain_protocol': attack_protocol,
+        'attack_domain_size': len(tasks),
+        'attack_sampling_distribution': 'uniform-with-replacement',
+        'attack_sampling_seed': attack_sampling_seed,
         'attack_type_origins': attack_origins,
     })
     return ScaledEvidenceResult(

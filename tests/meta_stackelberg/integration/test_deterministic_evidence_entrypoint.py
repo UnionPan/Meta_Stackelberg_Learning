@@ -40,7 +40,7 @@ def test_single_entrypoint_runs_training_and_scientific_evidence() -> None:
 
 def test_entrypoint_restores_pretrained_attack_type_domain_and_provenance() -> None:
     config = PaperMetaSGConfig().scaled(
-        T=1, K=1, H=1, l=1, N_A=1, N_D=1,
+        T=1, K=3, H=1, l=1, N_A=1, N_D=1,
         workers=4, untargeted_attackers=2, sample_size=4,
         td3_batch_size=1, learning_starts=1, hidden_sizes=(8,),
         replay_capacity=64,
@@ -58,9 +58,16 @@ def test_entrypoint_restores_pretrained_attack_type_domain_and_provenance() -> N
         hidden_sizes=(8,), learning_rate=0.001, gamma=0.99, tau=0.005,
         policy_delay=2, target_policy_noise=0.2, noise_clip=0.5,
     )
+    clipmed_attacker = attacker.clone()
     domain = AttackTypeDomainSource.from_policies(
-        {'krum-pretrained': attacker},
-        origins={'krum-pretrained': 'pretrained-against-krum'},
+        {
+            'krum-pretrained': attacker,
+            'clipmed-pretrained': clipmed_attacker,
+        },
+        origins={
+            'krum-pretrained': 'pretrained-against-krum',
+            'clipmed-pretrained': 'pretrained-against-clipmed',
+        },
     )
     result = run_deterministic_scaled_evidence(
         config=config,
@@ -71,5 +78,10 @@ def test_entrypoint_restores_pretrained_attack_type_domain_and_provenance() -> N
     )
     assert result.parameter_snapshot['attack_type_origins'] == {
         'krum-pretrained': 'pretrained-against-krum',
+        'clipmed-pretrained': 'pretrained-against-clipmed',
     }
-    assert set(result.training.algorithm1_attackers) == {'krum-pretrained'}
+    assert set(result.training.algorithm1_attackers) == {
+        'krum-pretrained', 'clipmed-pretrained',
+    }
+    assert result.parameter_snapshot['attack_domain_size'] == 2
+    assert result.parameter_snapshot['K'] == 3

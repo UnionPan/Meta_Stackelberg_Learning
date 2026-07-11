@@ -1,6 +1,7 @@
 from meta_stackelberg.agents.td3.agent import TD3Agent
 from meta_stackelberg.experiments.attack_domain import (
     AttackTypeDomainSource,
+    UniformAttackTypeSampler,
     load_attack_type_domain,
     save_attack_type_domain,
 )
@@ -41,3 +42,15 @@ def test_attack_domain_rejects_missing_origin() -> None:
         assert 'origins' in str(error)
     else:
         raise AssertionError('accepted attack type without origin provenance')
+
+
+def test_uniform_attack_sampler_keeps_domain_size_independent_from_k() -> None:
+    sampler = UniformAttackTypeSampler(('krum', 'clipmed'), seed=7)
+
+    first = sampler(iteration=0, count=10)
+    second = sampler(iteration=1, count=10)
+
+    assert len(first) == len(second) == 10
+    assert set(first) <= {'krum', 'clipmed'}
+    assert set(second) <= {'krum', 'clipmed'}
+    assert first != second

@@ -108,6 +108,21 @@ def test_epsilon_changes_post_defense_reward_but_not_intermediate_fl_state() -> 
     assert low.final_delivered_model() is not None
 
 
+def test_environment_can_disable_post_defense_for_fixed_aggregator_pretraining() -> None:
+    low = _make_env()
+    high = _make_env()
+    low.post_defense_factory = lambda model, epsilon: model
+    high.post_defense_factory = lambda model, epsilon: model
+    attacker_raw = np.array([0.0, -1.0, 0.0], dtype=np.float32)
+    low.begin_round(np.array([0.0, 0.0, -1.0], dtype=np.float32))
+    high.begin_round(np.array([0.0, 0.0, 1.0], dtype=np.float32))
+
+    low_step = low.finish_round(attacker_raw)
+    high_step = high.finish_round(attacker_raw)
+
+    assert low_step.post_loss_after == high_step.post_loss_after
+
+
 def test_environment_rejects_overlapping_round_phases() -> None:
     env = _make_env()
     try:

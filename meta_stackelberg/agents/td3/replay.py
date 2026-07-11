@@ -116,12 +116,14 @@ class TD3ReplayBuffer:
         self._position = (index + 1) % self.capacity
         self._size = min(self._size + 1, self.capacity)
 
-    def sample(self, batch_size: int) -> TD3Batch:
+    def sample(self, batch_size: int, *, replace: bool = False) -> TD3Batch:
         if isinstance(batch_size, bool) or not isinstance(batch_size, int) or batch_size <= 0:
             raise ValueError('batch_size must be a positive integer')
-        if batch_size > self._size:
+        if batch_size > self._size and not replace:
             raise ValueError('batch_size exceeds replay size')
-        indices = self._rng.choice(self._size, size=batch_size, replace=False)
+        if self._size == 0:
+            raise ValueError('cannot sample an empty replay')
+        indices = self._rng.choice(self._size, size=batch_size, replace=replace)
         return TD3Batch(
             self._observations[indices].copy(),
             self._actions[indices].copy(),

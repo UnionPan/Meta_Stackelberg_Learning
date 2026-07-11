@@ -21,6 +21,7 @@ def test_concrete_algorithm1_runs_adapt_br_leader_in_paper_order() -> None:
     defender_before = defender.fingerprint()
     attacker_before = attacker.fingerprint()
     calls = []
+    response_defenders = []
 
     def replay_factory(task, role, phase, iteration):
         del task, phase
@@ -43,7 +44,7 @@ def test_concrete_algorithm1_runs_adapt_br_leader_in_paper_order() -> None:
         add(replay, 'defender', adapted, iteration)
 
     def collect_response(task, step, frozen_defender, current_attacker, replay, iteration):
-        del frozen_defender
+        response_defenders.append(frozen_defender.fingerprint())
         calls.append(('response', task, step, iteration))
         add(replay, 'attacker', current_attacker, iteration)
 
@@ -74,6 +75,11 @@ def test_concrete_algorithm1_runs_adapt_br_leader_in_paper_order() -> None:
     assert attacker.fingerprint() != attacker_before
     task_trace = result.iterations[0].tasks[0]
     assert task_trace.response.update_stats.__len__() == 2
+    assert response_defenders == [
+        task_trace.adaptation.adapted_defender_fingerprint,
+        task_trace.adaptation.adapted_defender_fingerprint,
+    ]
+    assert response_defenders[0] != defender_before
     assert task_trace.adaptation.attacker_fingerprint == task_trace.response.initial_attacker_fingerprint
     assert result.iterations[0].leader.task_updates[0].best_response_fingerprint == attacker.fingerprint()
 

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
+
 from meta_stackelberg.agents.td3.agent import TD3Agent, TD3Snapshot, TD3UpdateStats
 from meta_stackelberg.agents.td3.config import PaperMetaSGConfig
 from meta_stackelberg.agents.td3.replay import TD3ReplayBuffer, flatten_observation
@@ -26,6 +28,7 @@ class AttackPolicyPretrainingConfig:
     train_freq: int = 1
     gradient_steps: int = 1
     replay_capacity: int = 1_000_000
+    fixed_defender_raw_action: tuple[float, float, float] = (0.0, 0.0, 1.0)
 
     @classmethod
     def from_paper(
@@ -55,6 +58,13 @@ class AttackPolicyPretrainingConfig:
             raise ValueError('batch_size must not exceed replay_capacity')
         if self.learning_starts > self.replay_capacity:
             raise ValueError('learning_starts must not exceed replay_capacity')
+        action = np.asarray(self.fixed_defender_raw_action, dtype=np.float64)
+        if action.shape != (3,) or not np.all(np.isfinite(action)) or np.any(
+            (action < -1.0) | (action > 1.0)
+        ):
+            raise ValueError(
+                'fixed_defender_raw_action must be finite within [-1,1]^3',
+            )
 
 
 @dataclass(frozen=True)
@@ -66,7 +76,37 @@ class AttackPolicyPretrainingResult:
     replay_transition_count: int
     td3_update_count: int
     update_stats: tuple[TD3UpdateStats, ...]
+    fixed_defender_raw_action: tuple[float, float, float]
     protocol: str = 'sequential-fl-round-td3-pretraining-v1'
+
+
+@dataclass(frozen=True)
+class AttackPretrainingTaskSpec:
+    label: str
+    defense: str
+    byzantine_count: int | None = None
+    clip_radius: float | None = None
+
+    def __post_init__(self) -> None:
+        if not self.label:
+            raise ValueError('attack pre-training task label must not be empty')
+        fixed_pretraining_aggregator(
+            self.defense,
+            byzantine_count=self.byzantine_count,
+            clip_radius=self.clip_radius,
+        )
+
+    @property
+    def origin(self) -> str:
+        return f'pretrained-against-{self.defense.lower()}'
+
+
+@dataclass(frozen=True)
+class AttackTypeDomainPretrainingResult:
+    domain: AttackTypeDomainSource
+    tasks: tuple[AttackPolicyPretrainingResult, ...]
+    total_fl_round_count: int
+    protocol: str = 'paper-attack-type-domain-pretraining-v1'
 
 
 def build_attack_type_domain(
@@ -110,6 +150,89 @@ def fixed_pretraining_aggregator(
     raise ValueError('defense must be krum or clipmed')
 
 
+def pretrain_attack_type_domain(
+    *,
+    config: AttackPolicyPretrainingConfig,
+    paper: PaperMetaSGConfig,
+    env_factory,
+    tasks: tuple[AttackPretrainingTaskSpec, ...],
+    hidden_sizes: tuple[int, ...],
+    seed: int,
+) -> AttackTypeDomainPretrainingResult:
+    if not tasks or len({task.label for task in tasks}) != len(tasks):
+        raise ValueError('pre-training tasks must have unique non-empty labels')
+    if not hidden_sizes or any(value <= 0 for value in hidden_sizes):
+        raise ValueError('hidden_sizes must contain positive integers')
+    probe = env_factory(seed, config.fl_rounds, 'attack-pretraining-probe')
+    defender_observation = probe.defender_observation()
+    defender_obs_dim = len(flatten_observation(
+        defender_observation, DEFENDER_OBSERVATION_KEYS,
+    ))
+    attacker_observation = probe.observation_encoder.attacker_observation(
+        defender_observation,
+        malicious_count=0,
+        defender_raw_action=np.zeros(3, dtype=np.float32),
+    )
+    attacker_obs_dim = len(flatten_observation(
+        attacker_observation, ATTACKER_OBSERVATION_KEYS,
+    ))
+    defender = _pretraining_agent(
+        paper, defender_obs_dim, 'defender', seed + 1, hidden_sizes,
+    )
+    trainer = AttackPolicyPretrainer(config)
+    results = []
+    for index, task in enumerate(tasks):
+        attacker = _pretraining_agent(
+            paper, attacker_obs_dim, 'attacker', seed + 10 + index,
+            hidden_sizes,
+        )
+        results.append(trainer.train(
+            label=task.label,
+            origin=task.origin,
+            env=env_factory(
+                seed + 100 + index,
+                config.fl_rounds,
+                f'attack-pretraining-{task.label}',
+            ),
+            defender=defender,
+            attacker=attacker,
+            aggregator=fixed_pretraining_aggregator(
+                task.defense,
+                byzantine_count=task.byzantine_count,
+                clip_radius=task.clip_radius,
+            ),
+            replay_seed=seed + 1_000 + index,
+        ))
+    values = tuple(results)
+    return AttackTypeDomainPretrainingResult(
+        build_attack_type_domain(values),
+        values,
+        sum(result.fl_round_count for result in values),
+    )
+
+
+def _pretraining_agent(
+    paper: PaperMetaSGConfig,
+    obs_dim: int,
+    role: str,
+    seed: int,
+    hidden_sizes: tuple[int, ...],
+) -> TD3Agent:
+    return TD3Agent(
+        obs_dim=obs_dim,
+        action_dim=paper.attacker_action_dim,
+        role=role,
+        seed=seed,
+        hidden_sizes=hidden_sizes,
+        learning_rate=paper.policy_learning_rate,
+        gamma=paper.gamma,
+        tau=paper.tau,
+        policy_delay=paper.policy_delay,
+        target_policy_noise=paper.target_policy_noise,
+        noise_clip=paper.noise_clip,
+    )
+
+
 class AttackPolicyPretrainer:
     """Train one attacker over a single, sequential FL trajectory."""
 
@@ -138,6 +261,7 @@ class AttackPolicyPretrainer:
         if not callable(getattr(aggregator, 'aggregate', None)):
             raise TypeError('aggregator must provide aggregate(updates)')
         env.aggregator_factory = lambda action: aggregator
+        env.post_defense_factory = lambda model, epsilon: model
         replay = TD3ReplayBuffer(
             self.config.replay_capacity,
             obs_dim=attacker.obs_dim,
@@ -151,10 +275,9 @@ class AttackPolicyPretrainer:
         transition_count = 0
 
         while env.state.round_index < env.horizon:
-            defender_observation = flatten_observation(
-                env.defender_observation(), DEFENDER_OBSERVATION_KEYS,
+            defender_action = np.asarray(
+                self.config.fixed_defender_raw_action, dtype=np.float32,
             )
-            defender_action = defender.act(defender_observation, deterministic=True)
             pending = env.begin_round(defender_action)
             attacker_observation = flatten_observation(
                 pending.attacker_observation, ATTACKER_OBSERVATION_KEYS,
@@ -192,6 +315,7 @@ class AttackPolicyPretrainer:
             transition_count,
             len(stats),
             tuple(stats),
+            self.config.fixed_defender_raw_action,
         )
 
     def _update_if_due(
@@ -201,8 +325,13 @@ class AttackPolicyPretrainer:
         attacker: TD3Agent,
         stats: list[TD3UpdateStats],
     ) -> None:
-        ready = max(self.config.learning_starts, self.config.batch_size)
-        if len(replay) < ready or transition_count % self.config.train_freq != 0:
+        if (
+            len(replay) < self.config.learning_starts
+            or transition_count % self.config.train_freq != 0
+        ):
             return
         for _ in range(self.config.gradient_steps):
-            stats.append(attacker.update(replay.sample(self.config.batch_size)))
+            stats.append(attacker.update(replay.sample(
+                self.config.batch_size,
+                replace=self.config.batch_size > len(replay),
+            )))
