@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import torch
 from torch.utils.data import Subset, TensorDataset
 
-from meta_stackelberg.agents import IPMScalePolicySnapshot
+from meta_stackelberg.agents import IPMScalePolicy, IPMScalePolicySnapshot
 from meta_stackelberg.core.random_state import RandomSource
 from meta_stackelberg.feedback import IPMAttackerProxy, SupportEpisodeFeedback
 from meta_stackelberg.federated.aggregation.fedavg import FedAvg
@@ -21,11 +21,17 @@ from meta_stackelberg.federated.evaluation.classification import ClassificationE
 from meta_stackelberg.federated.models.parameters import TorchParameterCodec
 from meta_stackelberg.federated.types import RoundState
 from meta_stackelberg.security.attacks.ipm import IPMAttack
+from meta_stackelberg.security.defenses.actions import DefenseAction
 from meta_stackelberg.security.defenses.clipped_trimmed_mean import ClippedTrimmedMean
 from meta_stackelberg.security.engine.attack_round_engine import AttackRoundEngine
 from meta_stackelberg.security.population import FixedMaliciousPopulation
 from meta_stackelberg.security.types import AttackKnowledge
-from meta_stackelberg.stackelberg import DefenderCommitment
+from meta_stackelberg.stackelberg import (
+    BestResponseResult,
+    CandidateIPMBestResponseSolver,
+    DefenderCommitment,
+    FixedIPMResponseOracle,
+)
 
 
 CANDIDATE_SCALES = (0.5, 1.0, 2.0, 3.0, 5.0, 8.0)
@@ -59,6 +65,72 @@ class FrozenResponseEvaluation:
     @property
     def mean_harm(self) -> float:
         return sum(record.harm for record in self.records) / len(self.records)
+
+
+@dataclass(frozen=True)
+class CommitmentResponseCurve:
+    commitment: DefenderCommitment
+    response: BestResponseResult
+    initial_query: FrozenResponseEvaluation
+    adapted_query: FrozenResponseEvaluation
+    fixed_queries: tuple[tuple[float, FrozenResponseEvaluation], ...]
+
+
+@dataclass(frozen=True)
+class E3IPMResponseCurveResult:
+    passed: bool
+    commitments: tuple[CommitmentResponseCurve, ...]
+    failed_requirements: tuple[str, ...]
+    minimum_query_improvement: float = 1e-4
+
+
+def run_e3_ipm_response_curve() -> E3IPMResponseCurveResult:
+    declarations = (
+        ('weak', DefenseAction(10.0, 0.0)),
+        ('strong-clip', DefenseAction(0.1, 0.0)),
+        ('trim', DefenseAction(10.0, 0.4)),
+    )
+    curves = []
+    failed = []
+    for name, action in declarations:
+        commitment = DefenderCommitment.create(name, action)
+        response = CandidateIPMBestResponseSolver(CANDIDATE_SCALES).solve(
+            commitment,
+            IPMScalePolicy(1.0),
+            SUPPORT_SEEDS,
+            make_ipm_support_feedback,
+        )
+        initial_query = evaluate_frozen_ipm_response(
+            commitment, IPMScalePolicy(1.0).snapshot(), QUERY_SEEDS,
+        )
+        adapted_query = evaluate_frozen_ipm_response(
+            commitment, response.adapted_follower_snapshot, QUERY_SEEDS,
+        )
+        fixed_queries = tuple(
+            (
+                scale,
+                evaluate_frozen_ipm_response(
+                    commitment,
+                    FixedIPMResponseOracle(scale).solve(
+                        commitment, IPMScalePolicy(1.0), (), make_ipm_support_feedback,
+                    ).adapted_follower_snapshot,
+                    QUERY_SEEDS,
+                ),
+            )
+            for scale in (0.5, 1.0, 3.0, 8.0)
+        )
+        if adapted_query.mean_harm - initial_query.mean_harm <= 1e-4:
+            failed.append(f'adapted query harm did not improve for {name}')
+        curves.append(CommitmentResponseCurve(
+            commitment, response, initial_query, adapted_query, fixed_queries,
+        ))
+    proxy_curves = {
+        tuple(record.mean_scalar for record in curve.response.candidate_records)
+        for curve in curves
+    }
+    if len(proxy_curves) < 2:
+        failed.append('follower response does not depend on leader commitment')
+    return E3IPMResponseCurveResult(not failed, tuple(curves), tuple(failed))
 
 
 def make_ipm_support_feedback(

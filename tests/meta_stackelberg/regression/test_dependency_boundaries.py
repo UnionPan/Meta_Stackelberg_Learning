@@ -84,3 +84,23 @@ def test_execution_layers_do_not_import_experiment_orchestration() -> None:
             ('meta_stackelberg.experiments',),
         ))
     assert violations == []
+
+
+def test_agent_feedback_and_stackelberg_layers_do_not_import_oracles_or_experiments() -> None:
+    violations = []
+    for package in ('agents', 'feedback', 'stackelberg'):
+        violations.extend(_imports_under(
+            PACKAGE_ROOT / package,
+            ('meta_stackelberg.evaluation', 'meta_stackelberg.experiments'),
+        ))
+    assert violations == []
+
+
+def test_execution_layers_do_not_import_agent_or_stackelberg_policy() -> None:
+    violations = []
+    for package in ('core', 'federated', 'security'):
+        violations.extend(_imports_under(
+            PACKAGE_ROOT / package,
+            ('meta_stackelberg.agents', 'meta_stackelberg.stackelberg'),
+        ))
+    assert violations == []

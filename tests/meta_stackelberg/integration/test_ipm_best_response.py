@@ -9,6 +9,7 @@ from meta_stackelberg.experiments.ipm_best_response import (
     SUPPORT_SEEDS,
     evaluate_frozen_ipm_response,
     make_ipm_support_feedback,
+    run_e3_ipm_response_curve,
 )
 
 
@@ -37,3 +38,14 @@ def test_solver_and_frozen_query_preserve_leader_follower_and_replay() -> None:
     assert first == replay
     assert len(first.records) == len(QUERY_SEEDS)
     assert all(record.attack_loss > record.clean_loss for record in first.records)
+
+
+def test_precommitted_three_commitment_curve_reports_failed_query_gate_exactly() -> None:
+    result = run_e3_ipm_response_curve()
+
+    assert [item.response.adapted_follower_snapshot.scale for item in result.commitments] == [8.0, 0.5, 8.0]
+    assert len({tuple(record.mean_scalar for record in item.response.candidate_records) for item in result.commitments}) > 1
+    assert not result.passed
+    assert result.failed_requirements == ('adapted query harm did not improve for strong-clip',)
+    strong = result.commitments[1]
+    assert strong.adapted_query.mean_harm - strong.initial_query.mean_harm == 0.0
