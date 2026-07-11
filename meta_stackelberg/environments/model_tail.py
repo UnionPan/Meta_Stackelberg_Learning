@@ -14,8 +14,8 @@ from meta_stackelberg.core.model_state import ModelState
 
 @dataclass(frozen=True)
 class ModelTailObservationEncoder:
-    block_names: tuple[str, str]
-    parameter_indices: tuple[int, ...]
+    parameter_names: tuple[str, str]
+    parameter_indices: tuple[int, int]
     schema_version: int = 1
 
     @classmethod
@@ -23,27 +23,16 @@ class ModelTailObservationEncoder:
         if not isinstance(model, torch.nn.Module):
             raise TypeError('model must be a torch.nn.Module')
         named_parameters = tuple(model.named_parameters())
-        index_by_name = {name: index for index, (name, _) in enumerate(named_parameters)}
-        blocks = []
-        for module_name, module in model.named_modules():
-            direct = tuple(module.named_parameters(recurse=False))
-            if not direct:
-                continue
-            indices = tuple(
-                index_by_name[
-                    f'{module_name}.{parameter_name}' if module_name else parameter_name
-                ]
-                for parameter_name, parameter in direct
-                if parameter.requires_grad
-            )
-            if indices:
-                blocks.append((module_name, indices))
-        if len(blocks) < 2:
-            raise ValueError('model must contain at least two learnable blocks')
-        selected = blocks[-2:]
+        learnable = tuple(
+            (index, name) for index, (name, parameter) in enumerate(named_parameters)
+            if parameter.requires_grad
+        )
+        if len(learnable) < 2:
+            raise ValueError('model must contain at least two learnable parameter tensors')
+        selected = learnable[-2:]
         return cls(
-            block_names=(selected[0][0], selected[1][0]),
-            parameter_indices=selected[0][1] + selected[1][1],
+            parameter_names=(selected[0][1], selected[1][1]),
+            parameter_indices=(selected[0][0], selected[1][0]),
         )
 
     def encode(

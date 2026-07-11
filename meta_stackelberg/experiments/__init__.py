@@ -70,6 +70,16 @@ from meta_stackelberg.experiments.deterministic_paper_env import (
     deterministic_paper_dataset,
     make_deterministic_paper_env,
 )
+from meta_stackelberg.experiments.scaled_evidence import (
+    DeterministicScaledEvidenceResult,
+    run_deterministic_scaled_evidence,
+)
+from meta_stackelberg.experiments.paper_mnist_env import (
+    PaperMNISTDatasets,
+    load_paper_mnist_datasets,
+    make_paper_mnist_env,
+    split_paper_root_dataset,
+)
 
 __all__ = [
     'ClipControllabilityGate',
@@ -128,4 +138,10 @@ __all__ = [
     'DeterministicFourClientSampler',
     'deterministic_paper_dataset',
     'make_deterministic_paper_env',
+    'DeterministicScaledEvidenceResult',
+    'run_deterministic_scaled_evidence',
+    'make_paper_mnist_env',
+    'PaperMNISTDatasets',
+    'load_paper_mnist_datasets',
+    'split_paper_root_dataset',
 ]

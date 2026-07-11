@@ -80,3 +80,48 @@ def dirichlet_label_partition(
         f'could not satisfy min_samples_per_client={min_samples_per_client} '
         f'within {max_attempts} attempts'
     )
+
+
+def paper_q_label_partition(
+    labels: np.ndarray | list[int],
+    *,
+    num_clients: int,
+    q: float,
+    rng: RandomSource,
+) -> tuple[tuple[int, ...], ...]:
+    """Implement the Meta-SG Appendix C class-group assignment."""
+    values = np.asarray(labels)
+    if values.ndim != 1 or values.size == 0:
+        raise ValueError('labels must be a non-empty one-dimensional sequence')
+    if not np.issubdtype(values.dtype, np.integer):
+        raise ValueError('labels must contain integer class ids')
+    classes = np.unique(values)
+    class_count = len(classes)
+    if class_count < 2:
+        raise ValueError('paper q partition requires at least two classes')
+    if num_clients <= 0 or num_clients % class_count != 0:
+        raise ValueError('num_clients must be positive and divisible by class count')
+    if not np.isfinite(q) or q < 1.0 / class_count or q > 1.0:
+        raise ValueError('q must be within [1/C, 1]')
+    if values.size < num_clients:
+        raise ValueError('not enough samples for non-empty clients')
+    group_by_label = {int(label): group for group, label in enumerate(classes)}
+    groups: list[list[int]] = [[] for _ in range(class_count)]
+    off_probability = (1.0 - float(q)) / (class_count - 1)
+    for index, label in enumerate(values):
+        preferred = group_by_label[int(label)]
+        probabilities = np.full(class_count, off_probability, dtype=np.float64)
+        probabilities[preferred] = float(q)
+        group = int(rng.numpy.choice(class_count, p=probabilities))
+        groups[group].append(index)
+    clients_per_group = num_clients // class_count
+    if any(len(group) < clients_per_group for group in groups):
+        raise RuntimeError('paper q assignment produced an empty client partition')
+    result = []
+    for group in groups:
+        shuffled = rng.numpy.permutation(group)
+        result.extend(
+            tuple(int(index) for index in client)
+            for client in np.array_split(shuffled, clients_per_group)
+        )
+    return tuple(result)

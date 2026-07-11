@@ -6,23 +6,16 @@ from meta_stackelberg.federated.models.tiny_cnn import TinyImageCNN
 from meta_stackelberg.environments.model_tail import ModelTailObservationEncoder
 
 
-def test_encoder_uses_final_two_learnable_blocks_in_stable_order() -> None:
+def test_encoder_uses_final_two_parameter_tensors_in_stable_order() -> None:
     model = TinyImageCNN()
     codec = TorchParameterCodec()
     state = codec.capture(model)
     encoder = ModelTailObservationEncoder.from_model(model)
     observation = encoder.encode(state, round_index=2, horizon=8)
 
-    names = tuple(name for name, module in model.named_modules() if any(
-        parameter.requires_grad for parameter in module.parameters(recurse=False)
-    ))
-    assert encoder.block_names == names[-2:]
-    expected_size = sum(
-        parameter.numel()
-        for name, module in model.named_modules()
-        if name in names[-2:]
-        for parameter in module.parameters(recurse=False)
-    )
+    parameters = tuple(model.named_parameters())
+    assert encoder.parameter_names == tuple(name for name, _ in parameters[-2:])
+    expected_size = sum(parameter.numel() for _, parameter in parameters[-2:])
     assert observation['model_tail'].shape == (expected_size,)
     assert observation['round_progress'].tolist() == [0.25]
     assert observation['model_tail'].dtype == np.float32

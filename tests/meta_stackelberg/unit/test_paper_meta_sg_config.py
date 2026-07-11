@@ -30,7 +30,7 @@ def test_paper_config_preserves_explicit_meta_sg_parameters() -> None:
     assert (config.generated_seed_samples, config.generated_seed_q) == (200, 0.1)
     assert config.default_backdoor_reward_lambda == 0.5
     assert config.defender_action_dim == config.attacker_action_dim == 3
-    assert config.state_encoder == 'last-two-learnable-blocks-v1'
+    assert config.state_encoder == 'last-two-parameter-tensors-v1'
     assert config.parameter_source('T') == 'paper-explicit'
     assert config.parameter_source('rl_training_rounds') == 'paper-explicit'
     assert config.parameter_source('tau') == 'sb3-compatible-declared'

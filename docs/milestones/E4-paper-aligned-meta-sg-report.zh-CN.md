@@ -58,6 +58,10 @@ Defender 每个 FL round 输出三维连续动作 `(alpha, beta, epsilon)`；Att
 输出三维连续动作 `(gamma, E, lambda)`。动作网络范围统一为 `[-1, 1]^3`，再由严格 codec
 映射到物理参数范围。
 
+状态压缩按 Meta-SG 实现的 weight-list 语义取最后两个 parameter tensors，而不是最后两个
+module blocks。论文 MNIST CNN 对应 `fc1.weight + fc1.bias = 1280 + 10 = 1290` 维；旧的
+`conv3+fc` block 解释会产生约 41 万维状态并使 TD3 输入层不可接受，现已由测试锁定为 1290。
+
 动作 decoder 的物理边界并非全部由 Meta-SG 论文给出，必须明确列为实现声明而不是论文参数：
 
 | 动作参数 | 当前边界 | 来源与偏差 |
@@ -117,6 +121,28 @@ Defender 每个 FL round 输出三维连续动作 `(alpha, beta, epsilon)`；Att
   `0.0045560017`（通过）；Defender adaptation improvement `-0.0000438690`；meta
   advantage `-0.0000438690`；specialized-oracle regret `0.0005413890`（通过）；behavior/objective
   signal `-0.0000438690`。因此当前实现通过结构/conformance，但缩放性能 Gate 明确未通过。
+
+为区分“2 步预算过小”和执行错误，另执行了保持 tiny environment、`T=2,K=2,H=8`，但恢复
+论文关键计数 `l=N_A=N_D=10` 的扩大实验。训练实际消耗 560 条 trajectories，科学比较消耗
+180 次 support rollout（meta/random/no-adaptation 的 matched seeds 会重复计入执行次数）。阈值未
+改变。Gate 仍为 **failed**：attacker plateau 分支通过（improvement `0`）；Defender-conditioned
+response difference `0.0170114445`；Defender adaptation improvement `0`；meta advantage
+`-0.0000666976`；specialized-oracle regret `0.0007151961`；双 action/objective signal 失败。
+因此失败不能用“只训练了 2 步”解释；当前 tiny 四客户端、固定 benign delta 环境对连续防御动作的
+held-out objective 可辨识性不足。后续性能结论必须迁移到论文 MNIST/CIFAR 数据生成与客户端训练，
+不能继续在该 tiny 环境上事后调 decoder 或阈值。
+
+## MNIST 论文环境迁移
+
+已增加不依赖 legacy package 的 canonical MNIST 路径：8×8、6×6、5×5 convolution kernels
+及 10-logit classifier；Appendix C `paper_q` partition；root samples 从 client training indices
+严格移除；真实 `TorchLocalTrainer` SGD；100 workers/20 untargeted attackers/10 sampled clients；
+attackers 在 10 个 class groups 中均匀分布。Uniform sampling 允许合法的 zero-malicious round，
+不再因为某轮未采到攻击者而终止 episode。
+
+MNIST loader 默认 `download=False`，避免实验隐式访问网络；调用者可显式下载或传入已有 Dataset。
+synthetic MNIST-shaped integration 已跑通一个真实 local-SGD/RL-local-search FL round。尚未下载并执行
+60k MNIST 或论文 cGAN 生成数据训练，因此扩大 tiny Gate 的失败仍不能被描述成 MNIST 复现结果。
 - Algorithm 1、policy-level BR、Algorithm 2 和 Reptile 隔离测试均通过。
 - 2026-07-12 全仓库测试：`841 passed in 62.73s`。
 

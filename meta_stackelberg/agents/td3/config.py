@@ -47,7 +47,7 @@ class PaperMetaSGConfig:
     adaptation_step: float = 0.01
     defender_action_dim: int = 3
     attacker_action_dim: int = 3
-    state_encoder: str = 'last-two-learnable-blocks-v1'
+    state_encoder: str = 'last-two-parameter-tensors-v1'
     tau: float = 0.005
     policy_delay: int = 2
     target_policy_noise: float = 0.2
@@ -73,7 +73,7 @@ class PaperMetaSGConfig:
             _positive_integer(getattr(self, name), name)
         if self.defender_action_dim != 3 or self.attacker_action_dim != 3:
             raise ValueError('paper action dimensions must both equal 3')
-        if self.state_encoder != 'last-two-learnable-blocks-v1':
+        if self.state_encoder != 'last-two-parameter-tensors-v1':
             raise ValueError('paper state encoder semantics cannot be changed')
         for name in (
             'policy_learning_rate', 'client_learning_rate', 'kappa',

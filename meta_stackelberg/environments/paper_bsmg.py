@@ -177,8 +177,8 @@ class PaperBSMGEnv:
                 if update.is_malicious:
                     raise ValueError('benign trainer returned malicious update')
                 benign_by_client[slot.client_id] = update
-        if not malicious_slots or not benign_by_client:
-            raise ValueError('paper RL round requires sampled malicious and benign clients')
+        if not benign_by_client:
+            raise ValueError('paper RL round requires at least one sampled benign client')
         attacker_observation = self.observation_encoder.attacker_observation(
             self.defender_observation(),
             malicious_count=len(malicious_slots),
@@ -200,31 +200,34 @@ class PaperBSMGEnv:
         pending = self._pending
         raw = _raw_action(attacker_raw_action, 'Attacker')
         attacker_action = self.attacker_codec.decode(raw)
-        generator = RLLocalSearchAttack(
-            action=attacker_action,
-            model_factory=self.model_factory,
-            codec=self.codec,
-            local_dataset=self.attacker_dataset,
-            num_examples_by_client=self.attacker_num_examples,
-            learning_rate=self.local_search_learning_rate,
-            batch_size=self.local_search_batch_size,
-            trajectories=self.local_search_trajectories,
-        )
         malicious_ids = tuple(slot.client_id for slot in pending.malicious_slots)
         benign_updates = tuple(
             pending.benign_by_client[client_id]
             for client_id in pending.sampled_clients
             if client_id in pending.benign_by_client
         )
-        malicious_updates = generator.craft_round(
-            RoundAttackContext(
-                self.state.round_index,
-                self.state.global_model,
-                malicious_ids,
-                benign_updates,
-            ),
-            tuple(slot.rng for slot in pending.malicious_slots),
-        )
+        if malicious_ids:
+            generator = RLLocalSearchAttack(
+                action=attacker_action,
+                model_factory=self.model_factory,
+                codec=self.codec,
+                local_dataset=self.attacker_dataset,
+                num_examples_by_client=self.attacker_num_examples,
+                learning_rate=self.local_search_learning_rate,
+                batch_size=self.local_search_batch_size,
+                trajectories=self.local_search_trajectories,
+            )
+            malicious_updates = generator.craft_round(
+                RoundAttackContext(
+                    self.state.round_index,
+                    self.state.global_model,
+                    malicious_ids,
+                    benign_updates,
+                ),
+                tuple(slot.rng for slot in pending.malicious_slots),
+            )
+        else:
+            malicious_updates = ()
         malicious_by_client = {
             update.client_id: update for update in malicious_updates
         }

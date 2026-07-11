@@ -123,3 +123,15 @@ def test_environment_rejects_overlapping_round_phases() -> None:
         pass
     else:
         raise AssertionError('began an overlapping round')
+
+
+def test_round_with_no_sampled_malicious_client_is_a_valid_no_attack_transition() -> None:
+    env = _make_env()
+    env.population = FixedMaliciousPopulation(set())
+    pending = env.begin_round(np.zeros(3, dtype=np.float32))
+    assert pending.attacker_observation['malicious_count'].tolist() == [0.0]
+
+    step = env.finish_round(np.zeros(3, dtype=np.float32))
+
+    assert step.transition.private_diagnostics['malicious_client_count'] == 0
+    assert step.transition.state_after.round_index == 1

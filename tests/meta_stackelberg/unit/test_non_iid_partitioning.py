@@ -70,3 +70,33 @@ def test_dirichlet_partition_rejects_invalid_contract(
             rng=RandomSource(3),
             min_samples_per_client=minimum,
         )
+
+
+def test_paper_q_partition_is_replayable_complete_and_has_declared_group_bias() -> None:
+    labels = np.repeat(np.arange(4), 1000)
+    first = partitioning.paper_q_label_partition(
+        labels, num_clients=8, q=0.7, rng=RandomSource(21),
+    )
+    second = partitioning.paper_q_label_partition(
+        labels, num_clients=8, q=0.7, rng=RandomSource(21),
+    )
+
+    assert first == second
+    flattened = [index for client in first for index in client]
+    assert sorted(flattened) == list(range(len(labels)))
+    for group in range(4):
+        group_indices = first[2 * group] + first[2 * group + 1]
+        group_labels = labels[list(group_indices)]
+        assert np.mean(group_labels == group) == pytest.approx(0.7, abs=0.05)
+        assert abs(len(first[2 * group]) - len(first[2 * group + 1])) <= 1
+
+
+@pytest.mark.parametrize('num_clients,q', [(7, 0.5), (8, 0.24), (8, 1.1)])
+def test_paper_q_partition_rejects_invalid_group_contract(num_clients, q) -> None:
+    with pytest.raises(ValueError):
+        partitioning.paper_q_label_partition(
+            np.repeat(np.arange(4), 10),
+            num_clients=num_clients,
+            q=q,
+            rng=RandomSource(1),
+        )
