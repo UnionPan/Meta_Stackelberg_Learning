@@ -19,6 +19,15 @@ from meta_stackelberg.experiments.defense_response_matrix import (
     evaluate_e2_gate,
     evaluate_task_matrix_gate,
 )
+from meta_stackelberg.experiments.ipm_best_response import (
+    CANDIDATE_SCALES,
+    QUERY_SEEDS,
+    SUPPORT_SEEDS,
+    FrozenQueryRecord,
+    FrozenResponseEvaluation,
+    evaluate_frozen_ipm_response,
+    make_ipm_support_feedback,
+)
 
 __all__ = [
     'ClipControllabilityGate',
@@ -36,4 +45,11 @@ __all__ = [
     'evaluate_defense_response_matrix',
     'evaluate_e2_gate',
     'evaluate_task_matrix_gate',
+    'CANDIDATE_SCALES',
+    'QUERY_SEEDS',
+    'SUPPORT_SEEDS',
+    'FrozenQueryRecord',
+    'FrozenResponseEvaluation',
+    'evaluate_frozen_ipm_response',
+    'make_ipm_support_feedback',
 ]
