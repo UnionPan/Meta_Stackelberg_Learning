@@ -219,8 +219,12 @@ data/
 !fl_sandbox/data/**
 !meta_stackelberg/federated/data/
 !meta_stackelberg/federated/data/**
+!meta_stackelberg/security/data/
+!meta_stackelberg/security/data/**
 meta_stackelberg/federated/data/**/__pycache__/
 meta_stackelberg/federated/data/**/*.py[cod]
+meta_stackelberg/security/data/**/__pycache__/
+meta_stackelberg/security/data/**/*.py[cod]
 notebooks/cifar_diffusion.pth
 *.pth
 
@@ -231,6 +235,11 @@ other_repos/
 .codex/
 checkpoints/
 docs/
+!docs/
+docs/*
+!docs/milestones/
+docs/milestones/*
+!docs/milestones/*.md
 outputs/
 fl_sandbox/outputs/
 fl_sandbox/logs/
