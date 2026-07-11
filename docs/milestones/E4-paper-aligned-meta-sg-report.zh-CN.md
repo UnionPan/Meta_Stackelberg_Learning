@@ -141,10 +141,16 @@ attackers 在 10 个 class groups 中均匀分布。Uniform sampling 允许合�
 不再因为某轮未采到攻击者而终止 episode。
 
 MNIST loader 默认 `download=False`，避免实验隐式访问网络；调用者可显式下载或传入已有 Dataset。
-synthetic MNIST-shaped integration 已跑通一个真实 local-SGD/RL-local-search FL round。尚未下载并执行
-60k MNIST 或论文 cGAN 生成数据训练，因此扩大 tiny Gate 的失败仍不能被描述成 MNIST 复现结果。
+synthetic MNIST-shaped integration 已跑通一个真实 local-SGD/RL-local-search FL round。尚未执行
+论文 cGAN 生成数据训练，因此扩大 tiny Gate 的失败仍不能被描述成 MNIST 复现结果。
+
+随后已显式下载 torchvision MNIST 到临时目录并验证：client train 59,900、server root 100、test
+10,000，root indices 全部唯一且不进入 client train。真实 seed 23 round 采到 0 attackers，root loss
+`2.3053006 → 2.2957854`；seed 24 round 采到 1 attacker，1290 维状态与 RL local-search 均执行，
+root loss `2.3098135 → 2.3081958`。该执行同时发现并修复 torchvision label 为 Python `int` 时
+local-search 错误调用 `torch.stack` 的兼容 bug。以上仍是 one-round execution evidence，不是训练性能。
 - Algorithm 1、policy-level BR、Algorithm 2 和 Reptile 隔离测试均通过。
-- 2026-07-12 全仓库测试：`851 passed in 64.79s`。
+- 2026-07-12 全仓库测试：`852 passed in 65.16s`。
 
 ## 尚未宣称的结果
 

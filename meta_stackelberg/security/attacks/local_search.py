@@ -152,7 +152,9 @@ class RLLocalSearchAttack:
         )
         samples = [self.local_dataset[int(index)] for index in indices]
         inputs = torch.stack([sample[0] for sample in samples]).to(device)
-        labels = torch.stack([sample[1] for sample in samples]).long().to(device)
+        labels = torch.stack([
+            torch.as_tensor(sample[1]) for sample in samples
+        ]).long().to(device)
         return inputs, labels
 
 

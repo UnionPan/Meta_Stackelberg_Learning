@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from torch.utils.data import TensorDataset
+from torch.utils.data import Dataset, TensorDataset
 
 from meta_stackelberg.core.model_state import ModelState
 from meta_stackelberg.core.random_state import RandomSource
@@ -85,3 +85,28 @@ def test_local_search_declares_paper_capabilities_and_rejects_bad_rng_count() ->
         assert 'RNG' in str(error)
     else:
         raise AssertionError('accepted mismatched RNG count')
+
+
+class IntegerLabelDataset(Dataset):
+    def __len__(self):
+        return 4
+
+    def __getitem__(self, index):
+        return torch.tensor([float(index + 1)]), int(index % 2)
+
+
+def test_local_search_accepts_torchvision_style_integer_labels() -> None:
+    attack = RLLocalSearchAttack(
+        action=RLAttackAction(1.0, 1, 0.5),
+        model_factory=_model_factory,
+        codec=TorchParameterCodec(),
+        local_dataset=IntegerLabelDataset(),
+        num_examples_by_client={0: 2, 1: 2},
+        learning_rate=0.05,
+        batch_size=4,
+        trajectories=1,
+    )
+    updates = attack.craft_round(
+        _context(), (RandomSource(1), RandomSource(2)),
+    )
+    assert len(updates) == 2
