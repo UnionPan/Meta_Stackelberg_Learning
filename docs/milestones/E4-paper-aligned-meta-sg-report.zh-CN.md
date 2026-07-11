@@ -208,6 +208,19 @@ Scaled evidence 现在可原子持久化为 `policies.pt + manifest.json`：前�
 Defenders 与全部 type-specific Attackers 的完整 TD3 snapshots；后者包含参数快照、training/query
 seeds、trajectory budgets、fresh-BR 数量、oracle labels、六项 primary/alternative Gate records 和
 所有 policy fingerprints。这样长运行结束后可继续独立诊断，而不再丢失进程内 policies。
+
+提供正式 CLI：
+
+```bash
+python -m meta_stackelberg.experiments.run_paper_evidence \
+  --dataset mnist --profile actor-active \
+  --data-root /path/to/data --output /path/to/artifact
+```
+
+profiles 为 `micro / actor-active / declared-scaled / paper`；`paper` 必须额外给出
+`--allow-paper-scale`，避免误启动 `T=100,K=10,H=200/500`。可用 `--require-gate-pass` 让
+科学 Gate failed 返回非零状态。真实 MNIST `micro` CLI 已完整执行并生成 937 KB `policies.pt`
+与 4.3 KB `manifest.json`，随后成功重新加载 Algorithm 1 Defender 和 `rl-0` Attacker snapshots。
 - Algorithm 1、policy-level BR、Algorithm 2 和 Reptile 隔离测试均通过。
 - 2026-07-12 全仓库测试：`866 passed in 69.63s`。
 
