@@ -78,7 +78,7 @@ def test_defense_operators_do_not_import_oracles_or_experiments() -> None:
 
 def test_execution_layers_do_not_import_experiment_orchestration() -> None:
     violations = []
-    for package in ('core', 'federated', 'security'):
+    for package in ('core', 'federated', 'security', 'environments'):
         violations.extend(_imports_under(
             PACKAGE_ROOT / package,
             ('meta_stackelberg.experiments',),
@@ -98,7 +98,7 @@ def test_agent_feedback_and_stackelberg_layers_do_not_import_oracles_or_experime
 
 def test_execution_layers_do_not_import_agent_or_stackelberg_policy() -> None:
     violations = []
-    for package in ('core', 'federated', 'security'):
+    for package in ('core', 'federated', 'security', 'environments'):
         violations.extend(_imports_under(
             PACKAGE_ROOT / package,
             ('meta_stackelberg.agents', 'meta_stackelberg.stackelberg'),

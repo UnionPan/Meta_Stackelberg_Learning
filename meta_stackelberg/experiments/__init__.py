@@ -34,6 +34,12 @@ from meta_stackelberg.experiments.ipm_best_response import (
     run_e3_ipm_response_curve,
     evaluate_e3_oracle_regret_gate,
 )
+from meta_stackelberg.experiments.paper_meta_sg import (
+    ATTACKER_OBSERVATION_KEYS,
+    DEFENDER_OBSERVATION_KEYS,
+    PaperTD3TrajectoryCollector,
+    PaperTrajectory,
+)
 
 __all__ = [
     'ClipControllabilityGate',
@@ -64,4 +70,8 @@ __all__ = [
     'make_ipm_support_feedback',
     'run_e3_ipm_response_curve',
     'evaluate_e3_oracle_regret_gate',
+    'ATTACKER_OBSERVATION_KEYS',
+    'DEFENDER_OBSERVATION_KEYS',
+    'PaperTD3TrajectoryCollector',
+    'PaperTrajectory',
 ]
