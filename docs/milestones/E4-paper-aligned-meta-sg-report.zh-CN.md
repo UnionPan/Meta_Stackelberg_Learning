@@ -69,7 +69,7 @@ Defender 每个 FL round 输出三维连续动作 `(alpha, beta, epsilon)`；Att
 - 科学 Gate 已实现六项不可调结果：attacker BR、Defender-conditioned response、Defender task
   adaptation、meta initialization、specialized-oracle regret、action/objective 双信号。
 - Algorithm 1、policy-level BR、Algorithm 2 和 Reptile 隔离测试均通过。
-- 2026-07-12 全仓库测试：`828 passed in 52.97s`。
+- 2026-07-12 全仓库测试：`831 passed in 53.26s`。
 
 ## 尚未宣称的结果
 
