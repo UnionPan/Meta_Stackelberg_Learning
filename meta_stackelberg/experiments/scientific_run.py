@@ -41,6 +41,7 @@ class PaperScientificRunResult:
     query_seeds: tuple[int, ...]
     fresh_response_count: int
     specialized_oracle_label: str
+    attacker_oracle_label: str
     adaptation_seed_blocks: Mapping[str, tuple[int, ...]]
     protocol: str = 'paper-meta-sg-held-out-comparisons-v1'
 
@@ -83,9 +84,12 @@ class PaperScientificGateRunner:
         random_defender: TD3Agent,
         initial_attacker: TD3Agent,
         specialized_defenders: Mapping[str, TD3Agent],
+        attacker_oracle_policies: Mapping[str, TD3Agent],
     ) -> PaperScientificRunResult:
         if not specialized_defenders:
             raise ValueError('predeclared specialized defender grid must not be empty')
+        if not attacker_oracle_policies:
+            raise ValueError('predeclared attacker oracle grid must not be empty')
         pair_evidence = {}
         budgets = {}
 
@@ -95,6 +99,16 @@ class PaperScientificGateRunner:
         )
         pair_evidence['attacker_br'] = self._query_pair(
             'attacker_br', task, learned_defender, learned_br,
+        )
+        attacker_oracle_pairs = {
+            label: self._query_pair(
+                f'attacker-oracle:{label}', task, learned_defender, policy,
+            )
+            for label, policy in attacker_oracle_policies.items()
+        }
+        attacker_oracle_label, attacker_oracle_pair = max(
+            attacker_oracle_pairs.items(),
+            key=lambda item: item[1].mean_attacker_objective,
         )
         pair_evidence['defender_a_response'] = pair_evidence['attacker_br']
 
@@ -169,6 +183,9 @@ class PaperScientificGateRunner:
             'attacker_br': _attacker_evidence(
                 'attacker_br', pair_evidence['attacker_br'],
             ),
+            'attacker_oracle': _attacker_evidence(
+                'attacker_oracle', attacker_oracle_pair,
+            ),
             'defender_a_response': _attacker_evidence(
                 'defender_a_response', pair_evidence['defender_a_response'],
             ),
@@ -192,6 +209,7 @@ class PaperScientificGateRunner:
             self.plan.query_seeds,
             self._fresh_response_count,
             oracle_label,
+            attacker_oracle_label,
             {
                 'meta_adapted': matched_adaptation_seeds,
                 'random_adapted': matched_adaptation_seeds,

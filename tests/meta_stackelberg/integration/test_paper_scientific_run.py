@@ -35,6 +35,17 @@ def _constant_defender(source, raw_action):
     return result
 
 
+def _constant_attacker(source, raw_action):
+    result = source.clone()
+    for parameter in result.actor.parameters():
+        parameter.data.zero_()
+    final = tuple(result.actor.modules())[-1]
+    final.bias.data.copy_(
+        __import__('torch').atanh(__import__('torch').tensor(raw_action) * 0.999)
+    )
+    return result
+
+
 def test_scientific_runner_executes_fresh_responses_equal_budgets_and_six_gates() -> None:
     config = PaperMetaSGConfig().scaled(
         T=1, K=1, H=2, l=2, N_A=2, N_D=1,
@@ -74,6 +85,7 @@ def test_scientific_runner_executes_fresh_responses_equal_budgets_and_six_gates(
             meta_advantage=0.001,
             oracle_regret=0.1,
             action_difference=0.001,
+            attacker_plateau_gap=0.001,
         ),
     )
     result = runner.run(
@@ -86,10 +98,15 @@ def test_scientific_runner_executes_fresh_responses_equal_budgets_and_six_gates(
             'low': _constant_defender(learned, (-0.5, 0.0, 0.0)),
             'high': _constant_defender(learned, (0.5, 0.0, 0.0)),
         },
+        attacker_oracle_policies={
+            'low-gamma': _constant_attacker(attacker, (-0.8, 0.0, 0.0)),
+            'high-gamma': _constant_attacker(attacker, (0.8, 0.0, 0.0)),
+        },
     )
 
     assert len(result.gate.checks) == 6
     assert not result.gate.passed
+    assert 'attacker_oracle' in result.evidence
     assert set(result.evidence) >= {
         'attacker_initial', 'attacker_br', 'defender_a_response',
         'defender_b_response', 'defender_initial', 'defender_adapted',
@@ -151,6 +168,7 @@ def test_declared_scaled_training_flows_into_independent_scientific_gate() -> No
             meta_advantage=0.001,
             oracle_regret=0.1,
             action_difference=0.001,
+            attacker_plateau_gap=0.001,
         ),
     ).run(
         task='rl-a',
@@ -162,11 +180,23 @@ def test_declared_scaled_training_flows_into_independent_scientific_gate() -> No
             'low': _constant_defender(initial_defender, (-0.5, 0.0, 0.0)),
             'high': _constant_defender(initial_defender, (0.5, 0.0, 0.0)),
         },
+        attacker_oracle_policies={
+            'low-gamma': _constant_attacker(
+                initial_attackers['rl-a'], (-0.8, 0.0, 0.0),
+            ),
+            'high-gamma': _constant_attacker(
+                initial_attackers['rl-a'], (0.8, 0.0, 0.0),
+            ),
+        },
     )
 
     assert training.trajectory_count == 48
     assert len(result.gate.checks) == 6
     assert not result.gate.passed
+    checks = {check.name: check for check in result.gate.checks}
+    assert checks['attacker_best_response'].passed  # finite-oracle plateau branch
+    assert not checks['behavior_and_objective_signal'].passed
+    assert result.attacker_oracle_label in {'low-gamma', 'high-gamma'}
     assert result.budgets['meta_adapted'] == result.budgets['random_adapted']
     assert result.budgets['meta_adapted'].fl_rounds == 32
     assert set(training.support_seeds).isdisjoint(result.query_seeds)

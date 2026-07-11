@@ -101,8 +101,11 @@ Defender 每个 FL round 输出三维连续动作 `(alpha, beta, epsilon)`；Att
   support seeds；no-adaptation 消耗相同 rollout 预算但 TD3 update 数为零。每个被比较 Defender
   都从同一初始 Attacker 独立训练 fresh BR，finite specialized oracle 只在预声明网格内取最好值。
 - 规定缩放训练 `T=2,K=2,H=8,l=N_A=N_D=2` 的 checkpoint 已继续输入同尺度独立 Gate。
-  该 Gate 仍为 **failed**：attacker BR improvement `0`；Defender-conditioned response
-  difference `0.0045558793`（通过）；Defender adaptation improvement `-0.0000438690`；meta
+  预声明 Attacker oracle grid 为 raw gamma `{-0.8,+0.8}`（其余 raw dimensions 为 0），plateau
+  gap threshold 为 `0.001`。`phi(N_A)` 的动作虽然变化，但 attacker objective 与 oracle plateau
+  相同，因此 attacker BR 条件通过 plateau 分支，而不是 improvement 分支。总 Gate 仍为
+  **failed**：attacker BR improvement `0`；Defender-conditioned response difference
+  `0.0045560017`（通过）；Defender adaptation improvement `-0.0000438690`；meta
   advantage `-0.0000438690`；specialized-oracle regret `0.0005413890`（通过）；behavior/objective
   signal `-0.0000438690`。因此当前实现通过结构/conformance，但缩放性能 Gate 明确未通过。
 - Algorithm 1、policy-level BR、Algorithm 2 和 Reptile 隔离测试均通过。
