@@ -222,7 +222,7 @@ profiles 为 `micro / actor-active / declared-scaled / paper`；`paper` 必须�
 科学 Gate failed 返回非零状态。真实 MNIST `micro` CLI 已完整执行并生成 937 KB `policies.pt`
 与 4.3 KB `manifest.json`，随后成功重新加载 Algorithm 1 Defender 和 `rl-0` Attacker snapshots。
 - Algorithm 1、policy-level BR、Algorithm 2 和 Reptile 隔离测试均通过。
-- 2026-07-12 全仓库测试：`866 passed in 69.63s`。
+- 2026-07-12 全仓库测试：`869 passed in 69.96s`。
 
 ## 尚未宣称的结果
 
