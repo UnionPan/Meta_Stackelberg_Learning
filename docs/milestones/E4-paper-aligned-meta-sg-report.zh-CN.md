@@ -118,7 +118,7 @@ Defender 每个 FL round 输出三维连续动作 `(alpha, beta, epsilon)`；Att
   advantage `-0.0000438690`；specialized-oracle regret `0.0005413890`（通过）；behavior/objective
   signal `-0.0000438690`。因此当前实现通过结构/conformance，但缩放性能 Gate 明确未通过。
 - Algorithm 1、policy-level BR、Algorithm 2 和 Reptile 隔离测试均通过。
-- 2026-07-12 全仓库测试：`837 passed in 65.02s`。
+- 2026-07-12 全仓库测试：`841 passed in 62.73s`。
 
 ## 尚未宣称的结果
 
