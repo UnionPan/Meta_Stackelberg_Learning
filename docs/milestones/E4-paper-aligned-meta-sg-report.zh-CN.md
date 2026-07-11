@@ -144,7 +144,7 @@ MNIST loader 默认 `download=False`，避免实验隐式访问网络；调用�
 synthetic MNIST-shaped integration 已跑通一个真实 local-SGD/RL-local-search FL round。尚未下载并执行
 60k MNIST 或论文 cGAN 生成数据训练，因此扩大 tiny Gate 的失败仍不能被描述成 MNIST 复现结果。
 - Algorithm 1、policy-level BR、Algorithm 2 和 Reptile 隔离测试均通过。
-- 2026-07-12 全仓库测试：`841 passed in 62.73s`。
+- 2026-07-12 全仓库测试：`851 passed in 64.79s`。
 
 ## 尚未宣称的结果
 
