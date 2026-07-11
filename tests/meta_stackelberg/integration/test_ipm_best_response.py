@@ -8,6 +8,7 @@ from meta_stackelberg.experiments.ipm_best_response import (
     QUERY_SEEDS,
     SUPPORT_SEEDS,
     evaluate_frozen_ipm_response,
+    evaluate_e3_oracle_regret_gate,
     make_ipm_support_feedback,
     run_e3_ipm_response_curve,
 )
@@ -49,3 +50,34 @@ def test_precommitted_three_commitment_curve_reports_failed_query_gate_exactly()
     assert result.failed_requirements == ('adapted query harm did not improve for strong-clip',)
     strong = result.commitments[1]
     assert strong.adapted_query.mean_harm - strong.initial_query.mean_harm == 0.0
+
+
+def test_revised_gate_uses_complete_candidate_oracle_and_passes_plateau() -> None:
+    curve = run_e3_ipm_response_curve()
+    assert all(
+        tuple(scale for scale, _ in item.fixed_queries) == CANDIDATE_SCALES
+        for item in curve.commitments
+    )
+    gate = evaluate_e3_oracle_regret_gate(
+        curve,
+        required_commitment_ids=('weak', 'strong-clip', 'trim'),
+        required_candidate_scales=CANDIDATE_SCALES,
+    )
+    assert gate.passed
+    assert gate.failed_requirements == ()
+    assert gate.independently_improved_commitments == ('weak', 'trim')
+    strong = next(item for item in gate.commitments if item.commitment_id == 'strong-clip')
+    assert strong.query_plateau
+    assert not strong.strictly_improved
+    assert strong.oracle_regret <= 1e-6
+
+
+def test_complete_response_curve_is_exactly_replayable() -> None:
+    first = run_e3_ipm_response_curve()
+    replay = run_e3_ipm_response_curve()
+    assert first == replay
+    assert all(
+        evaluation.protocol == item.adapted_query.protocol
+        for item in first.commitments
+        for _, evaluation in item.fixed_queries
+    )

@@ -285,7 +285,7 @@ def run_e3_ipm_response_curve() -> E3IPMResponseCurveResult:
                     QUERY_SEEDS,
                 ),
             )
-            for scale in (0.5, 1.0, 3.0, 8.0)
+            for scale in CANDIDATE_SCALES
         )
         if adapted_query.mean_harm - initial_query.mean_harm <= 1e-4:
             failed.append(f'adapted query harm did not improve for {name}')
