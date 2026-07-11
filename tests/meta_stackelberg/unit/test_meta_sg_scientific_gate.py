@@ -94,6 +94,12 @@ def test_scientific_gate_checks_all_six_predeclared_comparisons() -> None:
     assert result.passed
     assert len(result.checks) == 6
     assert all(check.passed for check in result.checks)
+    behavior = next(
+        check for check in result.checks
+        if check.name == 'behavior_and_objective_signal'
+    )
+    assert behavior.observed >= behavior.threshold
+    assert behavior.alternative_observed > behavior.alternative_threshold
 
 
 def test_scientific_gate_preserves_failure_without_threshold_tuning() -> None:

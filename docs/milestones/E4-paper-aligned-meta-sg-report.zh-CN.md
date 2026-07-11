@@ -166,6 +166,16 @@ response difference `0.0039335111`；Defender adaptation 与 meta advantage 均�
 `-0.0000406647`；action/objective 双信号因 Attacker objective 未改善而失败。真实 MNIST 已出现
 tiny 环境没有的正向 adaptation signal，但不能据此降低阈值宣布通过。
 
+继续执行 `T=K=H=1,l=N_A=N_D=4`、batch/learning-start 2，共 56 条 training
+trajectories。Gate 仍为 **failed**：Attacker BR improvement `+0.0000007629` 并满足 plateau；
+Defender-conditioned response `0.0057763009`；Defender adaptation/meta advantage
+`+0.0002378845`，仍低于 `0.001`；oracle regret `0.0001184845`；action 与 held-out objective
+双信号首次同时通过。2→4 步没有提升 adaptation magnitude，因此不能继续用“步数必然解决”解释。
+
+Scientific check record 现分别存储 primary 与 alternative observed/threshold：Attacker check 同时记录
+improvement 与 oracle plateau gap；双信号 check 分别记录 action distance 与 objective improvement，
+避免旧格式出现显示的 observed 与 threshold 不属于同一判据的问题。
+
 该端到端执行最初还暴露了 local-search 数值根因：初始 `current==global` 时 deviation 为零，
 cosine similarity 未定义，`eps=1e-12` 产生约 `1e12` 梯度并导致 MNIST malicious update 非有限。
 现仅在 exact-zero deviation 处将 cosine 项定义为零值/零梯度，让 empirical loss 产生第一条方向；
@@ -194,7 +204,7 @@ aggregation 跑通一轮；Defender/Attacker observation dimensions 分别为 51
 `run_paper_cifar_scaled_evidence` 一键训练/Gate 入口。尝试显式下载 torchvision CIFAR-10 时外部源
 仅约 40 KB/s，170 MB 文件预计超过一小时，已中止，因此不宣称完成真实 CIFAR 数据运行。
 - Algorithm 1、policy-level BR、Algorithm 2 和 Reptile 隔离测试均通过。
-- 2026-07-12 全仓库测试：`866 passed in 67.44s`。
+- 2026-07-12 全仓库测试：`866 passed in 69.63s`。
 
 ## 尚未宣称的结果
 

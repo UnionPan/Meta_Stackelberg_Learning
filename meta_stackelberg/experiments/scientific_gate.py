@@ -83,6 +83,8 @@ class ScientificGateCheck:
     observed: float
     threshold: float
     comparison: str
+    alternative_observed: float | None = None
+    alternative_threshold: float | None = None
 
 
 @dataclass(frozen=True)
@@ -222,10 +224,11 @@ def evaluate_meta_sg_scientific_gate(
         _action_distance(evidence['defender_adapted'], evidence['defender_initial']),
     )
     objective_signal = min(attacker_gain, adaptation_gain, meta_margin)
-    signal = min(action_signal, objective_signal)
     checks = (
         ScientificGateCheck('attacker_best_response', attacker_pass, attacker_gain,
-                            thresholds.attacker_improvement, 'phi(N_A) - phi(0), or oracle plateau'),
+                            thresholds.attacker_improvement, 'phi(N_A) - phi(0), or oracle plateau',
+                            plateau_gap if math.isfinite(plateau_gap) else None,
+                            thresholds.attacker_plateau_gap),
         ScientificGateCheck('defender_conditioned_response', response_difference >= thresholds.response_difference,
                             response_difference, thresholds.response_difference, 'response A vs response B'),
         ScientificGateCheck('defender_task_adaptation', adaptation_gain >= thresholds.defender_adaptation_improvement,
@@ -236,7 +239,9 @@ def evaluate_meta_sg_scientific_gate(
                             oracle_regret, thresholds.oracle_regret, 'oracle - learned'),
         ScientificGateCheck('behavior_and_objective_signal',
                             action_signal >= thresholds.action_difference and objective_signal > 0,
-                            signal, thresholds.action_difference, 'held-out action and objective signals'),
+                            action_signal, thresholds.action_difference,
+                            'held-out action and objective signals',
+                            objective_signal, 0.0),
     )
     return MetaSGScientificGateResult(
         all(check.passed for check in checks), checks, thresholds, query_seeds,
