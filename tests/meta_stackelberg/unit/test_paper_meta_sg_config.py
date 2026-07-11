@@ -3,6 +3,7 @@ import dataclasses
 import pytest
 
 from meta_stackelberg.agents.td3 import PaperMetaSGConfig
+from meta_stackelberg.experiments.paper_meta_sg import action_parameter_ledger
 
 
 def test_paper_config_preserves_explicit_meta_sg_parameters() -> None:
@@ -21,10 +22,23 @@ def test_paper_config_preserves_explicit_meta_sg_parameters() -> None:
     assert (config.kappa, config.kappa_attacker, config.kappa_defender) == (0.001, 0.001, 0.001)
     assert config.meta_update_step == 1.0
     assert config.adaptation_step == 0.01
+    assert config.rl_training_rounds == 300
+    assert (config.full_fl_rounds_mnist, config.full_fl_rounds_cifar) == (500, 1000)
+    assert config.backdoor_attackers == 5
+    assert (config.root_samples_mnist, config.root_samples_cifar) == (100, 200)
+    assert config.non_iid_q == 0.5
+    assert (config.generated_seed_samples, config.generated_seed_q) == (200, 0.1)
+    assert config.default_backdoor_reward_lambda == 0.5
     assert config.defender_action_dim == config.attacker_action_dim == 3
     assert config.state_encoder == 'last-two-learnable-blocks-v1'
     assert config.parameter_source('T') == 'paper-explicit'
+    assert config.parameter_source('rl_training_rounds') == 'paper-explicit'
     assert config.parameter_source('tau') == 'sb3-compatible-declared'
+    assert config.parameter_source('state_encoder') == 'paper-semantic-contract'
+    assert {
+        field.name: config.parameter_source(field.name)
+        for field in dataclasses.fields(config)
+    }
 
 
 def test_scaled_config_changes_counts_but_not_semantics() -> None:
@@ -53,3 +67,17 @@ def test_config_is_frozen_serializable_and_rejects_invalid_counts() -> None:
         PaperMetaSGConfig(T=0)
     with pytest.raises(TypeError):
         config.scaled(T=1, defender_action_dim=2)  # type: ignore[call-arg]
+
+
+def test_action_bound_ledger_exposes_every_non_paper_range_and_deviation() -> None:
+    ledger = action_parameter_ledger()
+    assert {(item.role, item.parameter) for item in ledger} == {
+        ('defender', 'alpha'), ('defender', 'beta'), ('defender', 'epsilon'),
+        ('attacker', 'gamma'), ('attacker', 'local_steps'),
+        ('attacker', 'stealth_lambda'),
+    }
+    beta = next(item for item in ledger if item.parameter == 'beta')
+    assert (beta.low, beta.high) == (0.0, 0.45)
+    assert beta.source == 'implementation-declared'
+    assert 'paper' in beta.deviation
+    assert all(item.deviation for item in ledger)

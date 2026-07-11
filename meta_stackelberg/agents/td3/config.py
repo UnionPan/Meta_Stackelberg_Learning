@@ -21,6 +21,9 @@ class PaperMetaSGConfig:
     online_H_cifar: int = 200
     online_l: int = 10
     online_steps: int = 100
+    rl_training_rounds: int = 300
+    full_fl_rounds_mnist: int = 500
+    full_fl_rounds_cifar: int = 1000
     policy_learning_rate: float = 0.001
     td3_batch_size: int = 256
     gamma: float = 0.99
@@ -29,7 +32,14 @@ class PaperMetaSGConfig:
     client_learning_rate: float = 0.05
     workers: int = 100
     untargeted_attackers: int = 20
+    backdoor_attackers: int = 5
     subsampling_rate: float = 0.1
+    root_samples_mnist: int = 100
+    root_samples_cifar: int = 200
+    non_iid_q: float = 0.5
+    generated_seed_samples: int = 200
+    generated_seed_q: float = 0.1
+    default_backdoor_reward_lambda: float = 0.5
     kappa: float = 0.001
     kappa_attacker: float = 0.001
     kappa_defender: float = 0.001
@@ -52,8 +62,12 @@ class PaperMetaSGConfig:
         for name in (
             'T', 'K', 'H_mnist', 'H_cifar', 'l', 'N_A', 'N_D', 'online_T',
             'online_H_mnist', 'online_H_cifar', 'online_l', 'online_steps',
+            'rl_training_rounds', 'full_fl_rounds_mnist',
+            'full_fl_rounds_cifar',
             'td3_batch_size', 'fl_batch_size', 'local_iterations', 'workers',
-            'untargeted_attackers', 'policy_delay', 'replay_capacity',
+            'untargeted_attackers', 'backdoor_attackers',
+            'root_samples_mnist', 'root_samples_cifar',
+            'generated_seed_samples', 'policy_delay', 'replay_capacity',
             'learning_starts', 'train_freq', 'gradient_steps',
         ):
             _positive_integer(getattr(self, name), name)
@@ -67,7 +81,10 @@ class PaperMetaSGConfig:
             'adaptation_step', 'tau', 'target_policy_noise', 'noise_clip',
         ):
             _positive_finite(getattr(self, name), name)
-        for name in ('gamma', 'subsampling_rate'):
+        for name in (
+            'gamma', 'subsampling_rate', 'non_iid_q', 'generated_seed_q',
+            'default_backdoor_reward_lambda',
+        ):
             value = _positive_finite(getattr(self, name), name)
             if value > 1.0:
                 raise ValueError(f'{name} must be at most one')
@@ -78,15 +95,24 @@ class PaperMetaSGConfig:
             raise ValueError('hidden_sizes must contain positive integers')
         if self.untargeted_attackers >= self.workers:
             raise ValueError('untargeted_attackers must be less than workers')
+        if self.backdoor_attackers >= self.workers:
+            raise ValueError('backdoor_attackers must be less than workers')
 
     def parameter_source(self, name: str) -> str:
         if name in {
             'T', 'K', 'H_mnist', 'H_cifar', 'l', 'N_A', 'N_D',
+            'online_T', 'online_H_mnist', 'online_H_cifar', 'online_l',
+            'online_steps',
             'policy_learning_rate', 'td3_batch_size', 'gamma', 'fl_batch_size',
             'local_iterations', 'client_learning_rate', 'workers',
             'untargeted_attackers', 'subsampling_rate', 'kappa',
             'kappa_attacker', 'kappa_defender', 'meta_update_step',
             'adaptation_step',
+            'rl_training_rounds', 'full_fl_rounds_mnist',
+            'full_fl_rounds_cifar', 'backdoor_attackers',
+            'root_samples_mnist', 'root_samples_cifar', 'non_iid_q',
+            'generated_seed_samples', 'generated_seed_q',
+            'default_backdoor_reward_lambda',
         }:
             return 'paper-explicit'
         if name in {
@@ -95,6 +121,10 @@ class PaperMetaSGConfig:
             'gradient_steps', 'hidden_sizes',
         }:
             return 'sb3-compatible-declared'
+        if name in {
+            'defender_action_dim', 'attacker_action_dim', 'state_encoder',
+        }:
+            return 'paper-semantic-contract'
         raise KeyError(name)
 
     def to_dict(self) -> dict[str, Any]:

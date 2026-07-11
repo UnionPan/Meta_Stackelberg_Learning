@@ -23,6 +23,13 @@
 | TD3 | `gamma` | 0.99 | Markov return 折扣 |
 | FL | workers / attackers | 100 / 20 | 客户端总体与恶意总体 |
 | FL | subsampling | 10% | 每个 FL round 的客户端采样比例 |
+| RL environment | training rounds | 300 | Appendix C 的一般 RL 训练轮数 |
+| Full FL | MNIST / CIFAR-10 rounds | 500 / 1000 | 完整 FL 实验训练轮数，不等于 trajectory `H` |
+| FL | backdoor attackers | 5 | backdoor 实验恶意客户端数 |
+| Root data | MNIST / CIFAR-10 | 100 / 200 | server root samples |
+| Data split | default `q` | 0.5 | 默认 non-IID assignment bias |
+| Generated data | seed samples / `q` | 200 / 0.1 | self-generated data 起点 |
+| Backdoor reward | `lambda` | 0.5 | 默认 backdoor reward tradeoff |
 
 `N_D` 不是“每个 FL step 再训练 Defender 10 次”，`N_A` 也不是从 10 个攻击方法中选一个。
 `N_A` 次更新作用于同一个 attacker policy 参数序列
@@ -43,6 +50,17 @@ Algorithm 2 的真实 TD3 runner 从同一个 `theta_t`隔离克隆 `K` 个任�
 Defender 每个 FL round 输出三维连续动作 `(alpha, beta, epsilon)`；Attacker 每个 FL round
 输出三维连续动作 `(gamma, E, lambda)`。动作网络范围统一为 `[-1, 1]^3`，再由严格 codec
 映射到物理参数范围。
+
+动作 decoder 的物理边界并非全部由 Meta-SG 论文给出，必须明确列为实现声明而不是论文参数：
+
+| 动作参数 | 当前边界 | 来源与偏差 |
+|---|---|---|
+| Defender `alpha` | `[1e-6, observed_max_norm]` | 论文为 `(0,max norm]`；实现增加数值 floor |
+| Defender `beta` | `[0,0.45]` | 论文写 `[0,1)`；对称 trimmed mean 必须 `<0.5`，实现保守 cap 0.45 |
+| Defender `epsilon` | `[0.1,10]` | 论文未发布 decoder bounds，implementation-declared |
+| Attacker `gamma` | `[0.1,2.9]` | RL-attacker-compatible declared；Meta-SG 未发布 bounds |
+| Attacker `E` | integer `[1,19]` | RL-attacker-compatible declared；Meta-SG 未发布 bounds |
+| Attacker `lambda` | `[0.05,0.95]` | RL-attacker-compatible declared；Meta-SG 未发布 bounds |
 
 ## 算法契约
 
@@ -82,8 +100,13 @@ Defender 每个 FL round 输出三维连续动作 `(alpha, beta, epsilon)`；Att
 - meta/random/no-adaptation 使用完全相同的 adaptation trajectory 数、FL-round 数和同一组
   support seeds；no-adaptation 消耗相同 rollout 预算但 TD3 update 数为零。每个被比较 Defender
   都从同一初始 Attacker 独立训练 fresh BR，finite specialized oracle 只在预声明网格内取最好值。
+- 规定缩放训练 `T=2,K=2,H=8,l=N_A=N_D=2` 的 checkpoint 已继续输入同尺度独立 Gate。
+  该 Gate 仍为 **failed**：attacker BR improvement `0`；Defender-conditioned response
+  difference `0.0045558793`（通过）；Defender adaptation improvement `-0.0000438690`；meta
+  advantage `-0.0000438690`；specialized-oracle regret `0.0005413890`（通过）；behavior/objective
+  signal `-0.0000438690`。因此当前实现通过结构/conformance，但缩放性能 Gate 明确未通过。
 - Algorithm 1、policy-level BR、Algorithm 2 和 Reptile 隔离测试均通过。
-- 2026-07-12 全仓库测试：`831 passed in 53.26s`。
+- 2026-07-12 全仓库测试：`837 passed in 65.02s`。
 
 ## 尚未宣称的结果
 

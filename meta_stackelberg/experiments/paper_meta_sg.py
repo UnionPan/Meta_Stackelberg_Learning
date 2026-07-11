@@ -11,6 +11,8 @@ from meta_stackelberg.agents.td3.agent import TD3Agent
 from meta_stackelberg.agents.td3.replay import TD3ReplayBuffer, flatten_observation
 from meta_stackelberg.agents.td3.config import ScaledMetaSGConfig
 from meta_stackelberg.environments.paper_bsmg import PaperBSMGEnv, PaperRoundStep
+from meta_stackelberg.security.attacks.rl_action import RLAttackActionCodec
+from meta_stackelberg.security.defenses.paper_action import PaperDefenderActionCodec
 from meta_stackelberg.stackelberg.algorithm1 import Algorithm1Result
 from meta_stackelberg.stackelberg.algorithm2 import Algorithm2Result
 from meta_stackelberg.stackelberg.policy_algorithm1 import (
@@ -27,6 +29,53 @@ DEFENDER_OBSERVATION_KEYS = ('model_tail', 'round_progress')
 ATTACKER_OBSERVATION_KEYS = (
     'model_tail', 'round_progress', 'malicious_count', 'defender_action',
 )
+
+
+@dataclass(frozen=True)
+class ActionParameterRecord:
+    role: str
+    parameter: str
+    low: float | int | str
+    high: float | int | str
+    source: str
+    deviation: str
+
+
+def action_parameter_ledger() -> tuple[ActionParameterRecord, ...]:
+    defender = PaperDefenderActionCodec()
+    attacker = RLAttackActionCodec()
+    return (
+        ActionParameterRecord(
+            'defender', 'alpha', defender.alpha_min, 'observed_max_norm',
+            'paper-semantic-with-numerical-floor',
+            'paper uses (0,max sampled norm]; implementation adds 1e-6 floor',
+        ),
+        ActionParameterRecord(
+            'defender', 'beta', 0.0, defender.beta_max,
+            'implementation-declared',
+            'paper states beta in [0,1); valid symmetric trimming requires beta<0.5 and codec caps 0.45',
+        ),
+        ActionParameterRecord(
+            'defender', 'epsilon', defender.epsilon_min, defender.epsilon_max,
+            'implementation-declared',
+            'paper names NeuroClip epsilon but does not publish decoder bounds',
+        ),
+        ActionParameterRecord(
+            'attacker', 'gamma', attacker.gamma_min, attacker.gamma_max,
+            'rl-attacker-compatible-declared',
+            'Meta-SG paper does not publish the continuous gamma decoder bounds',
+        ),
+        ActionParameterRecord(
+            'attacker', 'local_steps', attacker.local_steps_min,
+            attacker.local_steps_max, 'rl-attacker-compatible-declared',
+            'Meta-SG paper does not publish the integer E decoder bounds',
+        ),
+        ActionParameterRecord(
+            'attacker', 'stealth_lambda', attacker.stealth_min,
+            attacker.stealth_max, 'rl-attacker-compatible-declared',
+            'Meta-SG paper does not publish the lambda decoder bounds',
+        ),
+    )
 
 
 @dataclass(frozen=True)

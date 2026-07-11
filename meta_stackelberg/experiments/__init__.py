@@ -36,6 +36,7 @@ from meta_stackelberg.experiments.ipm_best_response import (
 )
 from meta_stackelberg.experiments.paper_meta_sg import (
     ATTACKER_OBSERVATION_KEYS,
+    ActionParameterRecord,
     DEFENDER_OBSERVATION_KEYS,
     PaperTD3TrajectoryCollector,
     PaperTrajectory,
@@ -43,6 +44,7 @@ from meta_stackelberg.experiments.paper_meta_sg import (
     ScaledPaperMetaSGTrainingRunner,
     ScaledPolicyTrainingResult,
     evaluate_scaled_conformance,
+    action_parameter_ledger,
 )
 from meta_stackelberg.experiments.scientific_gate import (
     MetaSGScientificGateResult,
@@ -91,6 +93,7 @@ __all__ = [
     'run_e3_ipm_response_curve',
     'evaluate_e3_oracle_regret_gate',
     'ATTACKER_OBSERVATION_KEYS',
+    'ActionParameterRecord',
     'DEFENDER_OBSERVATION_KEYS',
     'PaperTD3TrajectoryCollector',
     'PaperTrajectory',
@@ -98,6 +101,7 @@ __all__ = [
     'ScaledPaperMetaSGTrainingRunner',
     'ScaledPolicyTrainingResult',
     'evaluate_scaled_conformance',
+    'action_parameter_ledger',
     'MetaSGScientificGateResult',
     'QueryEvidencePlan',
     'QueryPolicyEvidence',
