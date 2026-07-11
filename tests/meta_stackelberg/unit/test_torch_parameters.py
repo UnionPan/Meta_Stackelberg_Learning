@@ -3,7 +3,10 @@ import pytest
 import torch
 
 from meta_stackelberg.core.model_state import ModelState
-from meta_stackelberg.federated.models.parameters import TorchParameterCodec
+from meta_stackelberg.federated.models.parameters import (
+    TorchModelStateCodec,
+    TorchParameterCodec,
+)
 
 
 def _linear() -> torch.nn.Linear:
@@ -54,4 +57,41 @@ def test_parameter_codec_rejects_count_and_shape_mismatches() -> None:
                 np.zeros((4,), dtype=np.float32),
                 np.zeros((2,), dtype=np.float32),
             ]),
+        )
+
+
+def test_full_model_codec_round_trips_batchnorm_float_buffers_but_not_counter() -> None:
+    source = torch.nn.Sequential(
+        torch.nn.Linear(3, 3),
+        torch.nn.BatchNorm1d(3),
+    )
+    source[1].running_mean.copy_(torch.tensor([1.0, 2.0, 3.0]))
+    source[1].running_var.copy_(torch.tensor([4.0, 5.0, 6.0]))
+    source[1].num_batches_tracked.fill_(7)
+    codec = TorchModelStateCodec()
+
+    state = codec.capture(source)
+    target = torch.nn.Sequential(
+        torch.nn.Linear(3, 3),
+        torch.nn.BatchNorm1d(3),
+    )
+    codec.load(target, state)
+
+    assert codec.parameter_tensor_count(source) == 4
+    assert len(state.tensors) == 6
+    torch.testing.assert_close(target[1].running_mean, source[1].running_mean)
+    torch.testing.assert_close(target[1].running_var, source[1].running_var)
+    assert target[1].num_batches_tracked.item() == 0
+
+
+def test_full_model_codec_rejects_buffer_shape_mismatch() -> None:
+    codec = TorchModelStateCodec()
+    model = torch.nn.BatchNorm1d(3)
+    state = codec.capture(model)
+    with pytest.raises(ValueError, match='shape'):
+        codec.load(
+            model,
+            ModelState.from_tensors(
+                list(state.tensors[:-1]) + [np.zeros(4, dtype=np.float32)]
+            ),
         )

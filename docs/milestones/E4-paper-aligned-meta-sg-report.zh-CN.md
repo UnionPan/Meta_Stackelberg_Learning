@@ -180,8 +180,21 @@ generation、ring cursor 和 sampling RNG。加载前验证 role 与 policy/repl
 Policy Algorithm 1/2 现支持 outer-boundary resume：`start_iteration` 使用全局 `N_D`/`T` index，
 checkpoint callback 只在一个完整 leader/meta iteration（包含全部 `K` tasks、`N_A` BR 或 `l`
 adaptation）结束后触发，禁止从半个 BR block 恢复而改变 Stackelberg 更新语义。
+
+## CIFAR-10 / ResNet-18 路径
+
+已实现 paper CIFAR ResNet-18 与 5130 维尾部状态（`linear.weight=5120`、`linear.bias=10`）。
+为避免只聚合 parameters 而丢失 BatchNorm 状态，新增 `TorchModelStateCodec`：FL state 顺序为
+全部 learnable parameters 后接所有 floating persistent buffers，包含 running mean/variance；整数
+`num_batches_tracked` 不进入浮点聚合状态。local-search 的 cosine 几何只切取 parameter 部分，
+但最终 benign/malicious delta、clip/trim 和 server update 都覆盖完整浮点 buffer state。
+
+synthetic CIFAR-shaped integration 已用真实 ResNet-18、local SGD、RL local-search 和 buffer-aware
+aggregation 跑通一轮；Defender/Attacker observation dimensions 分别为 5131/5135，并提供
+`run_paper_cifar_scaled_evidence` 一键训练/Gate 入口。尝试显式下载 torchvision CIFAR-10 时外部源
+仅约 40 KB/s，170 MB 文件预计超过一小时，已中止，因此不宣称完成真实 CIFAR 数据运行。
 - Algorithm 1、policy-level BR、Algorithm 2 和 Reptile 隔离测试均通过。
-- 2026-07-12 全仓库测试：`859 passed in 66.08s`。
+- 2026-07-12 全仓库测试：`866 passed in 67.44s`。
 
 ## 尚未宣称的结果
 

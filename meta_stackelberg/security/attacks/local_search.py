@@ -117,13 +117,19 @@ class RLLocalSearchAttack:
             raise TypeError('model_factory must return torch.nn.Module')
         self.codec.load(model, global_state)
         parameters = tuple(model.parameters())
+        if len(global_state.tensors) < len(parameters):
+            raise ValueError('global state omits learnable parameter tensors')
+        global_parameter_vector = np.concatenate([
+            tensor.reshape(-1) for tensor in global_state.tensors[:len(parameters)]
+        ])
+        parameter_size = global_parameter_vector.size
         global_flat = torch.tensor(
-            global_state.vector(),
+            global_parameter_vector,
             dtype=parameters[0].dtype,
             device=parameters[0].device,
         )
         benign = torch.tensor(
-            benign_reference,
+            benign_reference[:parameter_size],
             dtype=parameters[0].dtype,
             device=parameters[0].device,
         )

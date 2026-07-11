@@ -86,6 +86,14 @@ from meta_stackelberg.experiments.paper_mnist_env import (
 from meta_stackelberg.experiments.paper_mnist_evidence import (
     run_paper_mnist_scaled_evidence,
 )
+from meta_stackelberg.experiments.paper_cifar_env import (
+    PaperCIFARDatasets,
+    PaperCIFAREnvironmentFactory,
+    load_paper_cifar_datasets,
+)
+from meta_stackelberg.experiments.paper_cifar_evidence import (
+    run_paper_cifar_scaled_evidence,
+)
 
 __all__ = [
     'ClipControllabilityGate',
@@ -154,4 +162,8 @@ __all__ = [
     'load_paper_mnist_datasets',
     'split_paper_root_dataset',
     'run_paper_mnist_scaled_evidence',
+    'PaperCIFARDatasets',
+    'PaperCIFAREnvironmentFactory',
+    'load_paper_cifar_datasets',
+    'run_paper_cifar_scaled_evidence',
 ]
