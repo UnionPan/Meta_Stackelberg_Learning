@@ -181,7 +181,7 @@ Policy Algorithm 1/2 现支持 outer-boundary resume：`start_iteration` 使用�
 checkpoint callback 只在一个完整 leader/meta iteration（包含全部 `K` tasks、`N_A` BR 或 `l`
 adaptation）结束后触发，禁止从半个 BR block 恢复而改变 Stackelberg 更新语义。
 - Algorithm 1、policy-level BR、Algorithm 2 和 Reptile 隔离测试均通过。
-- 2026-07-12 全仓库测试：`855 passed in 66.82s`。
+- 2026-07-12 全仓库测试：`859 passed in 66.08s`。
 
 ## 尚未宣称的结果
 
