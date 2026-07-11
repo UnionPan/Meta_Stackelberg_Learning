@@ -40,14 +40,22 @@ class TD3Snapshot:
 
 
 class TD3FreezeGuard:
-    def __init__(self, agent: TD3Agent) -> None:
+    def __init__(self, agent: TD3Agent, replays=()) -> None:
         self.agent = agent
         self.role = agent.role
         self.fingerprint = agent.fingerprint()
+        self.replays = tuple(replays)
+        if any(replay.role != agent.role for replay in self.replays):
+            raise ValueError('freeze replay role must match policy role')
+        self.replay_fingerprints = tuple(
+            replay.fingerprint() for replay in self.replays
+        )
 
     def verify(self) -> None:
         if self.agent.fingerprint() != self.fingerprint:
             raise RuntimeError(f'{self.role} freeze fingerprint changed')
+        if tuple(replay.fingerprint() for replay in self.replays) != self.replay_fingerprints:
+            raise RuntimeError(f'{self.role} replay freeze fingerprint changed')
 
 
 class TD3Agent:
@@ -208,8 +216,8 @@ class TD3Agent:
         _hash_value(digest, self.snapshot())
         return digest.hexdigest()
 
-    def freeze_guard(self) -> TD3FreezeGuard:
-        return TD3FreezeGuard(self)
+    def freeze_guard(self, *replays) -> TD3FreezeGuard:
+        return TD3FreezeGuard(self, replays)
 
     def clone(self) -> TD3Agent:
         """Return an isolated task-policy copy including optimizer and RNG state."""

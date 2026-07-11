@@ -50,6 +50,8 @@ Defender 每个 FL round 输出三维连续动作 `(alpha, beta, epsilon)`；Att
   leader update。
 - best-response 训练期间用完整 TD3 snapshot fingerprint 冻结 Defender；snapshot 包括网络、
   optimizer、更新计数与随机数状态。
+- role-local replay 另有不可变 snapshot，覆盖全部 transition、generation、ring cursor、size 与
+  sampling RNG；联合 freeze guard 可同时检测 policy 或 replay 的任何变化。
 - Algorithm 2 严格执行 `T × K × l` 个任务适应调用，每个 `T` 只做一次 Reptile 外更新。
 - Reptile 更新 actor、双 critic 及其 target 网络；optimizer、计数器和 RNG 不做参数平均。
 - 一个 Markov step 等于一个 FL round；该 round 内先 Defender 动作，再 Attacker 动作。

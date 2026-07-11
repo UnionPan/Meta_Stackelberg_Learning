@@ -1,7 +1,7 @@
 import numpy as np
 
 from meta_stackelberg.agents.td3.agent import TD3Agent
-from meta_stackelberg.agents.td3.replay import TD3Batch
+from meta_stackelberg.agents.td3.replay import TD3Batch, TD3ReplayBuffer
 
 
 def _agent(role='attacker') -> TD3Agent:
@@ -45,3 +45,21 @@ def test_freeze_guard_detects_online_target_optimizer_and_counter_mutation() -> 
         assert 'attacker' in str(error)
     else:
         raise AssertionError('freeze guard missed mutation')
+
+
+def test_freeze_guard_covers_role_local_replay_state() -> None:
+    agent = _agent()
+    replay = TD3ReplayBuffer(
+        8, obs_dim=2, action_dim=3, role='attacker', seed=9,
+    )
+    guard = agent.freeze_guard(replay)
+    replay.add(
+        np.zeros(2), np.zeros(3), 0.0, np.ones(2), False,
+        generation=1, role='attacker',
+    )
+    try:
+        guard.verify()
+    except RuntimeError as error:
+        assert 'replay' in str(error)
+    else:
+        raise AssertionError('freeze guard missed replay mutation')

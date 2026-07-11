@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import copy
+from hashlib import sha256
 from typing import Mapping, Sequence
 
 import numpy as np
@@ -16,6 +18,24 @@ class TD3Batch:
     next_observations: np.ndarray
     dones: np.ndarray
     generations: np.ndarray
+
+
+@dataclass(frozen=True)
+class TD3ReplaySnapshot:
+    schema_version: int
+    capacity: int
+    obs_dim: int
+    action_dim: int
+    role: str
+    observations: np.ndarray
+    actions: np.ndarray
+    rewards: np.ndarray
+    next_observations: np.ndarray
+    dones: np.ndarray
+    generations: np.ndarray
+    position: int
+    size: int
+    numpy_rng_state: dict
 
 
 def flatten_observation(
@@ -54,12 +74,12 @@ class TD3ReplayBuffer:
         self.action_dim = action_dim
         self.role = role
         self._rng = np.random.default_rng(seed)
-        self._observations = np.empty((capacity, obs_dim), dtype=np.float32)
-        self._actions = np.empty((capacity, action_dim), dtype=np.float32)
-        self._rewards = np.empty((capacity, 1), dtype=np.float32)
-        self._next_observations = np.empty((capacity, obs_dim), dtype=np.float32)
-        self._dones = np.empty((capacity, 1), dtype=np.float32)
-        self._generations = np.empty((capacity, 1), dtype=np.int64)
+        self._observations = np.zeros((capacity, obs_dim), dtype=np.float32)
+        self._actions = np.zeros((capacity, action_dim), dtype=np.float32)
+        self._rewards = np.zeros((capacity, 1), dtype=np.float32)
+        self._next_observations = np.zeros((capacity, obs_dim), dtype=np.float32)
+        self._dones = np.zeros((capacity, 1), dtype=np.float32)
+        self._generations = np.zeros((capacity, 1), dtype=np.int64)
         self._position = 0
         self._size = 0
 
@@ -111,9 +131,78 @@ class TD3ReplayBuffer:
             self._generations[indices].copy(),
         )
 
+    def snapshot(self) -> TD3ReplaySnapshot:
+        return TD3ReplaySnapshot(
+            1,
+            self.capacity,
+            self.obs_dim,
+            self.action_dim,
+            self.role,
+            self._observations.copy(),
+            self._actions.copy(),
+            self._rewards.copy(),
+            self._next_observations.copy(),
+            self._dones.copy(),
+            self._generations.copy(),
+            self._position,
+            self._size,
+            copy.deepcopy(self._rng.bit_generator.state),
+        )
+
+    def restore(self, snapshot: TD3ReplaySnapshot) -> None:
+        if not isinstance(snapshot, TD3ReplaySnapshot) or snapshot.schema_version != 1:
+            raise ValueError('unknown TD3 replay snapshot schema')
+        identity = (self.capacity, self.obs_dim, self.action_dim, self.role)
+        if identity != (
+            snapshot.capacity, snapshot.obs_dim, snapshot.action_dim, snapshot.role,
+        ):
+            raise ValueError('TD3 replay snapshot structure mismatch')
+        expected_shapes = (
+            (snapshot.observations, self._observations.shape),
+            (snapshot.actions, self._actions.shape),
+            (snapshot.rewards, self._rewards.shape),
+            (snapshot.next_observations, self._next_observations.shape),
+            (snapshot.dones, self._dones.shape),
+            (snapshot.generations, self._generations.shape),
+        )
+        if any(array.shape != shape for array, shape in expected_shapes):
+            raise ValueError('TD3 replay snapshot array shape mismatch')
+        self._observations[:] = snapshot.observations
+        self._actions[:] = snapshot.actions
+        self._rewards[:] = snapshot.rewards
+        self._next_observations[:] = snapshot.next_observations
+        self._dones[:] = snapshot.dones
+        self._generations[:] = snapshot.generations
+        self._position = snapshot.position
+        self._size = snapshot.size
+        self._rng.bit_generator.state = copy.deepcopy(snapshot.numpy_rng_state)
+
+    def fingerprint(self) -> str:
+        digest = sha256()
+        snapshot = self.snapshot()
+        for field in snapshot.__dataclass_fields__:
+            _hash_replay_value(digest, getattr(snapshot, field))
+        return digest.hexdigest()
+
 
 def _vector(value, size: int, name: str) -> np.ndarray:
     result = np.asarray(value, dtype=np.float32)
     if result.shape != (size,) or not np.all(np.isfinite(result)):
         raise ValueError(f'{name} must be finite shape ({size},)')
     return result.copy()
+
+
+def _hash_replay_value(digest, value) -> None:
+    if isinstance(value, np.ndarray):
+        digest.update(str(value.dtype).encode())
+        digest.update(str(value.shape).encode())
+        digest.update(value.tobytes())
+    elif isinstance(value, dict):
+        for key in sorted(value, key=repr):
+            _hash_replay_value(digest, key)
+            _hash_replay_value(digest, value[key])
+    elif isinstance(value, (tuple, list)):
+        for item in value:
+            _hash_replay_value(digest, item)
+    else:
+        digest.update(repr(value).encode())

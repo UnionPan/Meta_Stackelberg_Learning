@@ -45,3 +45,28 @@ def test_replay_capacity_and_small_batch_fail_fast() -> None:
         assert 'batch' in str(error)
     else:
         raise AssertionError('sampled beyond buffer size')
+
+
+def test_replay_snapshot_restores_contents_cursor_generation_and_rng_exactly() -> None:
+    buffer = TD3ReplayBuffer(4, obs_dim=2, action_dim=1, role='attacker', seed=11)
+    for index in range(5):
+        buffer.add(
+            [index, index + 1], [index / 10], float(index),
+            [index + 1, index + 2], index == 4,
+            generation=index // 2, role='attacker',
+        )
+    snapshot = buffer.snapshot()
+    fingerprint = buffer.fingerprint()
+    expected = buffer.sample(3)
+    buffer.add([9, 9], [0.9], 9.0, [10, 10], False,
+               generation=9, role='attacker')
+    assert buffer.fingerprint() != fingerprint
+
+    buffer.restore(snapshot)
+    assert buffer.fingerprint() == fingerprint
+    actual = buffer.sample(3)
+
+    assert buffer.fingerprint() != fingerprint  # sampling advances only RNG state
+    np.testing.assert_array_equal(actual.observations, expected.observations)
+    np.testing.assert_array_equal(actual.actions, expected.actions)
+    np.testing.assert_array_equal(actual.generations, expected.generations)

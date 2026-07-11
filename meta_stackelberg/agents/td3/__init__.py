@@ -7,7 +7,12 @@ from meta_stackelberg.agents.td3.agent import (
     TD3Snapshot,
     TD3UpdateStats,
 )
-from meta_stackelberg.agents.td3.replay import TD3Batch, TD3ReplayBuffer, flatten_observation
+from meta_stackelberg.agents.td3.replay import (
+    TD3Batch,
+    TD3ReplayBuffer,
+    TD3ReplaySnapshot,
+    flatten_observation,
+)
 
 __all__ = [
     'PaperMetaSGConfig',
@@ -16,6 +21,7 @@ __all__ = [
     'TD3Batch',
     'TD3FreezeGuard',
     'TD3ReplayBuffer',
+    'TD3ReplaySnapshot',
     'TD3Snapshot',
     'TD3UpdateStats',
     'flatten_observation',
