@@ -62,7 +62,6 @@ def test_scientific_runner_executes_fresh_responses_equal_budgets_and_six_gates(
         ATTACKER_OBSERVATION_KEYS,
     ))
     learned = _agent(defender_dim, 'defender', 1)
-    meta = _agent(defender_dim, 'defender', 2)
     random = _agent(defender_dim, 'defender', 3)
     attacker = _agent(attacker_dim, 'attacker', 4)
 
@@ -91,7 +90,6 @@ def test_scientific_runner_executes_fresh_responses_equal_budgets_and_six_gates(
     result = runner.run(
         task='rl',
         learned_defender=learned,
-        meta_defender=meta,
         random_defender=random,
         initial_attacker=attacker,
         specialized_defenders={
@@ -116,7 +114,7 @@ def test_scientific_runner_executes_fresh_responses_equal_budgets_and_six_gates(
     assert result.budgets['meta_adapted'] == result.budgets['random_adapted']
     assert result.budgets['meta_adapted'].fl_rounds == result.budgets['no_adaptation'].fl_rounds
     assert len(set(result.adaptation_seed_blocks.values())) == 1
-    assert result.fresh_response_count >= 8
+    assert result.fresh_response_count >= 6
     assert set(result.used_support_seeds).isdisjoint(result.query_seeds)
 
 
@@ -173,7 +171,6 @@ def test_declared_scaled_training_flows_into_independent_scientific_gate() -> No
     ).run(
         task='rl-a',
         learned_defender=training.algorithm1_defender,
-        meta_defender=training.algorithm2_defender,
         random_defender=random_defender,
         initial_attacker=initial_attackers['rl-a'],
         specialized_defenders={

@@ -100,6 +100,8 @@ Defender 每个 FL round 输出三维连续动作 `(alpha, beta, epsilon)`；Att
 - meta/random/no-adaptation 使用完全相同的 adaptation trajectory 数、FL-round 数和同一组
   support seeds；no-adaptation 消耗相同 rollout 预算但 TD3 update 数为零。每个被比较 Defender
   都从同一初始 Attacker 独立训练 fresh BR，finite specialized oracle 只在预声明网格内取最好值。
+  其中 meta initialization 明确定义为 Algorithm 1 输出的 Meta-SG `theta_ND`；Algorithm 2
+  meta-RL policy 只属于独立 baseline，不再错误替代 Meta-SG initialization。
 - 规定缩放训练 `T=2,K=2,H=8,l=N_A=N_D=2` 的 checkpoint 已继续输入同尺度独立 Gate。
   预声明 Attacker oracle grid 为 raw gamma `{-0.8,+0.8}`（其余 raw dimensions 为 0），plateau
   gap threshold 为 `0.001`。`phi(N_A)` 的动作虽然变化，但 attacker objective 与 oracle plateau

@@ -80,7 +80,6 @@ class PaperScientificGateRunner:
         *,
         task,
         learned_defender: TD3Agent,
-        meta_defender: TD3Agent,
         random_defender: TD3Agent,
         initial_attacker: TD3Agent,
         specialized_defenders: Mapping[str, TD3Agent],
@@ -118,8 +117,12 @@ class PaperScientificGateRunner:
         )
         pair_evidence['defender_initial'] = pair_evidence['attacker_br']
 
+        meta_seed_start = len(self._used_support_seeds)
         learned_adapted, budgets['defender_adapted'] = self._adapt(
             task, learned_defender, learned_br,
+        )
+        matched_adaptation_seeds = tuple(
+            self._used_support_seeds[meta_seed_start:]
         )
         learned_adapted_br = self._fresh_br(
             task, learned_adapted, initial_attacker,
@@ -129,20 +132,8 @@ class PaperScientificGateRunner:
         )
         budgets['defender_initial'] = ScientificTrainingBudget(0, 0, 0)
 
-        meta_br = self._fresh_br(task, meta_defender, initial_attacker)
-        meta_seed_start = len(self._used_support_seeds)
-        meta_adapted, budgets['meta_adapted'] = self._adapt(
-            task, meta_defender, meta_br,
-        )
-        matched_adaptation_seeds = tuple(
-            self._used_support_seeds[meta_seed_start:]
-        )
-        meta_adapted_br = self._fresh_br(
-            task, meta_adapted, initial_attacker,
-        )
-        pair_evidence['meta_adapted'] = self._query_pair(
-            'meta_adapted', task, meta_adapted, meta_adapted_br,
-        )
+        budgets['meta_adapted'] = budgets['defender_adapted']
+        pair_evidence['meta_adapted'] = pair_evidence['defender_adapted']
 
         random_adapted, budgets['random_adapted'] = self._adapt(
             task, random_defender, random_br,
@@ -156,11 +147,11 @@ class PaperScientificGateRunner:
         )
 
         no_adaptation, budgets['no_adaptation'] = self._consume_no_adaptation_budget(
-            task, meta_defender, meta_br,
+            task, learned_defender, learned_br,
             seed_override=matched_adaptation_seeds,
         )
         pair_evidence['no_adaptation'] = self._query_pair(
-            'no_adaptation', task, no_adaptation, meta_br,
+            'no_adaptation', task, no_adaptation, learned_br,
         )
         pair_evidence['learned_defender'] = pair_evidence['defender_adapted']
 
