@@ -67,7 +67,8 @@ def test_immutable_paper_scaled_configuration_matches_execution_traces() -> None
     )
     algorithm1 = MetaSGAlgorithm1(N_D=2, K=2, N_A=2).run(
         sample_tasks=lambda iteration, count: tuple(range(count)),
-        adapt_defender=lambda task, iteration: (task, iteration),
+        current_defender=lambda iteration: ('theta', iteration),
+        adapt_defender=lambda task, meta, iteration: (task, iteration),
         update_attacker=lambda task, defender, step: step,
         estimate_defender_gradient=lambda task, defender, response: response,
         apply_leader_update=lambda iteration, gradients: None,

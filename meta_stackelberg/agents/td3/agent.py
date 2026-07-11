@@ -211,6 +211,17 @@ class TD3Agent:
     def freeze_guard(self) -> TD3FreezeGuard:
         return TD3FreezeGuard(self)
 
+    def clone(self) -> TD3Agent:
+        """Return an isolated task-policy copy including optimizer and RNG state."""
+        return copy.deepcopy(self)
+
+    def set_learning_rate(self, learning_rate: float) -> None:
+        if not math.isfinite(learning_rate) or learning_rate <= 0:
+            raise ValueError('learning_rate must be positive and finite')
+        for optimizer in (self.actor_optimizer, self.critic_optimizer):
+            for group in optimizer.param_groups:
+                group['lr'] = float(learning_rate)
+
 
 def _state(module: torch.nn.Module) -> dict:
     return {key: value.detach().clone() for key, value in module.state_dict().items()}

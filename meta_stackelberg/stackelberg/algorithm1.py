@@ -48,6 +48,7 @@ class MetaSGAlgorithm1:
         self,
         *,
         sample_tasks,
+        current_defender,
         adapt_defender,
         update_attacker,
         estimate_defender_gradient,
@@ -56,6 +57,7 @@ class MetaSGAlgorithm1:
         events = []
         iterations = []
         for leader_iteration in range(self.N_D):
+            meta_defender = current_defender(leader_iteration)
             tasks = tuple(sample_tasks(leader_iteration, self.K))
             events.append(Algorithm1Event('sample_tasks', leader_iteration))
             if len(tasks) != self.K:
@@ -63,11 +65,13 @@ class MetaSGAlgorithm1:
             task_traces = []
             gradients = []
             for task in tasks:
-                adapted = adapt_defender(task, leader_iteration)
+                adapted = adapt_defender(task, meta_defender, leader_iteration)
                 events.append(Algorithm1Event('adapt_defender', leader_iteration, task))
                 response_steps = []
                 for response_step in range(self.N_A):
-                    response_steps.append(update_attacker(task, adapted, response_step))
+                    response_steps.append(update_attacker(
+                        task, meta_defender, response_step,
+                    ))
                     events.append(Algorithm1Event(
                         'attacker_update', leader_iteration, task, response_step,
                     ))

@@ -10,12 +10,16 @@ def test_algorithm1_uses_nd_k_na_with_paper_meanings_and_order() -> None:
         calls.append(('sample', leader_iteration, count))
         return tuple(f'task-{index}' for index in range(count))
 
-    def adapt(task, leader_iteration):
+    def current(leader_iteration):
+        return f'theta-{leader_iteration}'
+
+    def adapt(task, meta_defender, leader_iteration):
+        assert meta_defender == f'theta-{leader_iteration}'
         calls.append(('adapt', leader_iteration, task))
         return f'adapted-{leader_iteration}-{task}'
 
-    def attacker_update(task, adapted, response_step):
-        calls.append(('attacker', leader_iteration_from(adapted), task, response_step))
+    def attacker_update(task, meta_defender, response_step):
+        calls.append(('attacker', int(meta_defender.split('-')[1]), task, response_step))
 
     def defender_gradient(task, adapted, response):
         calls.append(('gradient', leader_iteration_from(adapted), task, response))
@@ -24,6 +28,7 @@ def test_algorithm1_uses_nd_k_na_with_paper_meanings_and_order() -> None:
     applied = []
     result = MetaSGAlgorithm1(N_D=2, K=3, N_A=4).run(
         sample_tasks=sample_tasks,
+        current_defender=current,
         adapt_defender=adapt,
         update_attacker=attacker_update,
         estimate_defender_gradient=defender_gradient,
@@ -46,8 +51,9 @@ def test_algorithm1_uses_only_final_phi_na_as_response() -> None:
     used = []
     result = MetaSGAlgorithm1(N_D=1, K=1, N_A=3).run(
         sample_tasks=lambda iteration, count: ('rl',),
-        adapt_defender=lambda task, iteration: 'theta-adapted',
-        update_attacker=lambda task, adapted, step: f'phi-{step + 1}',
+        current_defender=lambda iteration: 'theta-meta',
+        adapt_defender=lambda task, meta, iteration: 'theta-adapted',
+        update_attacker=lambda task, meta, step: f'phi-{step + 1}',
         estimate_defender_gradient=lambda task, adapted, response: used.append((task, response)) or 1.0,
         apply_leader_update=lambda iteration, gradients: None,
     )
@@ -68,8 +74,9 @@ def test_algorithm1_rejects_invalid_counts_and_wrong_task_batch_size() -> None:
     try:
         MetaSGAlgorithm1(N_D=1, K=2, N_A=1).run(
             sample_tasks=lambda iteration, count: ('only-one',),
-            adapt_defender=lambda task, iteration: None,
-            update_attacker=lambda task, adapted, step: None,
+            current_defender=lambda iteration: 'theta-meta',
+            adapt_defender=lambda task, meta, iteration: None,
+            update_attacker=lambda task, meta, step: None,
             estimate_defender_gradient=lambda task, adapted, response: None,
             apply_leader_update=lambda iteration, gradients: None,
         )
