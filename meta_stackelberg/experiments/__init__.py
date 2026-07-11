@@ -27,9 +27,12 @@ from meta_stackelberg.experiments.ipm_best_response import (
     FrozenResponseEvaluation,
     CommitmentResponseCurve,
     E3IPMResponseCurveResult,
+    CommitmentOracleRegret,
+    E3OracleRegretGateResult,
     evaluate_frozen_ipm_response,
     make_ipm_support_feedback,
     run_e3_ipm_response_curve,
+    evaluate_e3_oracle_regret_gate,
 )
 
 __all__ = [
@@ -55,7 +58,10 @@ __all__ = [
     'FrozenResponseEvaluation',
     'CommitmentResponseCurve',
     'E3IPMResponseCurveResult',
+    'CommitmentOracleRegret',
+    'E3OracleRegretGateResult',
     'evaluate_frozen_ipm_response',
     'make_ipm_support_feedback',
     'run_e3_ipm_response_curve',
+    'evaluate_e3_oracle_regret_gate',
 ]
