@@ -3,6 +3,7 @@ from dataclasses import FrozenInstanceError
 from dataclasses import dataclass
 import pickle
 
+import numpy as np
 import pytest
 import torch
 from torch.utils.data import TensorDataset
@@ -69,9 +70,19 @@ def _distributed_trainer(*, triggers=None, poison_fraction=0.5) -> ScopedLocalTr
 
 
 def _plan():
+    return _plan_with_triggers(_triggers())
+
+
+def _plan_with_triggers(triggers):
     from meta_stackelberg.security.attacks.dba import DistributedTriggerPlan
 
-    return DistributedTriggerPlan(_triggers(), {3: 0, 7: 1}, {3, 7})
+    return DistributedTriggerPlan(triggers, {3: 0, 7: 1}, {3, 7})
+
+
+def _assert_rng_snapshot_equal(left, right) -> None:
+    assert left.python_state == right.python_state
+    assert left.numpy_state == right.numpy_state
+    torch.testing.assert_close(left.torch_cpu_state, right.torch_cpu_state, rtol=0, atol=0)
 
 
 def test_distributed_trigger_plan_freezes_inputs_and_resolves_triggers() -> None:
@@ -147,7 +158,7 @@ def test_distributed_trigger_plan_rejects_non_scalar_trigger_equality() -> None:
         def apply(self, image: torch.Tensor) -> torch.Tensor:
             return image.clone()
 
-    with pytest.raises(TypeError, match='deeply immutable'):
+    with pytest.raises(TypeError, match='scalar equality.*value-distinct'):
         DistributedTriggerPlan(
             (
                 TensorTrigger(torch.tensor([1.0, 2.0])),
@@ -158,174 +169,108 @@ def test_distributed_trigger_plan_rejects_non_scalar_trigger_equality() -> None:
         )
 
 
-def test_distributed_trigger_plan_rejects_mutable_dataclass_trigger() -> None:
+def test_distributed_trigger_plan_rejects_protocol_trigger_with_ambiguous_equality() -> None:
     from meta_stackelberg.security.attacks.dba import DistributedTriggerPlan
 
-    @dataclass
-    class MutableTrigger:
-        value: float
+    @dataclass(frozen=True, eq=False)
+    class AmbiguousEqualityTrigger:
+        value: int
+
+        def __eq__(self, other: object) -> torch.Tensor:
+            return torch.tensor([True, True])
+
+        def __hash__(self) -> int:
+            return hash(self.value)
 
         def apply(self, image: torch.Tensor) -> torch.Tensor:
             return image.clone()
 
-    with pytest.raises(TypeError, match='frozen dataclass'):
+    with pytest.raises(TypeError, match='scalar equality.*value-distinct'):
         DistributedTriggerPlan(
-            (MutableTrigger(1.0), MutableTrigger(2.0)),
+            (AmbiguousEqualityTrigger(1), AmbiguousEqualityTrigger(1)),
             {3: 0, 7: 1},
             {3, 7},
         )
 
 
-def test_distributed_trigger_plan_rejects_undecorated_dataclass_subclass() -> None:
+def test_distributed_trigger_plan_accepts_plain_protocol_triggers() -> None:
     from meta_stackelberg.security.attacks.dba import DistributedTriggerPlan
 
-    class StatefulPatch(PatchTrigger):
-        pass
+    class PlainTrigger:
+        def __init__(self, value: float) -> None:
+            self.value = value
 
-    first = StatefulPatch(row=0, column=0, height=1, width=1, value=1.0)
-    second = StatefulPatch(row=1, column=1, height=1, width=1, value=1.0)
-    first.override = 7.0
-    assert first.override == 7.0
-
-    with pytest.raises(TypeError, match='directly decorated'):
-        DistributedTriggerPlan((first, second), {3: 0, 7: 1}, {3, 7})
-
-
-def test_distributed_trigger_plan_accepts_direct_frozen_dataclass_trigger() -> None:
-    from meta_stackelberg.security.attacks.dba import DistributedTriggerPlan
-
-    @dataclass(frozen=True)
-    class FrozenTrigger:
-        value: int
+        def __eq__(self, other: object) -> bool:
+            return isinstance(other, PlainTrigger) and self.value == other.value
 
         def apply(self, image: torch.Tensor) -> torch.Tensor:
             return image.clone()
 
     plan = DistributedTriggerPlan(
-        (FrozenTrigger(1), FrozenTrigger(2)),
+        (PlainTrigger(1.0), PlainTrigger(2.0)),
         {3: 0, 7: 1},
         {3, 7},
     )
 
-    assert plan.trigger_for(3) == FrozenTrigger(1)
+    assert plan.trigger_for(3) == PlainTrigger(1.0)
 
 
-def test_distributed_trigger_plan_rejects_mutable_hashable_nested_state() -> None:
-    from meta_stackelberg.security.attacks.dba import DistributedTriggerPlan
-
-    class MutableHashableState:
-        def __init__(self, value: int) -> None:
-            self.value = value
-
-        def __hash__(self) -> int:
-            return hash(self.value)
-
-    @dataclass(frozen=True)
-    class NestedStateTrigger:
-        state: MutableHashableState
-
-        def apply(self, image: torch.Tensor) -> torch.Tensor:
-            return image.clone()
-
-    with pytest.raises(TypeError, match='deeply immutable'):
-        DistributedTriggerPlan(
-            (
-                NestedStateTrigger(MutableHashableState(1)),
-                NestedStateTrigger(MutableHashableState(2)),
-            ),
-            {3: 0, 7: 1},
-            {3, 7},
-        )
-
-
-def test_distributed_trigger_plan_rejects_stateful_tuple_subclass() -> None:
-    from meta_stackelberg.security.attacks.dba import DistributedTriggerPlan
-
-    class StatefulTuple(tuple):
-        pass
-
-    @dataclass(frozen=True)
-    class TupleTrigger:
-        values: tuple[int, ...]
-
-        def apply(self, image: torch.Tensor) -> torch.Tensor:
-            return image.clone()
-
-    first_values = StatefulTuple((1, 2))
-    first_values.override = 7
-    assert first_values.override == 7
-
-    with pytest.raises(TypeError, match='deeply immutable'):
-        DistributedTriggerPlan(
-            (TupleTrigger(first_values), TupleTrigger(StatefulTuple((3, 4)))),
-            {3: 0, 7: 1},
-            {3, 7},
-        )
-
-
-def test_distributed_trigger_plan_rejects_composite_with_unhashable_component() -> None:
-    from meta_stackelberg.security.attacks.dba import DistributedTriggerPlan
-
-    @dataclass(frozen=True)
-    class UnhashableTrigger:
-        values: list[float]
-
-        def apply(self, image: torch.Tensor) -> torch.Tensor:
-            return image.clone()
-
-    composite = CompositeTrigger((UnhashableTrigger([1.0]),))
-    with pytest.raises(TypeError, match='deeply immutable'):
-        DistributedTriggerPlan((composite, _triggers()[0]), {3: 0, 7: 1}, {3, 7})
-
-
-def test_distributed_trigger_plan_accepts_deeply_immutable_composite() -> None:
-    from meta_stackelberg.security.attacks.dba import DistributedTriggerPlan
-
-    composite = CompositeTrigger((_triggers()[0],))
-    plan = DistributedTriggerPlan((composite, _triggers()[1]), {3: 0, 7: 1}, {3, 7})
-
-    assert plan.trigger_for(3) == composite
-
-
-def test_distributed_trigger_plan_rejects_cyclic_frozen_dataclass_state() -> None:
-    from meta_stackelberg.security.attacks.dba import DistributedTriggerPlan
-
-    @dataclass(frozen=True)
-    class CyclicTrigger:
-        nested: object = None
-
-        def apply(self, image: torch.Tensor) -> torch.Tensor:
-            return image.clone()
-
-    cyclic = CyclicTrigger()
-    object.__setattr__(cyclic, 'nested', cyclic)
-    with pytest.raises(TypeError, match='acyclic'):
-        DistributedTriggerPlan((cyclic, _triggers()[0]), {3: 0, 7: 1}, {3, 7})
-
-
-def test_distributed_trigger_plan_has_stable_value_semantics_and_roundtrips() -> None:
-    from meta_stackelberg.security.attacks.dba import DistributedTriggerPlan
-
-    first = DistributedTriggerPlan(_triggers(), {7: 1, 3: 0}, {7, 3})
-    second = DistributedTriggerPlan(_triggers(), {3: 0, 7: 1}, {3, 7})
-
-    assert first == second
-    assert hash(first) == hash(second)
-    assert pickle.loads(pickle.dumps(first)) == first
-    assert copy.deepcopy(first) == first
-
-
-def test_client_assignment_property_returns_detached_read_only_views() -> None:
+def test_client_assignment_property_returns_stable_read_only_mapping() -> None:
     from meta_stackelberg.security.attacks.dba import DistributedTriggerPlan
 
     plan = DistributedTriggerPlan(_triggers(), {3: 0, 7: 1}, {3, 7})
     first_view = plan.client_to_sub_trigger
     second_view = plan.client_to_sub_trigger
 
-    assert first_view is not second_view
+    assert first_view is second_view
     assert dict(first_view) == {3: 0, 7: 1}
     with pytest.raises(TypeError):
         first_view[3] = 1
+
+
+def test_distributed_trigger_plan_has_stable_value_semantics() -> None:
+    from meta_stackelberg.security.attacks.dba import DistributedTriggerPlan
+
+    first = DistributedTriggerPlan(_triggers(), {7: 1, 3: 0}, {7, 3})
+    second = DistributedTriggerPlan(_triggers(), {3: 0, 7: 1}, {3, 7})
+
+    assert first == second
+
+
+@pytest.mark.parametrize(
+    'roundtrip',
+    [copy.deepcopy, lambda plan: pickle.loads(pickle.dumps(plan))],
+)
+def test_distributed_trigger_plan_roundtrips_with_stable_read_only_mapping(roundtrip) -> None:
+    from meta_stackelberg.security.attacks.dba import DistributedTriggerPlan
+
+    plan = DistributedTriggerPlan(_triggers(), {3: 0, 7: 1}, {3, 7})
+    rebuilt = roundtrip(plan)
+    first_view = rebuilt.client_to_sub_trigger
+
+    assert rebuilt == plan
+    assert first_view is rebuilt.client_to_sub_trigger
+    assert dict(first_view) == {3: 0, 7: 1}
+    with pytest.raises(TypeError):
+        first_view[3] = 1
+
+
+def test_distributed_trigger_plan_wraps_unexpected_equality_errors() -> None:
+    from meta_stackelberg.security.attacks.dba import DistributedTriggerPlan
+
+    class BrokenEqualityTrigger:
+        def __eq__(self, other: object) -> bool:
+            raise LookupError('implementation detail')
+
+        def apply(self, image: torch.Tensor) -> torch.Tensor:
+            return image.clone()
+
+    with pytest.raises(TypeError, match='scalar equality.*value-distinct'):
+        DistributedTriggerPlan(
+            (BrokenEqualityTrigger(), BrokenEqualityTrigger()),
+            {3: 0, 7: 1},
+            {3, 7},
+        )
 
 
 @pytest.mark.parametrize('client_id', [True, 1.5, '3', -1])
@@ -349,10 +294,11 @@ def test_trigger_for_rejects_client_outside_attacker_scope() -> None:
 def test_dba_generator_preserves_real_local_update_and_adds_assignment_metadata() -> None:
     from meta_stackelberg.security.attacks.dba import DistributedBackdoorUpdateGenerator
 
-    trainer = _distributed_trainer()
+    triggers = _triggers()
+    trainer = _distributed_trainer(triggers=triggers)
     generator = DistributedBackdoorUpdateGenerator(
         trainer=trainer,
-        plan=_plan(),
+        plan=_plan_with_triggers(triggers),
         source_class=0,
         target_class=1,
         poison_fraction=0.5,
@@ -396,172 +342,147 @@ def test_dba_generator_preserves_real_local_update_and_adds_assignment_metadata(
     }
 
 
-def test_dba_generator_uses_trigger_value_semantics_and_freezes_scope() -> None:
+def test_dba_generator_requires_dataset_trigger_identity_even_when_equal() -> None:
     from meta_stackelberg.security.attacks.dba import DistributedBackdoorUpdateGenerator
+    from meta_stackelberg.security.attacks.dba import DistributedTriggerPlan
 
-    trainer = _distributed_trainer(triggers=tuple(copy.deepcopy(trigger) for trigger in _triggers()))
-    generator = DistributedBackdoorUpdateGenerator(
-        trainer=trainer,
-        plan=_plan(),
-        source_class=0,
-        target_class=1,
-        poison_fraction=0.5,
-    )
-    trainer._trainer.client_datasets.clear()
+    class EqualButDifferentTrigger:
+        def __init__(self, equality_key: int, fill: float) -> None:
+            self.equality_key = equality_key
+            self.fill = fill
 
-    assert generator.allowed_client_ids == frozenset({3, 7})
-    assert generator.trainer.dataset_for(3) is not None
+        def __eq__(self, other: object) -> bool:
+            return (
+                isinstance(other, EqualButDifferentTrigger)
+                and self.equality_key == other.equality_key
+            )
 
-
-def test_dba_generator_snapshots_poison_views_against_external_mutation() -> None:
-    from meta_stackelberg.security.attacks.dba import DistributedBackdoorUpdateGenerator
-
-    trainer = _distributed_trainer()
-    original = trainer.dataset_for(7)
-    original_indices = frozenset(original.poisoned_indices)
-    generator = DistributedBackdoorUpdateGenerator(
-        trainer=trainer,
-        plan=_plan(),
-        source_class=0,
-        target_class=1,
-        poison_fraction=0.5,
-    )
-    context = AttackContext(
-        client_id=7,
-        round_index=4,
-        global_model=TorchParameterCodec().capture(_model()),
-    )
-    before = generator.craft(context, RandomSource(23))
-
-    original.trigger = _triggers()[0]
-    original.target_class = 0
-    original.poison_fraction = 1.0
-    original.eligible_count = 99
-    original.poisoned_indices = frozenset()
-    after = generator.craft(context, RandomSource(23))
-    owned = generator.trainer.dataset_for(7)
-
-    assert owned is not original
-    assert owned.trigger == _triggers()[1]
-    assert owned.source_class == 0
-    assert owned.target_class == 1
-    assert owned.poison_fraction == 0.5
-    assert owned.eligible_count == 2
-    assert owned.poisoned_indices == original_indices
-    torch.testing.assert_close(
-        torch.from_numpy(after.delta.vector()),
-        torch.from_numpy(before.delta.vector()),
-        rtol=0,
-        atol=0,
-    )
-
-
-def test_dba_generator_snapshots_underlying_dataset_against_tensor_mutation() -> None:
-    from meta_stackelberg.security.attacks.dba import DistributedBackdoorUpdateGenerator
-
-    trainer = _distributed_trainer()
-    original_view = trainer.dataset_for(7)
-    generator = DistributedBackdoorUpdateGenerator(
-        trainer=trainer,
-        plan=_plan(),
-        source_class=0,
-        target_class=1,
-        poison_fraction=0.5,
-    )
-    owned_view = generator.trainer.dataset_for(7)
-    context = AttackContext(
-        client_id=7,
-        round_index=4,
-        global_model=TorchParameterCodec().capture(_model()),
-    )
-    owned_image_before = owned_view.dataset[0][0].clone()
-    update_before = generator.craft(context, RandomSource(29))
-
-    original_view.dataset.tensors[0].add_(1000.0)
-    update_after = generator.craft(context, RandomSource(29))
-
-    assert owned_view.dataset is not original_view.dataset
-    assert generator.trainer.dataset_for(3).dataset is owned_view.dataset
-    torch.testing.assert_close(owned_view.dataset[0][0], owned_image_before, rtol=0, atol=0)
-    torch.testing.assert_close(
-        torch.from_numpy(update_after.delta.vector()),
-        torch.from_numpy(update_before.delta.vector()),
-        rtol=0,
-        atol=0,
-    )
-
-
-def test_dba_generator_reports_non_scalar_dataset_trigger_equality() -> None:
-    from meta_stackelberg.security.attacks.dba import DistributedBackdoorUpdateGenerator
-
-    class NonScalarEqualityTrigger:
         def apply(self, image: torch.Tensor) -> torch.Tensor:
-            return image.clone()
+            return torch.full_like(image, self.fill)
 
-        def __eq__(self, other):
-            del other
-            return torch.tensor([True, False])
+    dataset_triggers = (
+        EqualButDifferentTrigger(1, 3.0),
+        EqualButDifferentTrigger(2, 7.0),
+    )
+    plan_triggers = (
+        EqualButDifferentTrigger(1, 30.0),
+        EqualButDifferentTrigger(2, 70.0),
+    )
+    trainer = _distributed_trainer(triggers=dataset_triggers)
+    plan = DistributedTriggerPlan(plan_triggers, {3: 0, 7: 1}, {3, 7})
 
-    trainer = _distributed_trainer()
-    trainer.dataset_for(3).trigger = NonScalarEqualityTrigger()
-
-    with pytest.raises(TypeError, match='scalar equality'):
+    with pytest.raises(ValueError, match='trigger'):
         DistributedBackdoorUpdateGenerator(
             trainer=trainer,
-            plan=_plan(),
+            plan=plan,
             source_class=0,
             target_class=1,
             poison_fraction=0.5,
         )
 
 
-def test_dba_generator_rejects_poisoned_dataset_subclass_that_aliases_copy() -> None:
+def test_dba_generator_preserves_exact_trainer_base_trainer_and_datasets() -> None:
     from meta_stackelberg.security.attacks.dba import DistributedBackdoorUpdateGenerator
 
-    class AliasingPoisonedDataset(SourceTargetPoisonedDataset):
-        def __copy__(self):
-            return self
+    triggers = _triggers()
+    trainer = _distributed_trainer(triggers=triggers)
+    plan = _plan_with_triggers(triggers)
+    generator = DistributedBackdoorUpdateGenerator(
+        trainer=trainer,
+        plan=plan,
+        source_class=0,
+        target_class=1,
+        poison_fraction=0.5,
+    )
 
-    trainer = _distributed_trainer()
+    assert generator.trainer is trainer
+    assert generator.trainer.base_trainer is trainer.base_trainer
+    assert generator.allowed_client_ids == frozenset({3, 7})
+    assert generator.trainer.dataset_for(3) is trainer.dataset_for(3)
+    assert generator.trainer.dataset_for(7) is trainer.dataset_for(7)
+
+
+def test_dba_generator_accepts_non_deepcopyable_dataset_and_crafts_real_update() -> None:
+    from meta_stackelberg.security.attacks.dba import DistributedBackdoorUpdateGenerator
+
+    class NonDeepcopyableTensorDataset(TensorDataset):
+        def __deepcopy__(self, memo):
+            del memo
+            raise TypeError('must remain shared')
+
+    triggers = _triggers()
+    clean = NonDeepcopyableTensorDataset(
+        torch.tensor([
+            [[[-1.0, -1.0], [-1.0, -1.0]]],
+            [[[-0.5, -0.5], [-0.5, -0.5]]],
+            [[[0.5, 0.5], [0.5, 0.5]]],
+            [[[1.0, 1.0], [1.0, 1.0]]],
+        ]),
+        torch.tensor([0, 0, 1, 1]),
+    )
+    datasets = {
+        client_id: SourceTargetPoisonedDataset(
+            dataset=clean,
+            trigger=trigger,
+            source_class=0,
+            target_class=1,
+            poison_fraction=0.5,
+            rng=RandomSource(client_id),
+        )
+        for client_id, trigger in zip((3, 7), triggers, strict=True)
+    }
+    trainer = ScopedLocalTrainer(
+        TorchLocalTrainer(
+            model_factory=_model,
+            client_datasets=datasets,
+            codec=TorchParameterCodec(),
+            learning_rate=0.1,
+            local_epochs=1,
+            batch_size=2,
+        ),
+        {3, 7},
+    )
+    generator = DistributedBackdoorUpdateGenerator(
+        trainer=trainer,
+        plan=_plan_with_triggers(triggers),
+        source_class=0,
+        target_class=1,
+        poison_fraction=0.5,
+    )
+    context = AttackContext(
+        client_id=7,
+        round_index=4,
+        global_model=TorchParameterCodec().capture(_model()),
+    )
+
+    update = generator.craft(context, RandomSource(31))
+
+    assert update.num_examples == 4
+    assert update.is_malicious
+    assert torch.count_nonzero(torch.from_numpy(update.delta.vector())).item() > 0
+
+
+def test_dba_generator_requires_exact_builtin_poisoned_dataset() -> None:
+    from meta_stackelberg.security.attacks.dba import DistributedBackdoorUpdateGenerator
+
+    class DerivedPoisonedDataset(SourceTargetPoisonedDataset):
+        pass
+
+    triggers = _triggers()
+    trainer = _distributed_trainer(triggers=triggers)
     original = trainer.dataset_for(3)
-    aliasing = AliasingPoisonedDataset.__new__(AliasingPoisonedDataset)
-    aliasing.__dict__.update(original.__dict__)
-    trainer._trainer.client_datasets[3] = aliasing
+    derived = DerivedPoisonedDataset.__new__(DerivedPoisonedDataset)
+    derived.__dict__.update(original.__dict__)
+    trainer.base_trainer.client_datasets[3] = derived
 
     with pytest.raises(TypeError, match='exact.*SourceTargetPoisonedDataset'):
         DistributedBackdoorUpdateGenerator(
             trainer=trainer,
-            plan=_plan(),
+            plan=_plan_with_triggers(triggers),
             source_class=0,
             target_class=1,
             poison_fraction=0.5,
         )
-
-
-def test_dba_generator_wraps_dataset_trigger_equality_runtime_error() -> None:
-    from meta_stackelberg.security.attacks.dba import DistributedBackdoorUpdateGenerator
-
-    class RaisingEqualityTrigger:
-        def apply(self, image: torch.Tensor) -> torch.Tensor:
-            return image.clone()
-
-        def __eq__(self, other):
-            del other
-            raise RuntimeError('equality exploded')
-
-    trainer = _distributed_trainer()
-    trainer.dataset_for(3).trigger = RaisingEqualityTrigger()
-
-    with pytest.raises(TypeError, match='scalar equality') as caught:
-        DistributedBackdoorUpdateGenerator(
-            trainer=trainer,
-            plan=_plan(),
-            source_class=0,
-            target_class=1,
-            poison_fraction=0.5,
-        )
-
-    assert isinstance(caught.value.__cause__, RuntimeError)
 
 
 @pytest.mark.parametrize(
@@ -597,13 +518,127 @@ def test_dba_generator_rejects_bool_poison_fraction(poison_fraction) -> None:
         )
 
 
+@pytest.mark.parametrize('poison_fraction', [np.bool_(False), np.bool_(True), '0.5', np.array(0.5)])
+def test_dba_generator_rejects_non_real_scalar_poison_fraction(poison_fraction) -> None:
+    from meta_stackelberg.security.attacks.dba import DistributedBackdoorUpdateGenerator
+
+    with pytest.raises(TypeError, match='poison_fraction'):
+        DistributedBackdoorUpdateGenerator(
+            trainer=_distributed_trainer(),
+            plan=_plan(),
+            source_class=0,
+            target_class=1,
+            poison_fraction=poison_fraction,
+        )
+
+
+def test_dba_generator_accepts_numpy_real_scalar_poison_fraction() -> None:
+    from meta_stackelberg.security.attacks.dba import DistributedBackdoorUpdateGenerator
+
+    triggers = _triggers()
+    generator = DistributedBackdoorUpdateGenerator(
+        trainer=_distributed_trainer(triggers=triggers),
+        plan=_plan_with_triggers(triggers),
+        source_class=0,
+        target_class=1,
+        poison_fraction=np.float32(0.5),
+    )
+
+    assert generator.poison_fraction == 0.5
+
+
+@pytest.mark.parametrize(
+    'mutate',
+    [
+        lambda trainer: setattr(trainer.dataset_for(7), 'trigger', _triggers()[0]),
+        lambda trainer: setattr(trainer.dataset_for(7), 'source_class', 1),
+        lambda trainer: setattr(trainer.dataset_for(7), 'target_class', 0),
+        lambda trainer: setattr(trainer.dataset_for(7), 'poison_fraction', 1.0),
+        lambda trainer: setattr(trainer.dataset_for(7), 'dataset', TensorDataset(
+            torch.zeros((1, 1, 2, 2)), torch.zeros(1, dtype=torch.long)
+        )),
+        lambda trainer: trainer.base_trainer.client_datasets.__setitem__(
+            7,
+            TensorDataset(torch.zeros((1, 1, 2, 2)), torch.zeros(1, dtype=torch.long)),
+        ),
+    ],
+)
+def test_dba_generator_revalidates_live_dataset_before_training_without_consuming_rng(
+    mutate,
+) -> None:
+    from meta_stackelberg.security.attacks.dba import DistributedBackdoorUpdateGenerator
+
+    triggers = _triggers()
+    trainer = _distributed_trainer(triggers=triggers)
+    generator = DistributedBackdoorUpdateGenerator(
+        trainer=trainer,
+        plan=_plan_with_triggers(triggers),
+        source_class=0,
+        target_class=1,
+        poison_fraction=0.5,
+    )
+    mutate(trainer)
+    rng = RandomSource(41)
+    before = rng.capture()
+
+    with pytest.raises((TypeError, ValueError), match='dataset|trigger|configuration'):
+        generator.craft(
+            AttackContext(
+                client_id=7,
+                round_index=4,
+                global_model=TorchParameterCodec().capture(_model()),
+            ),
+            rng,
+        )
+
+    _assert_rng_snapshot_equal(rng.capture(), before)
+
+
+@pytest.mark.parametrize(
+    'mutate',
+    [
+        lambda dataset: setattr(dataset, 'poisoned_indices', frozenset()),
+        lambda dataset: setattr(dataset, 'eligible_count', dataset.eligible_count + 1),
+    ],
+)
+def test_dba_generator_rejects_poison_view_state_mutation_without_consuming_rng(
+    mutate,
+) -> None:
+    from meta_stackelberg.security.attacks.dba import DistributedBackdoorUpdateGenerator
+
+    triggers = _triggers()
+    trainer = _distributed_trainer(triggers=triggers)
+    generator = DistributedBackdoorUpdateGenerator(
+        trainer=trainer,
+        plan=_plan_with_triggers(triggers),
+        source_class=0,
+        target_class=1,
+        poison_fraction=0.5,
+    )
+    mutate(trainer.dataset_for(7))
+    rng = RandomSource(43)
+    before = rng.capture()
+
+    with pytest.raises(ValueError, match='poison view state'):
+        generator.craft(
+            AttackContext(
+                client_id=7,
+                round_index=4,
+                global_model=TorchParameterCodec().capture(_model()),
+            ),
+            rng,
+        )
+
+    _assert_rng_snapshot_equal(rng.capture(), before)
+
+
 def test_dba_generator_requires_exact_builtin_torch_trainer() -> None:
     from meta_stackelberg.security.attacks.dba import DistributedBackdoorUpdateGenerator
 
     class DerivedTorchLocalTrainer(TorchLocalTrainer):
         pass
 
-    base = _distributed_trainer()._trainer
+    base = _distributed_trainer().base_trainer
     derived = DerivedTorchLocalTrainer(
         model_factory=base.model_factory,
         client_datasets=base.client_datasets,
@@ -628,7 +663,7 @@ def test_dba_generator_rejects_invalid_or_unplanned_scoped_client(client_id) -> 
 
     with pytest.raises((TypeError, ValueError)):
         DistributedBackdoorUpdateGenerator(
-            trainer=ScopedLocalTrainer(_distributed_trainer()._trainer, {client_id}),
+            trainer=ScopedLocalTrainer(_distributed_trainer().base_trainer, {client_id}),
             plan=_plan(),
             source_class=0,
             target_class=1,

@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import FrozenInstanceError, dataclass, field
 
 import numpy as np
 import pytest
@@ -149,3 +149,12 @@ def test_scoped_local_trainer_rejects_clients_outside_declared_scope() -> None:
             ),
             RandomSource(1),
         )
+
+
+def test_scoped_local_trainer_exposes_read_only_base_trainer() -> None:
+    base = RecordingTrainer((1.0,))
+    trainer = ScopedLocalTrainer(base, {2})
+
+    assert trainer.base_trainer is base
+    with pytest.raises(FrozenInstanceError):
+        trainer.base_trainer = RecordingTrainer((2.0,))

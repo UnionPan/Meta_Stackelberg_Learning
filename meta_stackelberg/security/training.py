@@ -33,13 +33,18 @@ class ScopedLocalTrainer:
             raise ValueError(f'client {client_id} is outside scoped local data')
         return self._trainer.train(client_id, state, rng)
 
+    @property
+    def base_trainer(self) -> LocalTrainer:
+        """Return the wrapped trainer without permitting wrapper reassignment."""
+        return self._trainer
+
     def dataset_for(self, client_id: int):
         """Return the dataset declared by a dataset-backed trainer, when available."""
         from meta_stackelberg.federated.clients.trainer import TorchLocalTrainer
 
-        if type(self._trainer) is not TorchLocalTrainer:
+        if type(self.base_trainer) is not TorchLocalTrainer:
             return None
-        datasets = getattr(self._trainer, 'client_datasets', None)
+        datasets = getattr(self.base_trainer, 'client_datasets', None)
         if datasets is None:
             return None
         return datasets.get(client_id)

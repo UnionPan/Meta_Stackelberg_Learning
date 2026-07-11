@@ -22,7 +22,7 @@ from meta_stackelberg.security.attacks.dba import (
 )
 from meta_stackelberg.security.attacks.identity import IdentityMaliciousUpdateGenerator
 from meta_stackelberg.security.data.poisoning import SourceTargetPoisonedDataset
-from meta_stackelberg.security.data.trigger import PatchTrigger
+from meta_stackelberg.security.data.trigger import CompositeTrigger, PatchTrigger
 from meta_stackelberg.security.engine.attack_round_engine import AttackRoundEngine
 from meta_stackelberg.security.population import FixedMaliciousPopulation
 from meta_stackelberg.security.training import ScopedLocalTrainer
@@ -41,6 +41,46 @@ PLAN = DistributedTriggerPlan(
     {client_id: client_id for client_id in MALICIOUS_CLIENTS},
     MALICIOUS_CLIENTS,
 )
+
+
+def _assert_trigger_plan_is_disjoint_composition() -> None:
+    assert len(SUB_TRIGGERS) == 3
+    assert all(isinstance(trigger, PatchTrigger) for trigger in SUB_TRIGGERS)
+    full = PLAN.full_trigger
+    assert isinstance(full, CompositeTrigger)
+    assert len(full.triggers) == len(SUB_TRIGGERS)
+    for index, component in enumerate(full.triggers):
+        assert component is SUB_TRIGGERS[index]
+
+    image = torch.zeros((1, 8, 8))
+    component_results = tuple(trigger.apply(image) for trigger in SUB_TRIGGERS)
+    component_masks = tuple(result.ne(image) for result in component_results)
+    assert all(mask.any() for mask in component_masks)
+    for index, mask in enumerate(component_masks):
+        for other_mask in component_masks[index + 1:]:
+            assert not torch.logical_and(mask, other_mask).any()
+
+    expected = image.clone()
+    for trigger in SUB_TRIGGERS:
+        expected = trigger.apply(expected)
+    actual = full.apply(image)
+    assert torch.equal(actual, expected)
+    assert torch.equal(actual.ne(image), torch.stack(component_masks).any(dim=0))
+    for mask, component_result in zip(component_masks, component_results):
+        assert torch.equal(actual[mask], component_result[mask])
+
+
+def _assert_independent_train_and_held_out(
+    train: TensorDataset,
+    held_out: TensorDataset,
+) -> None:
+    assert train is not held_out
+    assert len(train.tensors) == len(held_out.tensors) == 2
+    for train_tensor, held_out_tensor in zip(train.tensors, held_out.tensors):
+        train_storage = train_tensor.untyped_storage().data_ptr()
+        held_out_storage = held_out_tensor.untyped_storage().data_ptr()
+        assert train_storage != held_out_storage
+    assert not torch.equal(train.tensors[0], held_out.tensors[0])
 
 
 def _dataset(offset: float) -> TensorDataset:
@@ -72,6 +112,7 @@ class RunResult:
 def _run(seed: int, attack: str) -> RunResult:
     train = _dataset(0.0)
     held_out = _dataset(0.1)
+    _assert_independent_train_and_held_out(train, held_out)
     partitions = iid_partition(len(train), 6, RandomSource(92))
     clean_datasets = {
         client_id: Subset(train, indices)
@@ -153,7 +194,7 @@ def _run(seed: int, attack: str) -> RunResult:
     final_state = trajectory.final_state.global_model
 
     def targeted(trigger) -> TargetedAttackMetrics:
-        return TargetedAttackEvaluator(
+        evaluator = TargetedAttackEvaluator(
             model_factory=_model_factory,
             dataset=held_out,
             codec=codec,
@@ -161,15 +202,20 @@ def _run(seed: int, attack: str) -> RunResult:
             source_class=0,
             target_class=1,
             batch_size=24,
-        ).evaluate(final_state)
+        )
+        assert evaluator.dataset is held_out
+        return evaluator.evaluate(final_state)
+
+    clean_evaluator = ClassificationEvaluator(
+        model_factory=_model_factory,
+        dataset=held_out,
+        codec=codec,
+        batch_size=24,
+    )
+    assert clean_evaluator.dataset is held_out
 
     return RunResult(
-        clean=ClassificationEvaluator(
-            model_factory=_model_factory,
-            dataset=held_out,
-            codec=codec,
-            batch_size=24,
-        ).evaluate(final_state),
+        clean=clean_evaluator.evaluate(final_state),
         sub_triggers=tuple(targeted(trigger) for trigger in SUB_TRIGGERS),
         full_trigger=targeted(PLAN.full_trigger),
         trajectory=trajectory,
@@ -183,6 +229,7 @@ def _assert_snapshots_equal(left: RandomSnapshot, right: RandomSnapshot) -> None
 
 
 def test_matched_dba_preserves_clean_utility_and_shows_composite_activation() -> None:
+    _assert_trigger_plan_is_disjoint_composition()
     composite_activation_gaps = []
     for seed in SEEDS:
         clean = _run(seed, 'clean')
