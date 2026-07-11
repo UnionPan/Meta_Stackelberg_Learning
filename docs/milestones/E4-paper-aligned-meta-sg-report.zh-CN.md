@@ -158,12 +158,20 @@ Gate 为 **failed**：attacker plateau、Defender-conditioned response (`0.00271
 regret (`0.0003176880`) 通过；adaptation/meta/action-objective signal 均为 `0`。由于 TD3
 `policy_delay=2` 而该 smoke 每个 block 只有 1 update，actor 不变化是预期结果，不能作为性能证据。
 
+进一步执行最小 actor-active MNIST 配置 `T=K=H=1,l=N_A=N_D=2`、TD3 batch/learning-start
+2，共 20 条 training trajectories，阈值保持不变。Gate 仍为 **failed**：Attacker objective
+`-0.0046645355 → -0.0046647644`，无 improvement 但在 finite-oracle plateau 内；不同 Defender
+response difference `0.0039335111`；Defender adaptation 与 meta advantage 均为
+`+0.0002442932`，方向转正但低于预声明 `0.001`；specialized-oracle regret
+`-0.0000406647`；action/objective 双信号因 Attacker objective 未改善而失败。真实 MNIST 已出现
+tiny 环境没有的正向 adaptation signal，但不能据此降低阈值宣布通过。
+
 该端到端执行最初还暴露了 local-search 数值根因：初始 `current==global` 时 deviation 为零，
 cosine similarity 未定义，`eps=1e-12` 产生约 `1e12` 梯度并导致 MNIST malicious update 非有限。
 现仅在 exact-zero deviation 处将 cosine 项定义为零值/零梯度，让 empirical loss 产生第一条方向；
 线性回归案例的 update norm 从 `5.54e10` 降至 `<10`，相同真实 MNIST 端到端随后完整通过。
 - Algorithm 1、policy-level BR、Algorithm 2 和 Reptile 隔离测试均通过。
-- 2026-07-12 全仓库测试：`852 passed in 65.16s`。
+- 2026-07-12 全仓库测试：`855 passed in 66.82s`。
 
 ## 尚未宣称的结果
 
