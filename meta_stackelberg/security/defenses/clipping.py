@@ -32,16 +32,7 @@ class ClippedAggregator:
         self.clip_radius = DefenseAction(clip_radius).clip_radius
 
     def aggregate(self, updates: Sequence[ClientUpdate]) -> ModelState:
-        values = tuple(updates)
-        norms = _validated_norms(values)
-        clipped = tuple(
-            _scaled_update(
-                update,
-                min(1.0, self.clip_radius / norm) if norm > 0.0 else 1.0,
-            )
-            for update, norm in zip(values, norms)
-        )
-        return self.base.aggregate(clipped)
+        return self.base.aggregate(_clip_client_updates(updates, self.clip_radius))
 
     def summarize(self, updates: Sequence[ClientUpdate]) -> ClippingSummary:
         norms = _validated_norms(tuple(updates))
@@ -87,4 +78,20 @@ def _scaled_update(update: ClientUpdate, scale: float) -> ClientUpdate:
         num_examples=update.num_examples,
         is_malicious=update.is_malicious,
         metadata=update.metadata,
+    )
+
+
+def _clip_client_updates(
+    updates: Sequence[ClientUpdate],
+    clip_radius: float,
+) -> tuple[ClientUpdate, ...]:
+    radius = DefenseAction(clip_radius).clip_radius
+    values = tuple(updates)
+    norms = _validated_norms(values)
+    return tuple(
+        _scaled_update(
+            update,
+            min(1.0, radius / norm) if norm > 0.0 else 1.0,
+        )
+        for update, norm in zip(values, norms)
     )
