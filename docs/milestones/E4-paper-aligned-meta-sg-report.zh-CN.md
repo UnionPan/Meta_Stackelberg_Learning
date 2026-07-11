@@ -210,6 +210,13 @@ Defender action 生成动态 clipped-trimmed-mean；不同 attack types 不再�
 把随机 seed 伪装成论文的预训练 attack types。这里的预训练预算仍使用独立的
 `rl_training_rounds=300`，不复用 Algorithm 1 的 `N_A=10`。
 
+现已实现对应的连续 TD3 pretrainer：单个 attack type 在一个不重置的 300-FL-round 环境中顺序
+交互，固定 Defender policy 全程由完整 fingerprint guard 冻结；Attacker transition 到达 replay 后，
+严格由 `learning_starts=100`、`train_freq=1`、`gradient_steps=1` 和 `batch_size=256` 控制更新。
+Krum 预训练显式要求 `byzantine_count`；ClipMed 精确定义为 fixed norm clipping 后接 coordinate
+median，并显式要求 `clip_radius`，因为论文没有给出可安全冒充为默认值的半径。多个预训练结果可
+直接组装为带 origins 的 attack-domain artifact。该协议不包含 `N_A` 字段。
+
 ## CIFAR-10 / ResNet-18 路径
 
 已实现 paper CIFAR ResNet-18 与 5130 维尾部状态（`linear.weight=5120`、`linear.bias=10`）。
@@ -241,7 +248,7 @@ profiles 为 `micro / actor-active / declared-scaled / paper`；`paper` 必须�
 科学 Gate failed 返回非零状态。真实 MNIST `micro` CLI 已完整执行并生成 937 KB `policies.pt`
 与 4.3 KB `manifest.json`，随后成功重新加载 Algorithm 1 Defender 和 `rl-0` Attacker snapshots。
 - Algorithm 1、policy-level BR、Algorithm 2 和 Reptile 隔离测试均通过。
-- 2026-07-12 全仓库测试：`871 passed in 68.59s`。
+- 2026-07-12 全仓库测试：`881 passed in 68.25s`。
 
 ## 尚未宣称的结果
 
