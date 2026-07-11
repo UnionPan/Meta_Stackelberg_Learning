@@ -15,6 +15,7 @@ from meta_stackelberg.agents.td3.replay import flatten_observation
 from meta_stackelberg.experiments.deterministic_paper_env import (
     make_deterministic_paper_env,
 )
+from meta_stackelberg.experiments.attack_domain import AttackTypeDomainSource
 from meta_stackelberg.experiments.paper_meta_sg import (
     ATTACKER_OBSERVATION_KEYS,
     DEFENDER_OBSERVATION_KEYS,
@@ -51,6 +52,7 @@ def run_deterministic_scaled_evidence(
     training_support_seed: int,
     scientific_support_seeds: tuple[int, ...],
     seed: int,
+    attack_domain: AttackTypeDomainSource | None = None,
 ) -> ScaledEvidenceResult:
     """Run Algorithm 1/2 then all held-out comparisons without test helpers."""
     if not isinstance(config, ScaledMetaSGConfig):
@@ -83,6 +85,7 @@ def run_deterministic_scaled_evidence(
         env_factory=env_factory,
         defender_obs_dim=defender_obs_dim,
         attacker_obs_dim=attacker_obs_dim,
+        attack_domain=attack_domain,
     )
 
 
@@ -97,6 +100,7 @@ def run_scaled_evidence(
     env_factory,
     defender_obs_dim: int,
     attacker_obs_dim: int,
+    attack_domain: AttackTypeDomainSource | None = None,
 ) -> ScaledEvidenceResult:
     """Shared Algorithm 1/2 + frozen-query protocol for any paper environment."""
     if not isinstance(config, ScaledMetaSGConfig):
@@ -107,11 +111,25 @@ def run_scaled_evidence(
     random_defender = _agent(
         config, defender_obs_dim, 'defender', seed + 2,
     )
-    tasks = tuple(f'rl-{index}' for index in range(config.K))
-    initial_attackers = {
-        task: _agent(config, attacker_obs_dim, 'attacker', seed + 10 + index)
-        for index, task in enumerate(tasks)
-    }
+    if attack_domain is None:
+        tasks = tuple(f'rl-{index}' for index in range(config.K))
+        initial_attackers = {
+            task: _agent(config, attacker_obs_dim, 'attacker', seed + 10 + index)
+            for index, task in enumerate(tasks)
+        }
+        attack_origins = {task: 'random-untrained' for task in tasks}
+        attack_protocol = 'random-untrained-explicit-v1'
+    else:
+        if len(attack_domain.snapshots) != config.K:
+            raise ValueError('attack domain size must equal K')
+        tasks = tuple(attack_domain.snapshots)
+        initial_attackers = {}
+        for index, task in enumerate(tasks):
+            policy = _agent(config, attacker_obs_dim, 'attacker', seed + 10 + index)
+            policy.restore(attack_domain.snapshots[task])
+            initial_attackers[task] = policy
+        attack_origins = dict(attack_domain.origins)
+        attack_protocol = attack_domain.protocol
 
     training = ScaledPaperMetaSGTrainingRunner(
         config=config,
@@ -172,6 +190,8 @@ def run_scaled_evidence(
         'hidden_sizes': config.hidden_sizes,
         'replay_capacity': config.replay_capacity,
         'scale_provenance': config.scale_provenance,
+        'attack_domain_protocol': attack_protocol,
+        'attack_type_origins': attack_origins,
     })
     return ScaledEvidenceResult(
         training, scientific, parameters, query_seeds,

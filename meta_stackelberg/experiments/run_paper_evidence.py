@@ -22,6 +22,7 @@ from meta_stackelberg.experiments.scaled_artifact import (
     save_scaled_evidence_artifact,
 )
 from meta_stackelberg.experiments.scientific_gate import ScientificGateThresholds
+from meta_stackelberg.experiments.attack_domain import load_attack_type_domain
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -35,6 +36,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--output', required=True)
     parser.add_argument('--download', action='store_true')
     parser.add_argument('--allow-paper-scale', action='store_true')
+    parser.add_argument('--attack-domain')
+    parser.add_argument('--allow-random-attacker-init', action='store_true')
     parser.add_argument('--require-gate-pass', action='store_true')
     parser.add_argument('--seed', type=int, default=41)
     parser.add_argument('--partition-seed', type=int, default=17)
@@ -97,6 +100,11 @@ def make_profile_config(args) -> ScaledMetaSGConfig:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     config = make_profile_config(args)
+    validate_attack_initialization(args)
+    attack_domain = (
+        load_attack_type_domain(args.attack_domain)
+        if args.attack_domain else None
+    )
     paper = config.paper_reference
     thresholds = ScientificGateThresholds(
         args.attacker_improvement,
@@ -127,6 +135,7 @@ def main(argv: list[str] | None = None) -> int:
             partition_seed=args.partition_seed,
             model_seed=args.model_seed,
             local_search_batch_size=args.local_search_batch_size,
+            attack_domain=attack_domain,
         )
     else:
         datasets = load_paper_cifar_datasets(
@@ -146,6 +155,7 @@ def main(argv: list[str] | None = None) -> int:
             partition_seed=args.partition_seed,
             model_seed=args.model_seed,
             local_search_batch_size=args.local_search_batch_size,
+            attack_domain=attack_domain,
         )
     artifact = save_scaled_evidence_artifact(Path(args.output), result)
     summary = {
@@ -160,6 +170,18 @@ def main(argv: list[str] | None = None) -> int:
     if args.require_gate_pass and not result.scientific.gate.passed:
         return 2
     return 0
+
+
+def validate_attack_initialization(args) -> None:
+    if (
+        args.profile == 'paper'
+        and not args.attack_domain
+        and not args.allow_random_attacker_init
+    ):
+        raise ValueError(
+            'paper profile requires --attack-domain or explicit '
+            '--allow-random-attacker-init deviation',
+        )
 
 
 def as_check_dict(check) -> dict:

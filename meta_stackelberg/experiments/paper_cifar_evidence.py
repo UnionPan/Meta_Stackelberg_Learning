@@ -12,6 +12,7 @@ from meta_stackelberg.experiments.paper_cifar_env import (
     PaperCIFARDatasets,
     PaperCIFAREnvironmentFactory,
 )
+from meta_stackelberg.experiments.attack_domain import AttackTypeDomainSource
 from meta_stackelberg.experiments.paper_meta_sg import (
     ATTACKER_OBSERVATION_KEYS,
     DEFENDER_OBSERVATION_KEYS,
@@ -37,6 +38,7 @@ def run_paper_cifar_scaled_evidence(
     local_search_learning_rate: float = 0.01,
     local_search_batch_size: int = 128,
     local_search_trajectories: int = 1,
+    attack_domain: AttackTypeDomainSource | None = None,
 ) -> ScaledEvidenceResult:
     paper = config.paper_reference
     factory = PaperCIFAREnvironmentFactory(
@@ -84,6 +86,7 @@ def run_paper_cifar_scaled_evidence(
         env_factory=env_factory,
         defender_obs_dim=defender_obs_dim,
         attacker_obs_dim=attacker_obs_dim,
+        attack_domain=attack_domain,
     )
     parameters = dict(result.parameter_snapshot)
     parameters.update({

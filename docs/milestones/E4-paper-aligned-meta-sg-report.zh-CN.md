@@ -203,6 +203,13 @@ deterministic single-Krum（要求 `n>2f+2`，固定 tie-break）以及 task-spe
 因此 attacker pre-training trajectory 可固定使用 Krum 或 ClipMed，而 Meta-SG 主环境仍由每 round
 Defender action 生成动态 clipped-trimmed-mean；不同 attack types 不再只是同一环境的随机 seed。
 
+攻击类型域现以 typed artifact 保存完整 Attacker TD3 snapshots，并为每个 task label 强制记录
+`pretrained-against-krum` / `pretrained-against-clipmed` 等 origin。训练入口会恢复这些 snapshot，且
+把 domain protocol 与 origins 写入 evidence parameter snapshot。正式 `paper` CLI profile 必须传入
+`--attack-domain`；只有显式指定 `--allow-random-attacker-init` 才允许执行随机初始化偏差实验，避免
+把随机 seed 伪装成论文的预训练 attack types。这里的预训练预算仍使用独立的
+`rl_training_rounds=300`，不复用 Algorithm 1 的 `N_A=10`。
+
 ## CIFAR-10 / ResNet-18 路径
 
 已实现 paper CIFAR ResNet-18 与 5130 维尾部状态（`linear.weight=5120`、`linear.bias=10`）。

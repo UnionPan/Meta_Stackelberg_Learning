@@ -102,6 +102,11 @@ from meta_stackelberg.experiments.scaled_artifact import (
     load_scaled_evidence_snapshots,
     save_scaled_evidence_artifact,
 )
+from meta_stackelberg.experiments.attack_domain import (
+    AttackTypeDomainSource,
+    load_attack_type_domain,
+    save_attack_type_domain,
+)
 
 __all__ = [
     'ClipControllabilityGate',
@@ -180,4 +185,7 @@ __all__ = [
     'ScaledEvidenceArtifact',
     'load_scaled_evidence_snapshots',
     'save_scaled_evidence_artifact',
+    'AttackTypeDomainSource',
+    'load_attack_type_domain',
+    'save_attack_type_domain',
 ]
