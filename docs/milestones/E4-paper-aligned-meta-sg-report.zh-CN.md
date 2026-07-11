@@ -149,6 +149,19 @@ synthetic MNIST-shaped integration 已跑通一个真实 local-SGD/RL-local-sear
 `2.3053006 → 2.2957854`；seed 24 round 采到 1 attacker，1290 维状态与 RL local-search 均执行，
 root loss `2.3098135 → 2.3081958`。该执行同时发现并修复 torchvision label 为 Python `int` 时
 local-search 错误调用 `torch.stack` 的兼容 bug。以上仍是 one-round execution evidence，不是训练性能。
+
+现已提供 `run_paper_mnist_scaled_evidence` 单一入口，并通过 reusable
+`PaperMNISTEnvironmentFactory` 固定 paper-q partition 与 initial global model；rollout seed 只控制
+trajectory randomness，不再错误地重分数据或重置不同模型。真实 MNIST 最小端到端配置
+`T=K=H=l=N_A=N_D=1` 已完成 4 条 training trajectories 及全部 held-out comparisons。
+Gate 为 **failed**：attacker plateau、Defender-conditioned response (`0.0027188196`) 与 oracle
+regret (`0.0003176880`) 通过；adaptation/meta/action-objective signal 均为 `0`。由于 TD3
+`policy_delay=2` 而该 smoke 每个 block 只有 1 update，actor 不变化是预期结果，不能作为性能证据。
+
+该端到端执行最初还暴露了 local-search 数值根因：初始 `current==global` 时 deviation 为零，
+cosine similarity 未定义，`eps=1e-12` 产生约 `1e12` 梯度并导致 MNIST malicious update 非有限。
+现仅在 exact-zero deviation 处将 cosine 项定义为零值/零梯度，让 empirical loss 产生第一条方向；
+线性回归案例的 update norm 从 `5.54e10` 降至 `<10`，相同真实 MNIST 端到端随后完整通过。
 - Algorithm 1、policy-level BR、Algorithm 2 和 Reptile 隔离测试均通过。
 - 2026-07-12 全仓库测试：`852 passed in 65.16s`。
 

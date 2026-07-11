@@ -133,9 +133,16 @@ class RLLocalSearchAttack:
             empirical_loss = torch.nn.functional.cross_entropy(logits, labels)
             current = torch.cat([parameter.reshape(-1) for parameter in parameters])
             deviation = global_flat - current
-            cosine = torch.nn.functional.cosine_similarity(
-                deviation.unsqueeze(0), benign.unsqueeze(0), dim=1, eps=1e-12,
-            )[0]
+            if float(torch.linalg.vector_norm(deviation).detach()) <= 1e-12:
+                # Cosine is undefined at the exact global initialization. A
+                # zero-valued, zero-gradient term lets empirical loss create
+                # the first nonzero search direction without a 1/eps spike.
+                cosine = current.sum() * 0.0
+            else:
+                cosine = torch.nn.functional.cosine_similarity(
+                    deviation.unsqueeze(0), benign.unsqueeze(0), dim=1,
+                    eps=1e-12,
+                )[0]
             objective = (
                 (1.0 - self.action.stealth_lambda) * empirical_loss
                 + self.action.stealth_lambda * cosine

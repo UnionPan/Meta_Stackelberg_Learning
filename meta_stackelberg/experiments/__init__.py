@@ -72,13 +72,19 @@ from meta_stackelberg.experiments.deterministic_paper_env import (
 )
 from meta_stackelberg.experiments.scaled_evidence import (
     DeterministicScaledEvidenceResult,
+    ScaledEvidenceResult,
     run_deterministic_scaled_evidence,
+    run_scaled_evidence,
 )
 from meta_stackelberg.experiments.paper_mnist_env import (
+    PaperMNISTEnvironmentFactory,
     PaperMNISTDatasets,
     load_paper_mnist_datasets,
     make_paper_mnist_env,
     split_paper_root_dataset,
+)
+from meta_stackelberg.experiments.paper_mnist_evidence import (
+    run_paper_mnist_scaled_evidence,
 )
 
 __all__ = [
@@ -139,9 +145,13 @@ __all__ = [
     'deterministic_paper_dataset',
     'make_deterministic_paper_env',
     'DeterministicScaledEvidenceResult',
+    'ScaledEvidenceResult',
     'run_deterministic_scaled_evidence',
+    'run_scaled_evidence',
     'make_paper_mnist_env',
     'PaperMNISTDatasets',
+    'PaperMNISTEnvironmentFactory',
     'load_paper_mnist_datasets',
     'split_paper_root_dataset',
+    'run_paper_mnist_scaled_evidence',
 ]

@@ -110,3 +110,13 @@ def test_local_search_accepts_torchvision_style_integer_labels() -> None:
         _context(), (RandomSource(1), RandomSource(2)),
     )
     assert len(updates) == 2
+
+
+def test_zero_initial_deviation_does_not_create_inverse_epsilon_explosion() -> None:
+    update = _attack(RLAttackAction(
+        1.8528720617, 11, 0.5977960564,
+    )).craft_round(
+        _context(), (RandomSource(1), RandomSource(2)),
+    )[0]
+    assert np.all(np.isfinite(update.delta.vector()))
+    assert np.linalg.norm(update.delta.vector()) < 10.0

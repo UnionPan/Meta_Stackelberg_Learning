@@ -3,6 +3,7 @@ import torch
 from torch.utils.data import TensorDataset
 
 from meta_stackelberg.experiments.paper_mnist_env import (
+    PaperMNISTEnvironmentFactory,
     make_paper_mnist_env,
     split_paper_root_dataset,
 )
@@ -52,3 +53,24 @@ def test_root_split_is_seeded_disjoint_and_removed_from_client_training() -> Non
     assert indices == replay[2]
     assert set(client.indices).isdisjoint(root.indices)
     assert set(client.indices) | set(root.indices) == set(range(100))
+
+
+def test_factory_reuses_fixed_partition_and_initial_model_across_rollout_seeds() -> None:
+    dataset = _mnist_like()
+    factory = PaperMNISTEnvironmentFactory(
+        train_dataset=dataset,
+        root_dataset=TensorDataset(dataset.tensors[0][:40], dataset.tensors[1][:40]),
+        partition_seed=8,
+        model_seed=9,
+        workers=20,
+        untargeted_attackers=10,
+        sample_size=10,
+        fl_batch_size=16,
+        local_search_batch_size=8,
+    )
+    first = factory.make(seed=1, horizon=1)
+    second = factory.make(seed=2, horizon=1)
+    np.testing.assert_array_equal(
+        first.state.global_model.vector(), second.state.global_model.vector(),
+    )
+    assert first.benign_trainer.client_datasets[0].indices == second.benign_trainer.client_datasets[0].indices

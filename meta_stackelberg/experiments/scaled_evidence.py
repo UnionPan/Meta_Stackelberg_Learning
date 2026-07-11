@@ -32,12 +32,15 @@ from meta_stackelberg.experiments.scientific_run import (
 
 
 @dataclass(frozen=True)
-class DeterministicScaledEvidenceResult:
+class ScaledEvidenceResult:
     training: ScaledPolicyTrainingResult
     scientific: PaperScientificRunResult
     parameter_snapshot: Mapping[str, object]
     query_seeds: tuple[int, ...]
-    protocol: str = 'deterministic-scaled-meta-sg-evidence-v1'
+    protocol: str = 'scaled-meta-sg-evidence-v1'
+
+
+DeterministicScaledEvidenceResult = ScaledEvidenceResult
 
 
 def run_deterministic_scaled_evidence(
@@ -48,7 +51,7 @@ def run_deterministic_scaled_evidence(
     training_support_seed: int,
     scientific_support_seeds: tuple[int, ...],
     seed: int,
-) -> DeterministicScaledEvidenceResult:
+) -> ScaledEvidenceResult:
     """Run Algorithm 1/2 then all held-out comparisons without test helpers."""
     if not isinstance(config, ScaledMetaSGConfig):
         raise TypeError('config must be ScaledMetaSGConfig')
@@ -56,12 +59,48 @@ def run_deterministic_scaled_evidence(
     defender_obs_dim = len(flatten_observation(
         probe.defender_observation(), DEFENDER_OBSERVATION_KEYS,
     ))
-    attacker_probe = make_deterministic_paper_env(
-        seed=seed, horizon=config.H,
-    ).begin_round(np.zeros(3, dtype=np.float32))
+    attacker_probe = probe.observation_encoder.attacker_observation(
+        probe.defender_observation(),
+        malicious_count=0,
+        defender_raw_action=np.zeros(3, dtype=np.float32),
+    )
     attacker_obs_dim = len(flatten_observation(
-        attacker_probe.attacker_observation, ATTACKER_OBSERVATION_KEYS,
+        attacker_probe, ATTACKER_OBSERVATION_KEYS,
     ))
+
+    def env_factory(task, rollout_seed, horizon):
+        return make_deterministic_paper_env(
+            seed=rollout_seed, horizon=horizon, task_id=str(task),
+        )
+
+    return run_scaled_evidence(
+        config=config,
+        thresholds=thresholds,
+        query_seeds=query_seeds,
+        training_support_seed=training_support_seed,
+        scientific_support_seeds=scientific_support_seeds,
+        seed=seed,
+        env_factory=env_factory,
+        defender_obs_dim=defender_obs_dim,
+        attacker_obs_dim=attacker_obs_dim,
+    )
+
+
+def run_scaled_evidence(
+    *,
+    config: ScaledMetaSGConfig,
+    thresholds: ScientificGateThresholds,
+    query_seeds: tuple[int, ...],
+    training_support_seed: int,
+    scientific_support_seeds: tuple[int, ...],
+    seed: int,
+    env_factory,
+    defender_obs_dim: int,
+    attacker_obs_dim: int,
+) -> ScaledEvidenceResult:
+    """Shared Algorithm 1/2 + frozen-query protocol for any paper environment."""
+    if not isinstance(config, ScaledMetaSGConfig):
+        raise TypeError('config must be ScaledMetaSGConfig')
     initial_defender = _agent(
         config, defender_obs_dim, 'defender', seed + 1,
     )
@@ -73,11 +112,6 @@ def run_deterministic_scaled_evidence(
         task: _agent(config, attacker_obs_dim, 'attacker', seed + 10 + index)
         for index, task in enumerate(tasks)
     }
-
-    def env_factory(task, rollout_seed, horizon):
-        return make_deterministic_paper_env(
-            seed=rollout_seed, horizon=horizon, task_id=str(task),
-        )
 
     training = ScaledPaperMetaSGTrainingRunner(
         config=config,
@@ -139,7 +173,7 @@ def run_deterministic_scaled_evidence(
         'replay_capacity': config.replay_capacity,
         'scale_provenance': config.scale_provenance,
     })
-    return DeterministicScaledEvidenceResult(
+    return ScaledEvidenceResult(
         training, scientific, parameters, query_seeds,
     )
 
