@@ -85,9 +85,18 @@ class PolicyMetaSGAlgorithm1:
         collect_response,
         collect_leader,
         independent_attacker_objective,
+        start_iteration: int = 0,
+        iteration_callback=None,
     ) -> PolicyAlgorithm1Result:
+        if (
+            isinstance(start_iteration, bool)
+            or not isinstance(start_iteration, int)
+            or start_iteration < 0
+            or start_iteration > self.N_D
+        ):
+            raise ValueError('start_iteration must be within [0, N_D]')
         iterations = []
-        for leader_iteration in range(self.N_D):
+        for leader_iteration in range(start_iteration, self.N_D):
             tasks = tuple(sample_tasks(leader_iteration, self.K))
             if len(tasks) != self.K:
                 raise ValueError(f'task sampler must return exactly K={self.K} tasks')
@@ -140,11 +149,16 @@ class PolicyMetaSGAlgorithm1:
                     task, adapted, frozen, replay, leader_iteration,
                 ),
             )
-            iterations.append(PolicyAlgorithm1IterationTrace(
+            trace = PolicyAlgorithm1IterationTrace(
                 leader_iteration,
                 meta_before,
                 defender.fingerprint(),
                 tuple(task_traces),
                 leader,
-            ))
+            )
+            iterations.append(trace)
+            if iteration_callback is not None:
+                iteration_callback(
+                    trace, defender, attackers,
+                )
         return PolicyAlgorithm1Result(tuple(iterations))

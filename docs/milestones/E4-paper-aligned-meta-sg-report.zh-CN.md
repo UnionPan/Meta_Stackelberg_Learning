@@ -176,6 +176,10 @@ actor、双 critics、optimizers、policy RNG/counter，以及 role-local replay
 generation、ring cursor 和 sampling RNG。加载前验证 role 与 policy/replay shapes，加载后重新计算
 双方 fingerprint；临时文件通过 atomic replace 提交。PyTorch pickle checkpoint 明确只允许加载本地
 可信产物。
+
+Policy Algorithm 1/2 现支持 outer-boundary resume：`start_iteration` 使用全局 `N_D`/`T` index，
+checkpoint callback 只在一个完整 leader/meta iteration（包含全部 `K` tasks、`N_A` BR 或 `l`
+adaptation）结束后触发，禁止从半个 BR block 恢复而改变 Stackelberg 更新语义。
 - Algorithm 1、policy-level BR、Algorithm 2 和 Reptile 隔离测试均通过。
 - 2026-07-12 全仓库测试：`855 passed in 66.82s`。
 

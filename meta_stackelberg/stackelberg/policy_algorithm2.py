@@ -67,11 +67,20 @@ class PolicyMetaSGAlgorithm2:
         sample_tasks,
         replay_factory,
         collect_task,
+        start_iteration: int = 0,
+        iteration_callback=None,
     ) -> PolicyAlgorithm2Result:
         if defender.role != 'defender':
             raise ValueError('meta policy must have defender role')
+        if (
+            isinstance(start_iteration, bool)
+            or not isinstance(start_iteration, int)
+            or start_iteration < 0
+            or start_iteration > self.T
+        ):
+            raise ValueError('start_iteration must be within [0, T]')
         iterations = []
-        for meta_iteration in range(self.T):
+        for meta_iteration in range(start_iteration, self.T):
             tasks = tuple(sample_tasks(meta_iteration, self.K))
             if len(tasks) != self.K:
                 raise ValueError(f'task sampler must return exactly K={self.K} tasks')
@@ -110,10 +119,13 @@ class PolicyMetaSGAlgorithm2:
             reptile_update_td3(
                 defender, tuple(snapshots), meta_step=self.meta_update_step,
             )
-            iterations.append(PolicyAlgorithm2IterationTrace(
+            trace = PolicyAlgorithm2IterationTrace(
                 meta_iteration,
                 meta_before,
                 defender.fingerprint(),
                 tuple(traces),
-            ))
+            )
+            iterations.append(trace)
+            if iteration_callback is not None:
+                iteration_callback(trace, defender, response_policies)
         return PolicyAlgorithm2Result(tuple(iterations))

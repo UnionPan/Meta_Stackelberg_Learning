@@ -55,3 +55,35 @@ def test_concrete_algorithm2_runs_exact_T_K_l_and_freezes_responses() -> None:
     assert {key: value.fingerprint() for key, value in attackers.items()} == attacker_before
     assert len(result.iterations) == 2
     assert all(len(item.tasks) == 2 for item in result.iterations)
+
+
+def test_algorithm2_resume_keeps_global_T_index() -> None:
+    defender = _agent('defender', 51)
+    attacker = _agent('attacker', 52)
+    callbacks = []
+
+    def replay_factory(task, iteration):
+        return TD3ReplayBuffer(
+            16, obs_dim=3, action_dim=3, role='defender', seed=iteration,
+        )
+
+    def collect(task, step, policy, frozen, replay, iteration):
+        for index in range(4):
+            obs = np.full(3, index / 10, dtype=np.float32)
+            replay.add(obs, policy.act(obs, deterministic=True), 1.0,
+                       obs, False, generation=iteration, role='defender')
+
+    result = PolicyMetaSGAlgorithm2(
+        T=3, K=1, l=1, batch_size=4,
+        kappa=0.001, meta_update_step=1.0,
+    ).run(
+        defender=defender, response_policies={'rl': attacker},
+        sample_tasks=lambda iteration, count: ('rl',),
+        replay_factory=replay_factory, collect_task=collect,
+        start_iteration=2,
+        iteration_callback=lambda trace, policy, responses: callbacks.append(
+            trace.meta_iteration,
+        ),
+    )
+    assert [item.meta_iteration for item in result.iterations] == [2]
+    assert callbacks == [2]

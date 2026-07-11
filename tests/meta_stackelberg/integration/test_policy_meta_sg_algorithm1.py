@@ -88,3 +88,46 @@ def test_algorithm1_rejects_algorithm2_l_alias() -> None:
         pass
     else:
         raise AssertionError('Algorithm 1 accepted Algorithm 2 l alias')
+
+
+def test_algorithm1_resume_uses_global_nd_indices_and_boundary_callback() -> None:
+    defender = _agent('defender', 41)
+    attacker = _agent('attacker', 42)
+    callbacks = []
+
+    def replay_factory(task, role, phase, iteration):
+        del task, phase
+        return TD3ReplayBuffer(
+            16, obs_dim=3, action_dim=3, role=role, seed=100 + iteration,
+        )
+
+    def add(replay, role, policy, generation):
+        for index in range(4):
+            obs = np.full(3, index / 10, dtype=np.float32)
+            replay.add(obs, policy.act(obs, deterministic=True), 1.0,
+                       obs, False, generation=generation, role=role)
+
+    result = PolicyMetaSGAlgorithm1(
+        N_D=3, K=1, N_A=1, batch_size=4,
+        eta=0.01, kappa_A=0.001, kappa_D=0.001,
+    ).run(
+        defender=defender, attackers={'rl': attacker},
+        sample_tasks=lambda iteration, count: ('rl',),
+        replay_factory=replay_factory,
+        collect_adaptation=lambda task, policy, frozen, replay, iteration: add(
+            replay, 'defender', policy, iteration,
+        ),
+        collect_response=lambda task, step, frozen, policy, replay, iteration: add(
+            replay, 'attacker', policy, iteration,
+        ),
+        collect_leader=lambda task, policy, frozen, replay, iteration: add(
+            replay, 'defender', policy, iteration,
+        ),
+        independent_attacker_objective=lambda task, policy: 0.0,
+        start_iteration=2,
+        iteration_callback=lambda trace, policy, responses: callbacks.append(
+            (trace.leader_iteration, policy.fingerprint()),
+        ),
+    )
+    assert [item.leader_iteration for item in result.iterations] == [2]
+    assert callbacks[0][0] == 2
