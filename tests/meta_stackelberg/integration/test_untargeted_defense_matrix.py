@@ -70,6 +70,7 @@ def _model_factory() -> torch.nn.Module:
 @dataclass(frozen=True)
 class _Run:
     observation: RawDefenseObservation
+    trajectory: object
 
 
 def _run(
@@ -199,7 +200,7 @@ def _run(
         sampled_clients=tuple(step.sampled_clients for step in trajectory.transitions),
         final_random_snapshot=trajectory.final_state.random_snapshot,
         final_model_vector=trajectory.final_state.global_model.vector(),
-    ))
+    ), trajectory)
 
 
 def build_untargeted_matrix(task: str):

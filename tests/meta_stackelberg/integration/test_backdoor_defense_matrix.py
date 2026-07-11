@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 import numpy as np
 import torch
 from torch.utils.data import Subset, TensorDataset
@@ -53,6 +55,12 @@ DBA_PLAN = DistributedTriggerPlan(
 THRESHOLDS = MatrixGateThresholds(1e-6, 1e-4, 1e-5, 0.25)
 
 
+@dataclass(frozen=True)
+class _Run:
+    observation: RawDefenseObservation
+    trajectory: object
+
+
 def _dataset(offset: float) -> TensorDataset:
     levels = torch.linspace(0.5 + offset, 1.0 + offset, 60)
     source = -levels[:, None, None, None].expand(-1, 1, 8, 8).clone()
@@ -78,7 +86,7 @@ def _run(
     point: DefenseGridPoint,
     *,
     reference: bool,
-) -> RawDefenseObservation:
+) -> _Run:
     train = _dataset(0.0)
     held_out = _dataset(0.1)
     partition_seed = 91 if task == 'bfl' else 92
@@ -218,7 +226,7 @@ def _run(
         clipped = tuple(summary.clipping.clipped_client_fraction for summary in summaries)
         trim_counts = tuple(summary.trimming.per_tail_trim_count for summary in summaries)
         retained = tuple(summary.trimming.retained_count for summary in summaries)
-    return RawDefenseObservation(
+    return _Run(RawDefenseObservation(
         task_id=task,
         seed=seed,
         grid_point=point,
@@ -237,7 +245,7 @@ def _run(
         final_random_snapshot=trajectory.final_state.random_snapshot,
         final_model_vector=final_model.vector(),
         metric_components=components,
-    )
+    ), trajectory)
 
 
 def build_backdoor_matrix(task: str):
@@ -249,10 +257,10 @@ def build_backdoor_matrix(task: str):
         trim_ratios=TRIM_RATIOS,
         observation_factory=lambda seed, point, branch: _run(
             task, seed, branch, point, reference=False
-        ),
+        ).observation,
         reference_factory=lambda seed, branch: _run(
             task, seed, branch, reference_point, reference=True
-        ),
+        ).observation,
         evaluation_protocol='source-only-asr-v1',
         attack_metric_direction='higher_is_worse',
     )
