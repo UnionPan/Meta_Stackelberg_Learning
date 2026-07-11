@@ -14,6 +14,10 @@ from meta_stackelberg.security.defenses.trimmed_mean import (
     CoordinateTrimmedMean,
     TrimmingSummary,
 )
+from meta_stackelberg.security.defenses.paper_action import (
+    PaperDefenderAction,
+    PaperDefenderActionCodec,
+)
 
 __all__ = [
     'ClipRadiusActionCodec',
@@ -25,4 +29,6 @@ __all__ = [
     'DefenseAction',
     'DefenseAggregationSummary',
     'TrimmingSummary',
+    'PaperDefenderAction',
+    'PaperDefenderActionCodec',
 ]
