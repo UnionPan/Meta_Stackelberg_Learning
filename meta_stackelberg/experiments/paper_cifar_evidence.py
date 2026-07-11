@@ -96,6 +96,10 @@ def run_paper_cifar_scaled_evidence(
         'defender_obs_dim': defender_obs_dim,
         'attacker_obs_dim': attacker_obs_dim,
         'batchnorm_float_buffers_aggregated': True,
+        'data_provenance': {
+            key: getattr(datasets.provenance, key)
+            for key in datasets.provenance.__dataclass_fields__
+        },
     })
     return ScaledEvidenceResult(
         result.training,

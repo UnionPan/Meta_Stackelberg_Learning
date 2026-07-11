@@ -81,6 +81,7 @@ from meta_stackelberg.experiments.paper_mnist_env import (
     PaperMNISTDatasets,
     load_paper_mnist_datasets,
     make_paper_mnist_env,
+    make_generated_mnist_datasets,
     split_paper_root_dataset,
 )
 from meta_stackelberg.experiments.paper_mnist_evidence import (
@@ -90,7 +91,9 @@ from meta_stackelberg.experiments.paper_cifar_env import (
     PaperCIFARDatasets,
     PaperCIFAREnvironmentFactory,
     load_paper_cifar_datasets,
+    make_generated_cifar_datasets,
 )
+from meta_stackelberg.experiments.data_provenance import PaperDatasetProvenance
 from meta_stackelberg.experiments.paper_cifar_evidence import (
     run_paper_cifar_scaled_evidence,
 )
@@ -162,6 +165,7 @@ __all__ = [
     'run_deterministic_scaled_evidence',
     'run_scaled_evidence',
     'make_paper_mnist_env',
+    'make_generated_mnist_datasets',
     'PaperMNISTDatasets',
     'PaperMNISTEnvironmentFactory',
     'load_paper_mnist_datasets',
@@ -170,6 +174,8 @@ __all__ = [
     'PaperCIFARDatasets',
     'PaperCIFAREnvironmentFactory',
     'load_paper_cifar_datasets',
+    'make_generated_cifar_datasets',
+    'PaperDatasetProvenance',
     'run_paper_cifar_scaled_evidence',
     'ScaledEvidenceArtifact',
     'load_scaled_evidence_snapshots',

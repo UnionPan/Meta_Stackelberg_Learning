@@ -11,6 +11,10 @@ from torch.utils.data import ConcatDataset, Dataset, Subset
 from meta_stackelberg.core.random_state import RandomSource
 from meta_stackelberg.environments.model_tail import ModelTailObservationEncoder
 from meta_stackelberg.environments.paper_bsmg import PaperBSMGEnv
+from meta_stackelberg.experiments.data_provenance import (
+    PaperDatasetProvenance,
+    provided_provenance,
+)
 from meta_stackelberg.federated.clients.sampling import UniformClientSampler
 from meta_stackelberg.federated.clients.trainer import TorchLocalTrainer
 from meta_stackelberg.federated.data.partitioning import paper_q_label_partition
@@ -27,6 +31,15 @@ class PaperMNISTDatasets:
     root: Dataset
     test: Dataset
     root_indices: tuple[int, ...]
+    provenance: PaperDatasetProvenance | None = None
+
+    def __post_init__(self) -> None:
+        provenance = self.provenance or provided_provenance(
+            'MNIST', len(self.client_train),
+        )
+        if provenance.dataset != 'MNIST':
+            raise ValueError('MNIST datasets require MNIST provenance')
+        object.__setattr__(self, 'provenance', provenance)
 
 
 def load_paper_mnist_datasets(
@@ -48,7 +61,36 @@ def load_paper_mnist_datasets(
     client_train, root_dataset, root_indices = split_paper_root_dataset(
         full_train, root_samples=root_samples, seed=seed,
     )
-    return PaperMNISTDatasets(client_train, root_dataset, test, root_indices)
+    return PaperMNISTDatasets(
+        client_train,
+        root_dataset,
+        test,
+        root_indices,
+        PaperDatasetProvenance(
+            'MNIST', 'torchvision', 'none', len(client_train), 0, 0, 0,
+        ),
+    )
+
+
+def make_generated_mnist_datasets(
+    *,
+    simulated_train: Dataset,
+    root_dataset: Dataset,
+    held_out_test: Dataset,
+    strict_paper_size: bool = True,
+) -> PaperMNISTDatasets:
+    if strict_paper_size and len(simulated_train) != 60_000:
+        raise ValueError('paper generated MNIST train set must contain 60,000 samples')
+    return PaperMNISTDatasets(
+        simulated_train,
+        root_dataset,
+        held_out_test,
+        (),
+        PaperDatasetProvenance(
+            'MNIST', 'paper-generated', 'cGAN', len(simulated_train),
+            5_000, 100, 200,
+        ),
+    )
 
 
 def split_paper_root_dataset(

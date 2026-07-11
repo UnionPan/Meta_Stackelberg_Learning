@@ -95,6 +95,10 @@ def run_paper_mnist_scaled_evidence(
         'model_seed': model_seed,
         'defender_obs_dim': defender_obs_dim,
         'attacker_obs_dim': attacker_obs_dim,
+        'data_provenance': {
+            key: getattr(datasets.provenance, key)
+            for key in datasets.provenance.__dataclass_fields__
+        },
     })
     return ScaledEvidenceResult(
         result.training,

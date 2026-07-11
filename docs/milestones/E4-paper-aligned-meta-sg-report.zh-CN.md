@@ -191,6 +191,12 @@ Policy Algorithm 1/2 现支持 outer-boundary resume：`start_iteration` 使用�
 checkpoint callback 只在一个完整 leader/meta iteration（包含全部 `K` tasks、`N_A` BR 或 `l`
 adaptation）结束后触发，禁止从半个 BR block 恢复而改变 Stackelberg 更新语义。
 
+数据 artifact 现强制记录 provenance：`provided / torchvision / paper-generated`。paper-generated
+bundle 严格模式要求 60,000 simulated training samples，并记录 MNIST cGAN 的 5,000 generator
+training samples/100 epochs、CIFAR conditional diffusion 的 50,000 samples/30 epochs，以及 200
+root seed samples。当前真实 MNIST executions 标记为 `torchvision`，不能再被误报为论文生成数据
+pre-training；已有生成数据 artifact 可通过 typed bundle 接入同一 Algorithm 1/2 与 Gate runner。
+
 ## CIFAR-10 / ResNet-18 路径
 
 已实现 paper CIFAR ResNet-18 与 5130 维尾部状态（`linear.weight=5120`、`linear.bias=10`）。

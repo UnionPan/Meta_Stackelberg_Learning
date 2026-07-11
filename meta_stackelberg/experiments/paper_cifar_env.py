@@ -12,6 +12,10 @@ from torch.utils.data import ConcatDataset, Dataset, Subset
 from meta_stackelberg.core.random_state import RandomSource
 from meta_stackelberg.environments.model_tail import ModelTailObservationEncoder
 from meta_stackelberg.environments.paper_bsmg import PaperBSMGEnv
+from meta_stackelberg.experiments.data_provenance import (
+    PaperDatasetProvenance,
+    provided_provenance,
+)
 from meta_stackelberg.experiments.paper_mnist_env import split_paper_root_dataset
 from meta_stackelberg.federated.clients.sampling import UniformClientSampler
 from meta_stackelberg.federated.clients.trainer import TorchLocalTrainer
@@ -29,6 +33,15 @@ class PaperCIFARDatasets:
     root: Dataset
     test: Dataset
     root_indices: tuple[int, ...]
+    provenance: PaperDatasetProvenance | None = None
+
+    def __post_init__(self) -> None:
+        provenance = self.provenance or provided_provenance(
+            'CIFAR-10', len(self.client_train),
+        )
+        if provenance.dataset != 'CIFAR-10':
+            raise ValueError('CIFAR datasets require CIFAR-10 provenance')
+        object.__setattr__(self, 'provenance', provenance)
 
 
 def load_paper_cifar_datasets(
@@ -49,7 +62,36 @@ def load_paper_cifar_datasets(
     client_train, root_dataset, root_indices = split_paper_root_dataset(
         full_train, root_samples=root_samples, seed=seed,
     )
-    return PaperCIFARDatasets(client_train, root_dataset, test, root_indices)
+    return PaperCIFARDatasets(
+        client_train,
+        root_dataset,
+        test,
+        root_indices,
+        PaperDatasetProvenance(
+            'CIFAR-10', 'torchvision', 'none', len(client_train), 0, 0, 0,
+        ),
+    )
+
+
+def make_generated_cifar_datasets(
+    *,
+    simulated_train: Dataset,
+    root_dataset: Dataset,
+    held_out_test: Dataset,
+    strict_paper_size: bool = True,
+) -> PaperCIFARDatasets:
+    if strict_paper_size and len(simulated_train) != 60_000:
+        raise ValueError('paper generated CIFAR train set must contain 60,000 samples')
+    return PaperCIFARDatasets(
+        simulated_train,
+        root_dataset,
+        held_out_test,
+        (),
+        PaperDatasetProvenance(
+            'CIFAR-10', 'paper-generated', 'conditional-diffusion',
+            len(simulated_train), 50_000, 30, 200,
+        ),
+    )
 
 
 class PaperCIFAREnvironmentFactory:
