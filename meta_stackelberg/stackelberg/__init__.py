@@ -19,6 +19,14 @@ from meta_stackelberg.stackelberg.policy_response import (
     PolicyBestResponseResult,
     PolicyBestResponseTrainer,
 )
+from meta_stackelberg.stackelberg.algorithm2 import (
+    Algorithm2Event,
+    Algorithm2IterationTrace,
+    Algorithm2Result,
+    Algorithm2TaskTrace,
+    MetaSGAlgorithm2,
+    reptile_update_td3,
+)
 
 __all__ = [
     'BestResponseResult',
@@ -34,4 +42,10 @@ __all__ = [
     'MetaSGAlgorithm1',
     'PolicyBestResponseResult',
     'PolicyBestResponseTrainer',
+    'Algorithm2Event',
+    'Algorithm2IterationTrace',
+    'Algorithm2Result',
+    'Algorithm2TaskTrace',
+    'MetaSGAlgorithm2',
+    'reptile_update_td3',
 ]
