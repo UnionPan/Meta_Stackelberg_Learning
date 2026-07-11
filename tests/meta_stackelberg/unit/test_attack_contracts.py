@@ -142,3 +142,63 @@ def test_attack_plugins_satisfy_structural_protocols() -> None:
     assert isinstance(FixtureGenerator(), MaliciousUpdateGenerator)
     assert not isinstance(object(), MaliciousPopulation)
     assert not isinstance(object(), MaliciousUpdateGenerator)
+
+
+def test_round_attack_context_exposes_only_declared_round_evidence() -> None:
+    from meta_stackelberg.federated.types import ClientUpdate
+    from meta_stackelberg.security.types import RoundAttackContext
+
+    benign = ClientUpdate(
+        client_id=2,
+        delta=ModelState.from_tensors((np.array([1.0], dtype=np.float32),)),
+        num_examples=4,
+    )
+    context = RoundAttackContext(
+        round_index=3,
+        global_model=ModelState.from_tensors((np.zeros(1, dtype=np.float32),)),
+        malicious_client_ids=(1, 4),
+        benign_updates=(benign,),
+    )
+
+    assert context.malicious_client_ids == (1, 4)
+    assert context.benign_updates == (benign,)
+    assert not hasattr(context, 'oracle_evaluator')
+    assert not hasattr(context, 'private_diagnostics')
+    assert not hasattr(context, 'task_id')
+    with pytest.raises((AttributeError, TypeError)):
+        context.malicious_client_ids += (8,)
+
+
+def test_round_attack_context_validates_ids_and_reference_updates() -> None:
+    from meta_stackelberg.federated.types import ClientUpdate
+    from meta_stackelberg.security.types import RoundAttackContext
+
+    model = ModelState.from_tensors((np.zeros(1, dtype=np.float32),))
+    benign = ClientUpdate(client_id=2, delta=model, num_examples=1)
+    with pytest.raises(ValueError, match='duplicate'):
+        RoundAttackContext(0, model, (1, 1), (benign,))
+    with pytest.raises(ValueError, match='benign'):
+        RoundAttackContext(0, model, (1,), (replace(benign, is_malicious=True),))
+
+
+def test_round_generator_satisfies_structural_protocol() -> None:
+    from meta_stackelberg.federated.types import ClientUpdate
+    from meta_stackelberg.security.protocols import RoundMaliciousUpdateGenerator
+    from meta_stackelberg.security.types import (
+        AttackCapabilities,
+        RoundAttackContext,
+    )
+
+    class FixtureRoundGenerator:
+        capabilities = AttackCapabilities(observes_benign_updates=True)
+
+        def craft_round(
+            self,
+            context: RoundAttackContext,
+            rngs: tuple[RandomSource, ...],
+        ) -> tuple[ClientUpdate, ...]:
+            del context, rngs
+            return ()
+
+    assert isinstance(FixtureRoundGenerator(), RoundMaliciousUpdateGenerator)
+    assert not isinstance(object(), RoundMaliciousUpdateGenerator)

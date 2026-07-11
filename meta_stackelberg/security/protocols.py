@@ -6,7 +6,11 @@ from typing import Protocol, runtime_checkable
 
 from meta_stackelberg.core.random_state import RandomSource
 from meta_stackelberg.federated.types import ClientUpdate
-from meta_stackelberg.security.types import AttackCapabilities, AttackContext
+from meta_stackelberg.security.types import (
+    AttackCapabilities,
+    AttackContext,
+    RoundAttackContext,
+)
 
 
 @runtime_checkable
@@ -23,3 +27,14 @@ class MaliciousUpdateGenerator(Protocol):
         context: AttackContext,
         rng: RandomSource,
     ) -> ClientUpdate: ...
+
+
+@runtime_checkable
+class RoundMaliciousUpdateGenerator(Protocol):
+    capabilities: AttackCapabilities
+
+    def craft_round(
+        self,
+        context: RoundAttackContext,
+        rngs: tuple[RandomSource, ...],
+    ) -> tuple[ClientUpdate, ...]: ...
