@@ -55,6 +55,11 @@ from meta_stackelberg.experiments.scientific_gate import (
     evaluate_frozen_pair,
     evaluate_meta_sg_scientific_gate,
 )
+from meta_stackelberg.experiments.scientific_run import (
+    PaperScientificGateRunner,
+    PaperScientificRunResult,
+    ScientificTrainingBudget,
+)
 
 __all__ = [
     'ClipControllabilityGate',
@@ -102,4 +107,7 @@ __all__ = [
     'evaluate_frozen_policy',
     'evaluate_frozen_pair',
     'evaluate_meta_sg_scientific_gate',
+    'PaperScientificGateRunner',
+    'PaperScientificRunResult',
+    'ScientificTrainingBudget',
 ]

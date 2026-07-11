@@ -73,6 +73,15 @@ Defender 每个 FL round 输出三维连续动作 `(alpha, beta, epsilon)`；Att
   Attacker 的 held-out action trajectories 与 initial 不同。该事实只证明行为变化，不单独作为性能通过证据。
 - 科学 Gate 已实现六项不可调结果：attacker BR、Defender-conditioned response、Defender task
   adaptation、meta initialization、specialized-oracle regret、action/objective 双信号。
+- 科学 Gate micro-run 使用预声明阈值 `0.001/0.001/0.001/0.001/0.1/0.001`、独立 query
+  seeds `(101,102)` 执行了所有比较。结果为 **failed**，并原样保留：attacker BR improvement
+  `0`、Defender adaptation improvement `0`、meta advantage `0`、behavior/objective signal `0`；
+  Defender-conditioned response difference `0.0041427374` 和 specialized-oracle regret
+  `0.0007139444` 通过。该 micro-run 的 `H=2,T=1,K=1,l=N_A=2,N_D=1`，只验证科学
+  执行路径，不能支持性能结论。
+- meta/random/no-adaptation 使用完全相同的 adaptation trajectory 数、FL-round 数和同一组
+  support seeds；no-adaptation 消耗相同 rollout 预算但 TD3 update 数为零。每个被比较 Defender
+  都从同一初始 Attacker 独立训练 fresh BR，finite specialized oracle 只在预声明网格内取最好值。
 - Algorithm 1、policy-level BR、Algorithm 2 和 Reptile 隔离测试均通过。
 - 2026-07-12 全仓库测试：`831 passed in 53.26s`。
 
