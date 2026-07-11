@@ -49,6 +49,18 @@ class QueryPolicyEvidence:
 
 
 @dataclass(frozen=True)
+class QueryPairEvidence:
+    label: str
+    query_seeds: tuple[int, ...]
+    mean_defender_objective: float
+    mean_attacker_objective: float
+    defender_action_trajectories: tuple[tuple[float, ...], ...]
+    attacker_action_trajectories: tuple[tuple[float, ...], ...]
+    defender_fingerprint: str
+    attacker_fingerprint: str
+
+
+@dataclass(frozen=True)
 class ScientificGateThresholds:
     attacker_improvement: float
     response_difference: float
@@ -109,6 +121,56 @@ def evaluate_frozen_policy(
         float(np.mean(objectives)),
         tuple(actions),
         before,
+    )
+
+
+def evaluate_frozen_pair(
+    *,
+    label: str,
+    defender,
+    attacker,
+    plan: QueryEvidencePlan,
+    query,
+) -> QueryPairEvidence:
+    """Run held-out pair trajectories while freezing both complete policies."""
+    defender_before = defender.fingerprint()
+    attacker_before = attacker.fingerprint()
+    defender_objectives = []
+    attacker_objectives = []
+    defender_actions = []
+    attacker_actions = []
+    for seed in plan.query_seeds:
+        defender_objective, attacker_objective, defender_action, attacker_action = query(
+            defender, attacker, seed,
+        )
+        defender_array = np.asarray(defender_action, dtype=np.float64).reshape(-1)
+        attacker_array = np.asarray(attacker_action, dtype=np.float64).reshape(-1)
+        values = (float(defender_objective), float(attacker_objective))
+        if (
+            not all(math.isfinite(value) for value in values)
+            or defender_array.size == 0
+            or attacker_array.size == 0
+            or not np.all(np.isfinite(defender_array))
+            or not np.all(np.isfinite(attacker_array))
+        ):
+            raise ValueError('pair query returned non-finite objective or action')
+        defender_objectives.append(values[0])
+        attacker_objectives.append(values[1])
+        defender_actions.append(tuple(float(value) for value in defender_array))
+        attacker_actions.append(tuple(float(value) for value in attacker_array))
+        if defender.fingerprint() != defender_before:
+            raise RuntimeError('frozen defender mutated during pair query')
+        if attacker.fingerprint() != attacker_before:
+            raise RuntimeError('frozen attacker mutated during pair query')
+    return QueryPairEvidence(
+        label,
+        plan.query_seeds,
+        float(np.mean(defender_objectives)),
+        float(np.mean(attacker_objectives)),
+        tuple(defender_actions),
+        tuple(attacker_actions),
+        defender_before,
+        attacker_before,
     )
 
 

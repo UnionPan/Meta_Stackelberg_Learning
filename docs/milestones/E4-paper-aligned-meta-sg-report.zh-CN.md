@@ -64,8 +64,13 @@ Defender 每个 FL round 输出三维连续动作 `(alpha, beta, epsilon)`；Att
   `scaled-conformance-only-v1`。
 - 真实 `PaperBSMGEnv` 缩放 trajectory：8 个 FL rounds，每轮双方各执行一次三维连续动作；
   Algorithm 1 的 leader/attacker 次数与 Algorithm 2 的 meta/adaptation 次数均和上述配置精确相等。
+- 真实 policy 训练 runner 已按上述缩放配置执行 48 条 support trajectories，共 384 个 FL
+  rounds。`H=8`、batch/learning-start 16，因此每次 TD3 update 自动采集 2 条完整 trajectories。
+  被训练角色使用 exploration，冻结对手使用 deterministic action，避免把对手 RNG 推进误当作参数更新。
 - support seeds `(1,2)` 与 query seeds `(101,102)` 严格不相交；真实环境 query trajectories
   执行前后 Attacker 的完整 TD3 fingerprint 相同。任何 query 内 policy mutation 都会直接抛错。
+- 使用 query seeds `(101,102)` 对 initial/learned policy pair 做了真实双策略冻结评估；learned
+  Attacker 的 held-out action trajectories 与 initial 不同。该事实只证明行为变化，不单独作为性能通过证据。
 - 科学 Gate 已实现六项不可调结果：attacker BR、Defender-conditioned response、Defender task
   adaptation、meta initialization、specialized-oracle regret、action/objective 双信号。
 - Algorithm 1、policy-level BR、Algorithm 2 和 Reptile 隔离测试均通过。

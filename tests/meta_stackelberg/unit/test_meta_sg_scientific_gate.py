@@ -7,6 +7,7 @@ from meta_stackelberg.experiments.scientific_gate import (
     ScientificGateThresholds,
     evaluate_meta_sg_scientific_gate,
     evaluate_frozen_policy,
+    evaluate_frozen_pair,
 )
 
 
@@ -47,6 +48,22 @@ def test_frozen_query_evaluator_rejects_seed_leakage_and_policy_mutation() -> No
 
     with pytest.raises(RuntimeError, match='mutated'):
         evaluate_frozen_policy(label='bad', policy=policy, plan=plan, query=mutate)
+
+
+def test_pair_query_freezes_both_policies_and_records_both_objectives() -> None:
+    defender = FrozenPolicy()
+    attacker = FrozenPolicy()
+    plan = QueryEvidencePlan((1,), (10, 11))
+    evidence = evaluate_frozen_pair(
+        label='pair', defender=defender, attacker=attacker, plan=plan,
+        query=lambda _, __, seed: (
+            float(seed), float(-seed),
+            np.array([0.1, 0.2, 0.3]), np.array([-0.1, -0.2, -0.3]),
+        ),
+    )
+    assert evidence.mean_defender_objective == 10.5
+    assert evidence.mean_attacker_objective == -10.5
+    assert evidence.defender_fingerprint == evidence.attacker_fingerprint == '0'
 
 
 def test_scientific_gate_checks_all_six_predeclared_comparisons() -> None:
