@@ -217,6 +217,10 @@ notebooks/demo_*
 data/
 !fl_sandbox/data/
 !fl_sandbox/data/**
+!meta_stackelberg/federated/data/
+!meta_stackelberg/federated/data/**
+meta_stackelberg/federated/data/**/__pycache__/
+meta_stackelberg/federated/data/**/*.py[cod]
 notebooks/cifar_diffusion.pth
 *.pth
 
