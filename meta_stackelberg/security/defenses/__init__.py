@@ -18,6 +18,7 @@ from meta_stackelberg.security.defenses.paper_action import (
     PaperDefenderAction,
     PaperDefenderActionCodec,
 )
+from meta_stackelberg.security.defenses.neuroclip import NeuroClipCopy
 
 __all__ = [
     'ClipRadiusActionCodec',
@@ -31,4 +32,5 @@ __all__ = [
     'TrimmingSummary',
     'PaperDefenderAction',
     'PaperDefenderActionCodec',
+    'NeuroClipCopy',
 ]
