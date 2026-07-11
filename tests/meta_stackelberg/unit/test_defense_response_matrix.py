@@ -10,6 +10,7 @@ from meta_stackelberg.experiments.defense_response_matrix import (
     MatrixGateThresholds,
     RawDefenseObservation,
     evaluate_defense_response_matrix,
+    evaluate_e2_gate,
     evaluate_task_matrix_gate,
 )
 from meta_stackelberg.security.defenses.actions import DefenseAction
@@ -59,6 +60,28 @@ def test_raw_observation_copies_and_freezes_final_model() -> None:
 
     np.testing.assert_array_equal(observation.final_model_vector, np.array([1.0, 2.0]))
     assert not observation.final_model_vector.flags.writeable
+
+
+def test_raw_observation_freezes_finite_metric_components() -> None:
+    source = {'sub_trigger_0_asr': 0.25}
+    observation = replace(
+        _observation(1, DefenseGridPoint(1.0, 0.2), 'attack'),
+        metric_components=source,
+    )
+
+    source['sub_trigger_0_asr'] = 0.75
+
+    assert observation.metric_components == {'sub_trigger_0_asr': 0.25}
+    with pytest.raises(TypeError):
+        observation.metric_components['new'] = 1.0
+
+
+def test_raw_observation_rejects_invalid_metric_components() -> None:
+    with pytest.raises(ValueError, match='metric component'):
+        replace(
+            _observation(1, DefenseGridPoint(1.0, 0.2), 'attack'),
+            metric_components={'bad': math.nan},
+        )
 
 
 @pytest.mark.parametrize(
@@ -213,3 +236,65 @@ def test_task_gate_only_compares_adjacent_grid_cells() -> None:
 
     assert not result.clip_dimension_active
     assert result.active_cell_ratio == 0.0
+
+
+def _suite_matrix(task_id: str, preferred: DefenseGridPoint):
+    def factory(seed, point, branch):
+        base = _observation(seed, point, branch, task_id=task_id)
+        distance = abs(point.clip_radius - preferred.clip_radius) + abs(
+            point.trim_ratio - preferred.trim_ratio
+        )
+        if branch == 'clean':
+            return replace(base, final_clean_loss=distance, attack_metric=0.0)
+        return replace(base, final_clean_loss=distance, attack_metric=distance)
+
+    return evaluate_defense_response_matrix(
+        task_id=task_id, seeds=(1,), clip_radii=(0.5, 2.0),
+        trim_ratios=(0.0, 0.2), observation_factory=factory,
+        reference_factory=lambda s, b: _observation(
+            s, DefenseGridPoint(2.0, 0.0), b, task_id=task_id
+        ),
+        evaluation_protocol=f'{task_id}-v1', attack_metric_direction='higher_is_worse',
+    )
+
+
+def test_e2_gate_requires_all_tasks_active_dimensions_and_distinct_regions() -> None:
+    first = _suite_matrix('first', DefenseGridPoint(0.5, 0.0))
+    second = _suite_matrix('second', DefenseGridPoint(2.0, 0.2))
+    thresholds = MatrixGateThresholds(1e-6, 1e-4, 1e-5, 0.25)
+    gates = (
+        evaluate_task_matrix_gate(first, thresholds),
+        evaluate_task_matrix_gate(second, thresholds),
+    )
+
+    result = evaluate_e2_gate(
+        matrices=(first, second),
+        task_gates=gates,
+        required_task_ids=('first', 'second'),
+    )
+
+    assert result.passed
+    assert result.failed_requirements == ()
+    assert set(result.independently_active_dimensions) == {'clip_radius', 'trim_ratio'}
+    assert result.distinct_preferred_region_pairs == (('first', 'second'),)
+    assert dict(result.preferred_regions)['first'] != dict(result.preferred_regions)['second']
+
+
+def test_e2_gate_reports_missing_task_flat_dimension_and_same_regions() -> None:
+    first = _suite_matrix('first', DefenseGridPoint(0.5, 0.0))
+    thresholds = MatrixGateThresholds(1e-6, 1e-4, 1e-5, 0.25)
+    first_gate = replace(
+        evaluate_task_matrix_gate(first, thresholds),
+        trim_dimension_active=False,
+    )
+
+    result = evaluate_e2_gate(
+        matrices=(first,),
+        task_gates=(first_gate,),
+        required_task_ids=('first', 'missing'),
+    )
+
+    assert not result.passed
+    assert 'missing required task matrices' in result.failed_requirements
+    assert 'trim_ratio dimension is inactive' in result.failed_requirements
+    assert 'no distinct preferred task regions' in result.failed_requirements

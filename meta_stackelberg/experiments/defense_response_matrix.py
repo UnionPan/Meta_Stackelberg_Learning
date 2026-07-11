@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import math
 from numbers import Integral
-from typing import Callable, Literal
+from types import MappingProxyType
+from typing import Callable, Literal, Mapping
 
 import numpy as np
 
@@ -53,6 +54,7 @@ class RawDefenseObservation:
     sampled_clients: tuple[tuple[int, ...], ...]
     final_random_snapshot: RandomSnapshot
     final_model_vector: np.ndarray
+    metric_components: Mapping[str, float] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.task_id:
@@ -82,6 +84,11 @@ class RawDefenseObservation:
         if not np.all(np.isfinite(vector)):
             raise ValueError('final_model_vector must be finite')
         vector.setflags(write=False)
+        components: dict[str, float] = {}
+        for name, value in self.metric_components.items():
+            if not isinstance(name, str) or not name:
+                raise ValueError('metric component names must be non-empty strings')
+            components[name] = _finite(value, f'metric component {name!r}')
         object.__setattr__(self, 'seed', int(self.seed))
         object.__setattr__(self, 'final_clean_loss', loss)
         object.__setattr__(self, 'final_clean_accuracy', accuracy)
@@ -92,6 +99,7 @@ class RawDefenseObservation:
         object.__setattr__(self, 'retained_counts', retained)
         object.__setattr__(self, 'sampled_clients', samples)
         object.__setattr__(self, 'final_model_vector', vector)
+        object.__setattr__(self, 'metric_components', MappingProxyType(components))
 
 
 @dataclass(frozen=True)
@@ -214,6 +222,16 @@ class TaskMatrixGateResult:
     trim_dimension_active: bool
 
 
+@dataclass(frozen=True)
+class E2GateResult:
+    passed: bool
+    task_ids: tuple[str, ...]
+    independently_active_dimensions: tuple[str, ...]
+    preferred_regions: tuple[tuple[str, tuple[DefenseGridPoint, ...]], ...]
+    distinct_preferred_region_pairs: tuple[tuple[str, str], ...]
+    failed_requirements: tuple[str, ...]
+
+
 def evaluate_task_matrix_gate(
     matrix: DefenseResponseMatrix,
     thresholds: MatrixGateThresholds,
@@ -282,6 +300,109 @@ def evaluate_task_matrix_gate(
         clip_dimension_active=clip_active,
         trim_dimension_active=trim_active,
     )
+
+
+def evaluate_e2_gate(
+    *,
+    matrices: tuple[DefenseResponseMatrix, ...],
+    task_gates: tuple[TaskMatrixGateResult, ...],
+    required_task_ids: tuple[str, ...],
+) -> E2GateResult:
+    required = tuple(required_task_ids)
+    if not required or any(not task_id for task_id in required):
+        raise ValueError('required_task_ids must contain non-empty values')
+    if len(required) != len(set(required)):
+        raise ValueError('required_task_ids must be unique')
+    matrix_by_task = _unique_by_task(matrices, 'matrices')
+    gate_by_task = _unique_by_task(task_gates, 'task gates')
+    failed: list[str] = []
+    missing = set(required) - set(matrix_by_task)
+    if missing:
+        failed.append('missing required task matrices')
+    if set(matrix_by_task) != set(gate_by_task):
+        failed.append('matrix and task gate ids do not match')
+    if any(not gate.passed for gate in gate_by_task.values()):
+        failed.append('one or more task matrix gates failed')
+    clip_active = any(gate.clip_dimension_active for gate in gate_by_task.values())
+    trim_active = any(gate.trim_dimension_active for gate in gate_by_task.values())
+    active_dimensions = tuple(
+        name
+        for name, active in (
+            ('clip_radius', clip_active),
+            ('trim_ratio', trim_active),
+        )
+        if active
+    )
+    if not clip_active:
+        failed.append('clip_radius dimension is inactive')
+    if not trim_active:
+        failed.append('trim_ratio dimension is inactive')
+    preferred_regions = tuple(
+        (task_id, _preferred_region(matrix_by_task[task_id]))
+        for task_id in sorted(matrix_by_task)
+    )
+    region_by_task = dict(preferred_regions)
+    task_ids = tuple(sorted(matrix_by_task))
+    distinct_pairs = tuple(
+        (left, right)
+        for index, left in enumerate(task_ids)
+        for right in task_ids[index + 1:]
+        if region_by_task[left] != region_by_task[right]
+    )
+    if not distinct_pairs:
+        failed.append('no distinct preferred task regions')
+    return E2GateResult(
+        passed=not failed,
+        task_ids=task_ids,
+        independently_active_dimensions=active_dimensions,
+        preferred_regions=preferred_regions,
+        distinct_preferred_region_pairs=distinct_pairs,
+        failed_requirements=tuple(failed),
+    )
+
+
+def _preferred_region(matrix: DefenseResponseMatrix) -> tuple[DefenseGridPoint, ...]:
+    clean_by_cell: dict[DefenseGridPoint, list[float]] = {}
+    harm_by_cell: dict[DefenseGridPoint, list[float]] = {}
+    cost_by_cell: dict[DefenseGridPoint, tuple[float, float]] = {}
+    for point in matrix.points:
+        cell = point.observation.grid_point
+        if point.observation.branch == 'clean':
+            clean_by_cell.setdefault(cell, []).append(point.observation.final_clean_loss)
+        else:
+            harm_by_cell.setdefault(cell, []).append(point.attack_harm)
+        cost_by_cell[cell] = (point.clip_cost, point.trim_cost)
+    cells = tuple(sorted(cost_by_cell))
+    objectives = {
+        cell: (
+            float(np.mean(clean_by_cell[cell])),
+            float(np.mean(harm_by_cell[cell])),
+            cost_by_cell[cell][0],
+            cost_by_cell[cell][1],
+        )
+        for cell in cells
+    }
+    nondominated = []
+    for candidate in cells:
+        candidate_values = objectives[candidate]
+        dominated = any(
+            other != candidate
+            and all(left <= right for left, right in zip(objectives[other], candidate_values))
+            and any(left < right for left, right in zip(objectives[other], candidate_values))
+            for other in cells
+        )
+        if not dominated:
+            nondominated.append(candidate)
+    return tuple(nondominated)
+
+
+def _unique_by_task(values, name):
+    result = {}
+    for value in values:
+        if value.task_id in result:
+            raise ValueError(f'{name} must have unique task ids')
+        result[value.task_id] = value
+    return result
 
 
 def _validate_grid_observation(observation, task_id, seed, point, branch) -> None:

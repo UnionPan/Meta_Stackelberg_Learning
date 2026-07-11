@@ -1,11 +1,9 @@
-from dataclasses import dataclass
-
 import numpy as np
 import torch
 from torch.utils.data import Subset, TensorDataset
 
 from meta_stackelberg.core.random_state import RandomSnapshot, RandomSource
-from meta_stackelberg.federated.aggregation.coordinate_median import CoordinateMedian
+from meta_stackelberg.evaluation.targeted import TargetedAttackEvaluator
 from meta_stackelberg.federated.aggregation.fedavg import FedAvg
 from meta_stackelberg.federated.clients.sampling import UniformClientSampler
 from meta_stackelberg.federated.clients.trainer import TorchLocalTrainer
@@ -23,9 +21,13 @@ from meta_stackelberg.experiments.defense_response_matrix import (
     evaluate_defense_response_matrix,
     evaluate_task_matrix_gate,
 )
-from meta_stackelberg.security.attacks.delta_reversal import DeltaReversalAttack
-from meta_stackelberg.security.attacks.ipm import IPMAttack
-from meta_stackelberg.security.attacks.lmp import LMPAttack
+from meta_stackelberg.security.attacks.backdoor import BackdoorLocalUpdateGenerator
+from meta_stackelberg.security.attacks.dba import (
+    DistributedBackdoorUpdateGenerator,
+    DistributedTriggerPlan,
+)
+from meta_stackelberg.security.data.poisoning import SourceTargetPoisonedDataset
+from meta_stackelberg.security.data.trigger import PatchTrigger
 from meta_stackelberg.security.defenses.clipped_trimmed_mean import ClippedTrimmedMean
 from meta_stackelberg.security.engine.attack_round_engine import AttackRoundEngine
 from meta_stackelberg.security.population import FixedMaliciousPopulation
@@ -33,43 +35,40 @@ from meta_stackelberg.security.training import ScopedLocalTrainer
 from meta_stackelberg.security.types import AttackKnowledge
 
 
-SEEDS_BY_TASK = {
-    'delta-reversal': (301, 302, 303),
-    'ipm': (501, 502, 503),
-    'lmp': (501, 502, 503),
-}
+SEEDS_BY_TASK = {'bfl': (401, 402, 403), 'dba': (601, 602, 603)}
 CLIP_RADII = (0.01, 0.1, 10.0)
 TRIM_RATIOS = (0.0, 0.2, 0.4)
 MALICIOUS_CLIENTS = frozenset({0, 1, 2})
-THRESHOLDS = MatrixGateThresholds(
-    aggregate_span=1e-6,
-    metric_span=1e-4,
-    active_cell_delta=1e-5,
-    min_active_cell_ratio=0.25,
+BFL_TRIGGER = PatchTrigger(row=6, column=6, height=2, width=2, value=5.0)
+DBA_SUB_TRIGGERS = (
+    PatchTrigger(row=6, column=0, height=2, width=2, value=1.5),
+    PatchTrigger(row=6, column=3, height=2, width=2, value=1.5),
+    PatchTrigger(row=6, column=6, height=2, width=2, value=1.5),
 )
+DBA_PLAN = DistributedTriggerPlan(
+    DBA_SUB_TRIGGERS,
+    {client_id: client_id for client_id in MALICIOUS_CLIENTS},
+    MALICIOUS_CLIENTS,
+)
+THRESHOLDS = MatrixGateThresholds(1e-6, 1e-4, 1e-5, 0.25)
 
 
-def _dataset(offset_start: float) -> TensorDataset:
-    offsets = torch.linspace(offset_start, offset_start + 1.0, steps=60)
-    negative = torch.stack((-1.0 - offsets, -0.5 - 0.25 * offsets), dim=1)
-    positive = -negative
+def _dataset(offset: float) -> TensorDataset:
+    levels = torch.linspace(0.5 + offset, 1.0 + offset, 60)
+    source = -levels[:, None, None, None].expand(-1, 1, 8, 8).clone()
+    target = levels[:, None, None, None].expand(-1, 1, 8, 8).clone()
     return TensorDataset(
-        torch.cat((negative, positive), dim=0),
+        torch.cat((source, target)),
         torch.cat((torch.zeros(60), torch.ones(60))).long(),
     )
 
 
 def _model_factory() -> torch.nn.Module:
-    model = torch.nn.Linear(2, 2)
+    model = torch.nn.Sequential(torch.nn.Flatten(), torch.nn.Linear(64, 2))
     with torch.no_grad():
-        model.weight.zero_()
-        model.bias.zero_()
+        model[1].weight.zero_()
+        model[1].bias.zero_()
     return model
-
-
-@dataclass(frozen=True)
-class _Run:
-    observation: RawDefenseObservation
 
 
 def _run(
@@ -79,13 +78,31 @@ def _run(
     point: DefenseGridPoint,
     *,
     reference: bool,
-) -> _Run:
-    train_dataset = _dataset(0.0)
-    held_out = _dataset(0.2)
-    partitions = iid_partition(len(train_dataset), 6, RandomSource(77))
-    datasets = {
-        client_id: Subset(train_dataset, indices)
+) -> RawDefenseObservation:
+    train = _dataset(0.0)
+    held_out = _dataset(0.1)
+    partition_seed = 91 if task == 'bfl' else 92
+    partitions = iid_partition(len(train), 6, RandomSource(partition_seed))
+    clean_datasets = {
+        client_id: Subset(train, indices)
         for client_id, indices in enumerate(partitions)
+    }
+    trigger_for_client = (
+        (lambda client_id: BFL_TRIGGER)
+        if task == 'bfl'
+        else DBA_PLAN.trigger_for
+    )
+    poison_seed_base = 10_000 if task == 'bfl' else 20_000
+    poisoned_datasets = {
+        client_id: SourceTargetPoisonedDataset(
+            dataset=clean_datasets[client_id],
+            trigger=trigger_for_client(client_id),
+            source_class=0,
+            target_class=1,
+            poison_fraction=1.0,
+            rng=RandomSource(poison_seed_base + client_id),
+        )
+        for client_id in MALICIOUS_CLIENTS
     }
     codec = TorchParameterCodec()
     source = RandomSource(seed)
@@ -95,59 +112,57 @@ def _run(
         random_snapshot=source.capture(),
     )
 
-    def trainer(client_ids=None) -> TorchLocalTrainer:
-        selected = datasets if client_ids is None else {
-            client_id: datasets[client_id] for client_id in client_ids
-        }
+    def trainer(datasets) -> TorchLocalTrainer:
         return TorchLocalTrainer(
             model_factory=_model_factory,
-            client_datasets=selected,
+            client_datasets=datasets,
             codec=codec,
-            learning_rate=0.2,
-            local_epochs=1,
+            learning_rate=0.08,
+            local_epochs=2,
             batch_size=8,
         )
 
-    if reference:
-        aggregator = CoordinateMedian() if task == 'lmp' else FedAvg()
-    else:
-        aggregator = ClippedTrimmedMean(point.clip_radius, point.trim_ratio)
+    aggregator = FedAvg() if reference else ClippedTrimmedMean(
+        point.clip_radius,
+        point.trim_ratio,
+    )
     sampler = UniformClientSampler(num_clients=6)
     if branch == 'clean':
         engine = RoundEngine(
             sampler=sampler,
-            trainer=trainer(),
+            trainer=trainer(clean_datasets),
             aggregator=aggregator,
             server_optimizer=ServerSGD(),
         )
     else:
-        benign_ids = frozenset(set(datasets) - set(MALICIOUS_CLIENTS))
-        if task == 'delta-reversal':
-            generator = DeltaReversalAttack(
-                trainer=ScopedLocalTrainer(trainer(MALICIOUS_CLIENTS), MALICIOUS_CLIENTS),
-                budget=2.0,
+        benign_ids = frozenset(set(clean_datasets) - set(MALICIOUS_CLIENTS))
+        malicious_trainer = ScopedLocalTrainer(
+            trainer(poisoned_datasets),
+            MALICIOUS_CLIENTS,
+        )
+        if task == 'bfl':
+            generator = BackdoorLocalUpdateGenerator(
+                trainer=malicious_trainer,
+                source_class=0,
+                target_class=1,
+                poison_fraction=1.0,
             )
-            knowledge = AttackKnowledge(allows_global_model=True, allows_local_data=True)
-        elif task == 'ipm':
-            generator = IPMAttack(
-                scale=3.0,
-                num_examples_by_client={client_id: len(datasets[client_id]) for client_id in MALICIOUS_CLIENTS},
-            )
-            knowledge = AttackKnowledge(allows_benign_updates=True)
-        elif task == 'lmp':
-            generator = LMPAttack(
-                scale=5.0,
-                num_examples_by_client={client_id: len(datasets[client_id]) for client_id in MALICIOUS_CLIENTS},
-            )
-            knowledge = AttackKnowledge(allows_global_model=True, allows_benign_updates=True)
         else:
-            raise ValueError(task)
+            generator = DistributedBackdoorUpdateGenerator(
+                trainer=malicious_trainer,
+                plan=DBA_PLAN,
+                source_class=0,
+                target_class=1,
+                poison_fraction=1.0,
+            )
         engine = AttackRoundEngine(
             sampler=sampler,
-            benign_trainer=trainer(benign_ids),
+            benign_trainer=trainer({
+                client_id: clean_datasets[client_id] for client_id in benign_ids
+            }),
             malicious_generator=generator,
             population=FixedMaliciousPopulation(MALICIOUS_CLIENTS),
-            knowledge=knowledge,
+            knowledge=AttackKnowledge(allows_global_model=True, allows_local_data=True),
             aggregator=aggregator,
             server_optimizer=ServerSGD(),
         )
@@ -161,12 +176,34 @@ def _run(
         ),
         source,
     )
-    metrics = ClassificationEvaluator(
+    final_model = trajectory.final_state.global_model
+    clean_metrics = ClassificationEvaluator(
         model_factory=_model_factory,
         dataset=held_out,
         codec=codec,
         batch_size=24,
-    ).evaluate(trajectory.final_state.global_model)
+    ).evaluate(final_model)
+
+    def asr(trigger) -> float:
+        return TargetedAttackEvaluator(
+            model_factory=_model_factory,
+            dataset=held_out,
+            codec=codec,
+            trigger=trigger,
+            source_class=0,
+            target_class=1,
+            batch_size=24,
+        ).evaluate(final_model).attack_success_rate
+
+    evaluation_trigger = BFL_TRIGGER if task == 'bfl' else DBA_PLAN.full_trigger
+    attack_metric = asr(evaluation_trigger)
+    components = {}
+    if task == 'dba':
+        components = {
+            f'sub_trigger_{index}_asr': asr(trigger)
+            for index, trigger in enumerate(DBA_SUB_TRIGGERS)
+        }
+        components['full_trigger_asr'] = attack_metric
     if reference:
         clipped = (0.0,) * 8
         trim_counts = (0,) * 8
@@ -181,14 +218,14 @@ def _run(
         clipped = tuple(summary.clipping.clipped_client_fraction for summary in summaries)
         trim_counts = tuple(summary.trimming.per_tail_trim_count for summary in summaries)
         retained = tuple(summary.trimming.retained_count for summary in summaries)
-    return _Run(RawDefenseObservation(
+    return RawDefenseObservation(
         task_id=task,
         seed=seed,
         grid_point=point,
         branch=branch,
-        final_clean_loss=metrics.loss,
-        final_clean_accuracy=metrics.accuracy,
-        attack_metric=metrics.loss,
+        final_clean_loss=clean_metrics.loss,
+        final_clean_accuracy=clean_metrics.accuracy,
+        attack_metric=attack_metric,
         aggregate_norms=tuple(
             float(np.linalg.norm(step.aggregate_delta.vector().astype(np.float64)))
             for step in trajectory.transitions
@@ -198,11 +235,12 @@ def _run(
         retained_counts=retained,
         sampled_clients=tuple(step.sampled_clients for step in trajectory.transitions),
         final_random_snapshot=trajectory.final_state.random_snapshot,
-        final_model_vector=trajectory.final_state.global_model.vector(),
-    ))
+        final_model_vector=final_model.vector(),
+        metric_components=components,
+    )
 
 
-def build_untargeted_matrix(task: str):
+def build_backdoor_matrix(task: str):
     reference_point = DefenseGridPoint(CLIP_RADII[-1], 0.0)
     return evaluate_defense_response_matrix(
         task_id=task,
@@ -211,11 +249,11 @@ def build_untargeted_matrix(task: str):
         trim_ratios=TRIM_RATIOS,
         observation_factory=lambda seed, point, branch: _run(
             task, seed, branch, point, reference=False
-        ).observation,
+        ),
         reference_factory=lambda seed, branch: _run(
             task, seed, branch, reference_point, reference=True
-        ).observation,
-        evaluation_protocol='held-out-clean-loss-v1',
+        ),
+        evaluation_protocol='source-only-asr-v1',
         attack_metric_direction='higher_is_worse',
     )
 
@@ -226,17 +264,15 @@ def _assert_snapshots_equal(left: RandomSnapshot, right: RandomSnapshot) -> None
     assert torch.equal(left.torch_cpu_state, right.torch_cpu_state)
 
 
-def _assert_matrices_exact(left, right) -> None:
-    assert left.task_id == right.task_id
+def _assert_matrix_replay(left, right) -> None:
     assert len(left.points) == len(right.points)
     for first, second in zip(left.points, right.points):
         assert first.attack_harm == second.attack_harm
-        assert first.clip_cost == second.clip_cost
-        assert first.trim_cost == second.trim_cost
         a, b = first.observation, second.observation
         assert a.final_clean_loss == b.final_clean_loss
         assert a.final_clean_accuracy == b.final_clean_accuracy
         assert a.attack_metric == b.attack_metric
+        assert a.metric_components == b.metric_components
         assert a.aggregate_norms == b.aggregate_norms
         assert a.clipped_fractions == b.clipped_fractions
         assert a.per_tail_trim_counts == b.per_tail_trim_counts
@@ -246,28 +282,31 @@ def _assert_matrices_exact(left, right) -> None:
         _assert_snapshots_equal(a.final_random_snapshot, b.final_random_snapshot)
 
 
-def test_untargeted_attack_matrices_are_complete_replayable_and_controllable() -> None:
-    for task in ('delta-reversal', 'ipm', 'lmp'):
-        matrix = build_untargeted_matrix(task)
-        replay = build_untargeted_matrix(task)
+def test_backdoor_matrices_are_complete_replayable_and_controllable() -> None:
+    for task in ('bfl', 'dba'):
+        matrix = build_backdoor_matrix(task)
+        replay = build_backdoor_matrix(task)
         gate = evaluate_task_matrix_gate(matrix, THRESHOLDS)
 
         assert len(matrix.points) == len(SEEDS_BY_TASK[task]) * 3 * 3 * 2
         assert len(matrix.references) == len(SEEDS_BY_TASK[task]) * 2
-        _assert_matrices_exact(matrix, replay)
+        _assert_matrix_replay(matrix, replay)
         assert gate.passed
         assert gate.clip_dimension_active
         assert gate.trim_dimension_active
         for seed in SEEDS_BY_TASK[task]:
             clean, attack = (
-                observation
-                for observation in matrix.references
-                if observation.seed == seed
+                observation for observation in matrix.references if observation.seed == seed
             )
             assert clean.final_clean_accuracy == 1.0
-            assert attack.final_clean_loss > clean.final_clean_loss
+            assert attack.attack_metric > clean.attack_metric
+            assert attack.final_clean_accuracy >= 0.95
             assert clean.sampled_clients == attack.sampled_clients
-            _assert_snapshots_equal(
-                clean.final_random_snapshot,
-                attack.final_random_snapshot,
-            )
+            _assert_snapshots_equal(clean.final_random_snapshot, attack.final_random_snapshot)
+            if task == 'dba':
+                assert set(attack.metric_components) == {
+                    'sub_trigger_0_asr',
+                    'sub_trigger_1_asr',
+                    'sub_trigger_2_asr',
+                    'full_trigger_asr',
+                }
