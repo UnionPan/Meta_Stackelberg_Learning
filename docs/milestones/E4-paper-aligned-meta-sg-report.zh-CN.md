@@ -115,22 +115,23 @@ module blocks。论文 MNIST CNN 对应 `fc1.weight + fc1.bias = 1280 + 10 = 129
   meta-RL policy 只属于独立 baseline，不再错误替代 Meta-SG initialization。
 - 规定缩放训练 `T=2,K=2,H=8,l=N_A=N_D=2` 的 checkpoint 已继续输入同尺度独立 Gate。
   预声明 Attacker oracle grid 为 raw gamma `{-0.8,+0.8}`（其余 raw dimensions 为 0），plateau
-  gap threshold 为 `0.001`。`phi(N_A)` 的动作虽然变化，但 attacker objective 与 oracle plateau
-  相同，因此 attacker BR 条件通过 plateau 分支，而不是 improvement 分支。总 Gate 仍为
-  **failed**：attacker BR improvement `0`；Defender-conditioned response difference
-  `0.0045560017`（通过）；Defender adaptation improvement `-0.0000438690`；meta
-  advantage `-0.0000438690`；specialized-oracle regret `0.0005413890`（通过）；behavior/objective
-  signal `-0.0000438690`。因此当前实现通过结构/conformance，但缩放性能 Gate 明确未通过。
+  gap threshold 为 `0.001`。held-out objective 现统一为每 FL round mean reward，避免 `H` 放大
+  Gate。重跑结果仍为 **failed**：attacker BR improvement `0.0003690943`、plateau gap
+  `0.0008210354`（plateau 分支通过）；Defender-conditioned response `0.0031306359`；Defender
+  adaptation `-0.0020266548`；meta advantage `-0.0048355348`；specialized-oracle regret
+  `0.0060903728`；action distance `0.0069397386` 通过但 objective signal 为负。此前 cumulative
+  trajectory-return 数值作废，不再用于跨 `H` 比较。
 
 为区分“2 步预算过小”和执行错误，另执行了保持 tiny environment、`T=2,K=2,H=8`，但恢复
 论文关键计数 `l=N_A=N_D=10` 的扩大实验。训练实际消耗 560 条 trajectories，科学比较消耗
 180 次 support rollout（meta/random/no-adaptation 的 matched seeds 会重复计入执行次数）。阈值未
-改变。Gate 仍为 **failed**：attacker plateau 分支通过（improvement `0`）；Defender-conditioned
-response difference `0.0170114445`；Defender adaptation improvement `0`；meta advantage
-`-0.0000666976`；specialized-oracle regret `0.0007151961`；双 action/objective signal 失败。
-因此失败不能用“只训练了 2 步”解释；当前 tiny 四客户端、固定 benign delta 环境对连续防御动作的
-held-out objective 可辨识性不足。后续性能结论必须迁移到论文 MNIST/CIFAR 数据生成与客户端训练，
-不能继续在该 tiny 环境上事后调 decoder 或阈值。
+改变。按 mean reward per FL round 重跑后 Gate 仍为 **failed**，但任务适应条件转为通过：attacker
+improvement `0.0004379824` 且超过有限 oracle（plateau gap `-0.0005645677`）；Defender-conditioned
+response `0.0171483899`；Defender adaptation `0.0019656271`（通过）；meta advantage
+`-0.0123242438`（失败）；specialized-oracle regret `0.0202926248`；action distance
+`0.0294847941` 通过但 combined objective signal 受负 meta advantage 拖累。当前核心失败已经收敛为
+Meta-SG initialization 未超过 random/no-adaptation，而不是 task adaptation 无效。后续性能结论必须
+迁移到论文 MNIST/CIFAR 生成数据与更完整 task distribution，不能在 tiny 环境事后调阈值。
 
 ## MNIST 论文环境迁移
 
@@ -228,7 +229,7 @@ profiles 为 `micro / actor-active / declared-scaled / paper`；`paper` 必须�
 科学 Gate failed 返回非零状态。真实 MNIST `micro` CLI 已完整执行并生成 937 KB `policies.pt`
 与 4.3 KB `manifest.json`，随后成功重新加载 Algorithm 1 Defender 和 `rl-0` Attacker snapshots。
 - Algorithm 1、policy-level BR、Algorithm 2 和 Reptile 隔离测试均通过。
-- 2026-07-12 全仓库测试：`869 passed in 69.96s`。
+- 2026-07-12 全仓库测试：`871 passed in 68.59s`。
 
 ## 尚未宣称的结果
 

@@ -296,8 +296,8 @@ class PaperScientificGateRunner:
             deterministic=True,
         )
         return (
-            trajectory.defender_return,
-            trajectory.attacker_return,
+            trajectory.mean_defender_reward,
+            trajectory.mean_attacker_reward,
             np.concatenate([step.defender_raw_action for step in trajectory.steps]),
             np.concatenate([step.attacker_raw_action for step in trajectory.steps]),
         )

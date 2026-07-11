@@ -55,6 +55,8 @@ def test_scaled_collector_executes_both_3d_policies_each_fl_round() -> None:
     )
 
     assert len(trajectory.steps) == env.horizon == 2
+    assert trajectory.mean_defender_reward == trajectory.defender_return / 2
+    assert trajectory.mean_attacker_reward == trajectory.attacker_return / 2
     assert len(defender_replay) == len(attacker_replay) == 2
     assert all(step.defender_raw_action.shape == (3,) for step in trajectory.steps)
     assert all(step.attacker_raw_action.shape == (3,) for step in trajectory.steps)

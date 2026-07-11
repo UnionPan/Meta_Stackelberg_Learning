@@ -92,6 +92,18 @@ class PaperTrajectory:
     defender_return: float
     attacker_return: float
 
+    @property
+    def mean_defender_reward(self) -> float:
+        if not self.steps:
+            raise ValueError('trajectory has no FL rounds')
+        return self.defender_return / len(self.steps)
+
+    @property
+    def mean_attacker_reward(self) -> float:
+        if not self.steps:
+            raise ValueError('trajectory has no FL rounds')
+        return self.attacker_return / len(self.steps)
+
 
 @dataclass(frozen=True)
 class ScaledConformanceResult:
