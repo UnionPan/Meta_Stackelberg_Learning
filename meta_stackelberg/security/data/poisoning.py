@@ -9,7 +9,7 @@ from torch.utils.data import Dataset
 
 from meta_stackelberg.core.random_state import RandomSource
 from meta_stackelberg.security.data.labels import class_id
-from meta_stackelberg.security.data.trigger import PatchTrigger
+from meta_stackelberg.security.data.trigger import ImageTrigger
 
 
 class SourceTargetPoisonedDataset(Dataset):
@@ -19,7 +19,7 @@ class SourceTargetPoisonedDataset(Dataset):
         self,
         *,
         dataset: Dataset,
-        trigger: PatchTrigger,
+        trigger: ImageTrigger,
         source_class: int,
         target_class: int,
         poison_fraction: float,

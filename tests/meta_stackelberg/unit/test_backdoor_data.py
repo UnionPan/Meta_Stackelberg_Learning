@@ -1,3 +1,7 @@
+from collections.abc import Sequence
+from dataclasses import FrozenInstanceError
+from typing import get_type_hints
+
 import numpy as np
 import pytest
 import torch
@@ -63,6 +67,113 @@ def test_patch_trigger_rejects_value_not_representable_by_image_dtype() -> None:
         PatchTrigger(row=0, column=0, height=1, width=1, value=0.5).apply(
             torch.zeros(2, 2, dtype=torch.int64)
         )
+
+
+def test_image_trigger_is_runtime_checkable() -> None:
+    from meta_stackelberg.security.data.trigger import ImageTrigger, PatchTrigger
+
+    assert isinstance(PatchTrigger(row=0, column=0, height=1, width=1, value=1.0), ImageTrigger)
+    assert not isinstance(object(), ImageTrigger)
+
+
+def test_composite_trigger_applies_components_in_declared_order() -> None:
+    from meta_stackelberg.security.data.trigger import CompositeTrigger
+
+    calls = []
+
+    class RecordingTrigger:
+        def __init__(self, name, column, value):
+            self.name = name
+            self.column = column
+            self.value = value
+
+        def apply(self, image):
+            calls.append(self.name)
+            result = image.clone()
+            result[..., 0, self.column] = self.value
+            return result
+
+    result = CompositeTrigger([
+        RecordingTrigger('first', 0, 1.0),
+        RecordingTrigger('second', 1, 2.0),
+    ]).apply(torch.zeros((1, 2, 2)))
+
+    assert calls == ['first', 'second']
+    torch.testing.assert_close(result[..., 0, :], torch.tensor([[1.0, 2.0]]))
+
+
+def test_composite_trigger_applies_exact_union_without_mutation() -> None:
+    from meta_stackelberg.security.data.trigger import CompositeTrigger, PatchTrigger
+
+    image = torch.zeros((1, 4, 4), dtype=torch.float32)
+    original = image.clone()
+    trigger = CompositeTrigger((
+        PatchTrigger(row=0, column=0, height=1, width=2, value=2.0),
+        PatchTrigger(row=3, column=2, height=1, width=2, value=3.0),
+    ))
+
+    result = trigger.apply(image)
+
+    torch.testing.assert_close(image, original, rtol=0.0, atol=0.0)
+    assert torch.all(result[:, 0, 0:2] == 2.0)
+    assert torch.all(result[:, 3, 2:4] == 3.0)
+    assert torch.count_nonzero(result).item() == 4
+
+
+def test_composite_trigger_rejects_empty_composition() -> None:
+    from meta_stackelberg.security.data.trigger import CompositeTrigger
+
+    with pytest.raises(ValueError, match='at least one'):
+        CompositeTrigger(())
+
+
+def test_composite_trigger_rejects_component_with_non_callable_apply() -> None:
+    from meta_stackelberg.security.data.trigger import CompositeTrigger
+
+    class InvalidTrigger:
+        apply = 1
+
+    with pytest.raises(TypeError, match='satisfy ImageTrigger'):
+        CompositeTrigger((InvalidTrigger(),))
+
+
+def test_composite_trigger_accepts_a_sequence_of_components() -> None:
+    from meta_stackelberg.security.data.trigger import CompositeTrigger, ImageTrigger
+
+    assert get_type_hints(CompositeTrigger)['triggers'] == Sequence[ImageTrigger]
+
+
+def test_composite_trigger_is_frozen_and_tupleizes_components() -> None:
+    from meta_stackelberg.security.data.trigger import CompositeTrigger, PatchTrigger
+
+    component = PatchTrigger(row=0, column=0, height=1, width=1, value=1.0)
+    trigger = CompositeTrigger([component])
+
+    assert trigger.triggers == (component,)
+    with pytest.raises(FrozenInstanceError):
+        trigger.triggers = ()
+
+
+@pytest.mark.parametrize(
+    ('candidate', 'error', 'message'),
+    [
+        ('not a tensor', TypeError, 'Torch tensor'),
+        (torch.zeros((1, 4, 3)), ValueError, 'shape'),
+        (torch.zeros((1, 4, 4), dtype=torch.float64), ValueError, 'dtype'),
+        (torch.empty((1, 4, 4), device='meta'), ValueError, 'device'),
+    ],
+)
+def test_composite_trigger_rejects_incompatible_component_output(
+    candidate, error, message
+) -> None:
+    from meta_stackelberg.security.data.trigger import CompositeTrigger
+
+    class IncompatibleTrigger:
+        def apply(self, image):
+            return candidate
+
+    with pytest.raises(error, match=message):
+        CompositeTrigger((IncompatibleTrigger(),)).apply(torch.zeros((1, 4, 4)))
 
 
 def _dataset() -> TensorDataset:

@@ -1,0 +1,288 @@
+"""Distributed trigger assignments for distributed backdoor attacks."""
+
+from __future__ import annotations
+
+from collections.abc import Iterable, Mapping, Sequence
+import copy
+from dataclasses import dataclass, fields, is_dataclass
+import math
+from numbers import Integral
+from types import MappingProxyType
+
+from meta_stackelberg.core.random_state import RandomSource
+from meta_stackelberg.federated.clients.trainer import TorchLocalTrainer
+from meta_stackelberg.federated.types import ClientUpdate
+from meta_stackelberg.security.attacks._base import (
+    LOCAL_MODEL_CAPABILITIES,
+    as_malicious_update,
+    train_base_update,
+)
+from meta_stackelberg.security.data.labels import class_id
+from meta_stackelberg.security.data.poisoning import SourceTargetPoisonedDataset
+from meta_stackelberg.security.data.trigger import CompositeTrigger, ImageTrigger
+from meta_stackelberg.security.training import ScopedLocalTrainer
+from meta_stackelberg.security.types import AttackContext
+
+
+@dataclass(frozen=True, init=False)
+class DistributedTriggerPlan:
+    """An immutable assignment of distinct trigger parts to scoped attackers.
+
+    Sub-triggers must be deeply immutable, hashable frozen dataclass value
+    objects so neither their values nor nested state can change after the plan's
+    distinctness validation.
+    """
+
+    sub_triggers: tuple[ImageTrigger, ...]
+    _client_to_sub_trigger_items: tuple[tuple[int, int], ...]
+    attacker_client_ids: frozenset[int]
+
+    def __init__(
+        self,
+        sub_triggers: Sequence[ImageTrigger],
+        client_to_sub_trigger: Mapping[int, int],
+        attacker_client_ids: Iterable[int],
+    ) -> None:
+        triggers = tuple(sub_triggers)
+        if len(triggers) < 2:
+            raise ValueError('distributed trigger plan requires at least two sub-triggers')
+        if any(not isinstance(trigger, ImageTrigger) for trigger in triggers):
+            raise TypeError('sub-triggers must satisfy ImageTrigger')
+        for trigger in triggers:
+            _validate_deeply_immutable(trigger, set())
+            try:
+                hash(trigger)
+            except TypeError as error:
+                raise TypeError('sub-triggers must be hashable value objects') from error
+        if any(
+            _triggers_equal(left, right)
+            for index, left in enumerate(triggers)
+            for right in triggers[index + 1 :]
+        ):
+            raise ValueError('sub-triggers must be distinct')
+
+        assignments = dict(client_to_sub_trigger)
+        _validate_client_ids(assignments)
+        _validate_indices(assignments.values(), len(triggers))
+
+        attacker_values = tuple(attacker_client_ids)
+        _validate_client_ids(attacker_values)
+        attackers = frozenset(int(client_id) for client_id in attacker_values)
+        assigned_clients = frozenset(int(client_id) for client_id in assignments)
+        if attackers - assigned_clients:
+            raise ValueError('scoped attackers must not be unassigned')
+        if assigned_clients - attackers:
+            raise ValueError('trigger assignments must not include clients outside attacker scope')
+        if set(assignments.values()) != set(range(len(triggers))):
+            raise ValueError('distributed trigger plan contains unused sub-triggers')
+
+        object.__setattr__(self, 'sub_triggers', triggers)
+        object.__setattr__(
+            self,
+            '_client_to_sub_trigger_items',
+            tuple(sorted((int(client_id), int(index)) for client_id, index in assignments.items())),
+        )
+        object.__setattr__(self, 'attacker_client_ids', attackers)
+
+    @property
+    def client_to_sub_trigger(self) -> Mapping[int, int]:
+        return MappingProxyType(dict(self._client_to_sub_trigger_items))
+
+    def trigger_for(self, client_id: int) -> ImageTrigger:
+        _validate_client_ids((client_id,))
+        normalized = int(client_id)
+        if normalized not in self.client_to_sub_trigger:
+            raise KeyError(f'client {normalized} is not assigned a sub-trigger')
+        return self.sub_triggers[self.client_to_sub_trigger[normalized]]
+
+    @property
+    def full_trigger(self) -> CompositeTrigger:
+        return CompositeTrigger(self.sub_triggers)
+
+
+class DistributedBackdoorUpdateGenerator:
+    """Mark plan-matched poisoned local training as a distributed backdoor update.
+
+    The generator owns snapshots of the poison views and their underlying
+    datasets. This isolation can duplicate the scoped training data in memory;
+    originally shared underlying datasets remain shared within the snapshot.
+    """
+
+    capabilities = LOCAL_MODEL_CAPABILITIES
+
+    def __init__(
+        self,
+        *,
+        trainer: ScopedLocalTrainer,
+        plan: DistributedTriggerPlan,
+        source_class: int,
+        target_class: int,
+        poison_fraction: float,
+    ) -> None:
+        if not isinstance(trainer, ScopedLocalTrainer):
+            raise TypeError('DBA requires ScopedLocalTrainer')
+        base_trainer = trainer._trainer
+        if type(base_trainer) is not TorchLocalTrainer:
+            raise TypeError('DBA requires exact built-in TorchLocalTrainer')
+        if not isinstance(plan, DistributedTriggerPlan):
+            raise TypeError('plan must be DistributedTriggerPlan')
+
+        normalized_source = class_id(source_class, name='source_class')
+        normalized_target = class_id(target_class, name='target_class')
+        if normalized_source == normalized_target:
+            raise ValueError('source_class and target_class must differ')
+        if isinstance(poison_fraction, bool):
+            raise TypeError('poison_fraction must be a non-bool number')
+        normalized_fraction = float(poison_fraction)
+        if not math.isfinite(normalized_fraction) or not 0.0 <= poison_fraction <= 1.0:
+            raise ValueError('poison_fraction must be finite and in [0, 1]')
+
+        allowed_client_ids = frozenset(trainer.allowed_client_ids)
+        if allowed_client_ids != plan.attacker_client_ids:
+            raise ValueError('scoped trainer clients must match distributed trigger plan')
+        datasets = {}
+        dataset_snapshot_memo = {}
+        for client_id in allowed_client_ids:
+            dataset = base_trainer.client_datasets.get(client_id)
+            if type(dataset) is not SourceTargetPoisonedDataset:
+                raise TypeError(
+                    f'client {client_id} requires exact built-in '
+                    'SourceTargetPoisonedDataset'
+                )
+            if (
+                dataset.source_class != normalized_source
+                or dataset.target_class != normalized_target
+                or dataset.poison_fraction != normalized_fraction
+            ):
+                raise ValueError(f'client {client_id} poisoned dataset configuration mismatch')
+            assigned_trigger = plan.trigger_for(client_id)
+            if not _triggers_equal(dataset.trigger, assigned_trigger):
+                raise ValueError(f'client {client_id} poisoned dataset trigger mismatch')
+            owned_dataset = copy.copy(dataset)
+            if owned_dataset is dataset:
+                raise TypeError('poisoned dataset snapshot must not alias its source')
+            try:
+                owned_clean_dataset = copy.deepcopy(
+                    dataset.dataset,
+                    dataset_snapshot_memo,
+                )
+            except Exception as error:
+                raise TypeError(
+                    f'client {client_id} underlying dataset cannot be snapshotted'
+                ) from error
+            if owned_clean_dataset is dataset.dataset:
+                raise TypeError(
+                    f'client {client_id} underlying dataset snapshot aliases its source'
+                )
+            owned_dataset.dataset = owned_clean_dataset
+            owned_dataset.trigger = assigned_trigger
+            owned_dataset.source_class = normalized_source
+            owned_dataset.target_class = normalized_target
+            owned_dataset.poison_fraction = normalized_fraction
+            owned_dataset.eligible_count = int(dataset.eligible_count)
+            owned_dataset.poisoned_indices = frozenset(dataset.poisoned_indices)
+            datasets[client_id] = owned_dataset
+
+        copied_trainer = TorchLocalTrainer(
+            model_factory=base_trainer.model_factory,
+            client_datasets=datasets,
+            codec=base_trainer.codec,
+            learning_rate=base_trainer.learning_rate,
+            local_epochs=base_trainer.local_epochs,
+            batch_size=base_trainer.batch_size,
+        )
+        self.trainer = ScopedLocalTrainer(copied_trainer, allowed_client_ids)
+        self.plan = plan
+        self.source_class = normalized_source
+        self.target_class = normalized_target
+        self.poison_fraction = normalized_fraction
+
+    @property
+    def allowed_client_ids(self) -> frozenset[int]:
+        return self.trainer.allowed_client_ids
+
+    def craft(self, context: AttackContext, rng: RandomSource) -> ClientUpdate:
+        base = train_base_update(self.trainer, context, rng)
+        metadata = dict(base.metadata)
+        metadata.update({
+            'attack_type': 'dba',
+            'source_class': self.source_class,
+            'target_class': self.target_class,
+            'poison_fraction': self.poison_fraction,
+            'sub_trigger_index': self.plan.client_to_sub_trigger[context.client_id],
+            'sub_trigger_count': len(self.plan.sub_triggers),
+        })
+        return as_malicious_update(base, metadata=metadata)
+
+
+def _validate_client_ids(client_ids: Iterable[object]) -> None:
+    values = tuple(client_ids)
+    if any(
+        not isinstance(client_id, Integral) or isinstance(client_id, bool)
+        for client_id in values
+    ):
+        raise TypeError('client ids must be integers')
+    if any(int(client_id) < 0 for client_id in values):
+        raise ValueError('client ids must be non-negative')
+
+
+def _validate_indices(indices: Iterable[object], trigger_count: int) -> None:
+    values = tuple(indices)
+    if any(not isinstance(index, Integral) or isinstance(index, bool) for index in values):
+        raise TypeError('sub-trigger indices must be integers')
+    if any(int(index) < 0 or int(index) >= trigger_count for index in values):
+        raise ValueError('sub-trigger index is out of range')
+
+
+def _validate_deeply_immutable(value: object, active_ids: set[int]) -> None:
+    if value is None or type(value) in (bool, int, float, complex, str, bytes):
+        return
+
+    value_id = id(value)
+    if value_id in active_ids:
+        raise TypeError('sub-triggers must be deeply immutable and acyclic')
+
+    if type(value) in (tuple, frozenset):
+        active_ids.add(value_id)
+        try:
+            for item in value:
+                _validate_deeply_immutable(item, active_ids)
+        finally:
+            active_ids.remove(value_id)
+        return
+
+    if is_dataclass(value) and not isinstance(value, type):
+        value_type = type(value)
+        if (
+            '__dataclass_params__' not in value_type.__dict__
+            or '__dataclass_fields__' not in value_type.__dict__
+        ):
+            raise TypeError(
+                'sub-triggers and nested dataclasses must be directly decorated dataclasses'
+            )
+        parameters = value_type.__dict__['__dataclass_params__']
+        if parameters is None or not parameters.frozen:
+            raise TypeError(
+                'sub-triggers must be deeply immutable frozen dataclass value objects'
+            )
+        active_ids.add(value_id)
+        try:
+            for field in fields(value):
+                _validate_deeply_immutable(getattr(value, field.name), active_ids)
+        finally:
+            active_ids.remove(value_id)
+        return
+
+    raise TypeError('sub-triggers must contain only deeply immutable values')
+
+
+def _triggers_equal(left: ImageTrigger, right: ImageTrigger) -> bool:
+    if left is right:
+        return True
+    try:
+        equality = left == right
+        return bool(equality)
+    except (TypeError, ValueError, RuntimeError) as error:
+        raise TypeError(
+            'sub-triggers must support scalar equality for value-distinct validation'
+        ) from error

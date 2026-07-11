@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader, Dataset, TensorDataset
 
 from meta_stackelberg.core.model_state import ModelState
 from meta_stackelberg.federated.models.parameters import TorchParameterCodec
-from meta_stackelberg.security.data.trigger import PatchTrigger
+from meta_stackelberg.security.data.trigger import ImageTrigger
 from meta_stackelberg.security.data.labels import class_id
 
 
@@ -30,7 +30,7 @@ class TargetedAttackEvaluator:
         model_factory: Callable[[], torch.nn.Module],
         dataset: Dataset,
         codec: TorchParameterCodec,
-        trigger: PatchTrigger,
+        trigger: ImageTrigger,
         source_class: int,
         target_class: int,
         batch_size: int,

@@ -2,11 +2,52 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 import math
 from numbers import Integral
+from typing import Protocol, runtime_checkable
 
 import torch
+
+
+@runtime_checkable
+class ImageTrigger(Protocol):
+    def apply(self, image: torch.Tensor) -> torch.Tensor: ...
+
+
+@dataclass(frozen=True)
+class CompositeTrigger:
+    triggers: Sequence[ImageTrigger]
+
+    def __post_init__(self) -> None:
+        values = tuple(self.triggers)
+        if not values:
+            raise ValueError('composite trigger requires at least one component')
+        if any(
+            not isinstance(trigger, ImageTrigger)
+            or not callable(getattr(trigger, 'apply', None))
+            for trigger in values
+        ):
+            raise TypeError('composite trigger components must satisfy ImageTrigger')
+        object.__setattr__(self, 'triggers', values)
+
+    def apply(self, image: torch.Tensor) -> torch.Tensor:
+        if not isinstance(image, torch.Tensor):
+            raise TypeError('composite trigger requires a Torch tensor image')
+        result = image.clone()
+        for trigger in self.triggers:
+            candidate = trigger.apply(result)
+            if not isinstance(candidate, torch.Tensor):
+                raise TypeError('trigger component must return a Torch tensor')
+            if candidate.shape != image.shape:
+                raise ValueError('trigger component changed image shape')
+            if candidate.dtype != image.dtype:
+                raise ValueError('trigger component changed image dtype')
+            if candidate.device != image.device:
+                raise ValueError('trigger component changed image device')
+            result = candidate
+        return result
 
 
 @dataclass(frozen=True)
