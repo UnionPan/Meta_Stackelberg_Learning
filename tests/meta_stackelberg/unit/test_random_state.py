@@ -51,3 +51,28 @@ def test_snapshot_is_not_changed_by_later_draws() -> None:
     source.restore(snapshot)
 
     _assert_draws_equal(expected, _draw_all(source))
+
+
+def test_spawn_replays_from_parent_snapshot() -> None:
+    parent = RandomSource(seed=11)
+    snapshot = parent.capture()
+
+    first = _draw_all(parent.spawn())
+    parent.restore(snapshot)
+    second = _draw_all(parent.spawn())
+
+    _assert_draws_equal(first, second)
+
+
+def test_child_consumption_does_not_shift_parent_stream() -> None:
+    left = RandomSource(seed=13)
+    left_child = left.spawn()
+    for _ in range(100):
+        _draw_all(left_child)
+    left_next = _draw_all(left.spawn())
+
+    right = RandomSource(seed=13)
+    right.spawn()
+    right_next = _draw_all(right.spawn())
+
+    _assert_draws_equal(left_next, right_next)

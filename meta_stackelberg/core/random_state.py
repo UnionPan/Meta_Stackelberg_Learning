@@ -55,6 +55,18 @@ class RandomSource:
             torch_cpu_state=torch_state,
         )
 
+    def spawn(self) -> 'RandomSource':
+        """Advance the parent once and return an independently consumable child stream."""
+
+        seed = int(
+            self._numpy.integers(
+                0,
+                np.iinfo(np.int64).max,
+                dtype=np.int64,
+            )
+        )
+        return RandomSource(seed)
+
     def restore(self, snapshot: RandomSnapshot) -> None:
         self._python.setstate(copy.deepcopy(snapshot.python_state))
         self._numpy.bit_generator.state = copy.deepcopy(snapshot.numpy_state)

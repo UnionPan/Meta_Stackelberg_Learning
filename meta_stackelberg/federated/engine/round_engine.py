@@ -26,12 +26,14 @@ class RoundEngine:
 
     def run_round(self, request: RoundRequest, rng: RandomSource) -> RoundTransition:
         rng.restore(request.state.random_snapshot)
-        sampled_clients = tuple(self.sampler.sample(request, rng))
+        sampling_rng = rng.spawn()
+        sampled_clients = tuple(self.sampler.sample(request, sampling_rng))
         self._validate_sample(sampled_clients, request.sample_size)
+        client_rngs = tuple(rng.spawn() for _ in sampled_clients)
 
         benign_updates = tuple(
-            self.trainer.train(client_id, request.state, rng)
-            for client_id in sampled_clients
+            self.trainer.train(client_id, request.state, client_rng)
+            for client_id, client_rng in zip(sampled_clients, client_rngs)
         )
         for client_id, update in zip(sampled_clients, benign_updates):
             if update.client_id != client_id:

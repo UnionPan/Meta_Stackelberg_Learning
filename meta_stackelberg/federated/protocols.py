@@ -6,7 +6,12 @@ from typing import Protocol, Sequence, runtime_checkable
 
 from meta_stackelberg.core.model_state import ModelState
 from meta_stackelberg.core.random_state import RandomSource
-from meta_stackelberg.federated.types import ClientUpdate, RoundRequest, RoundState
+from meta_stackelberg.federated.types import (
+    ClientUpdate,
+    RoundRequest,
+    RoundState,
+    RoundTransition,
+)
 
 
 @runtime_checkable
@@ -32,3 +37,12 @@ class ServerOptimizer(Protocol):
         aggregate_delta: ModelState,
         learning_rate: float,
     ) -> ModelState: ...
+
+
+@runtime_checkable
+class RoundExecutor(Protocol):
+    def run_round(
+        self,
+        request: RoundRequest,
+        rng: RandomSource,
+    ) -> RoundTransition: ...
