@@ -13,7 +13,11 @@ from meta_stackelberg.experiments.scientific_gate import (
     ScientificGateThresholds,
 )
 from meta_stackelberg.experiments.scientific_run import PaperScientificGateRunner
-from tests.meta_stackelberg.integration.test_paper_bsmg_environment import _make_env
+from meta_stackelberg.experiments.deterministic_paper_env import make_deterministic_paper_env
+
+
+def _make_env(seed):
+    return make_deterministic_paper_env(seed=seed)
 
 
 def _agent(obs_dim, role, seed):

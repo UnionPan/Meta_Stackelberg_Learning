@@ -15,7 +15,11 @@ from meta_stackelberg.experiments.scientific_gate import (
 )
 from meta_stackelberg.stackelberg.algorithm1 import MetaSGAlgorithm1
 from meta_stackelberg.stackelberg.algorithm2 import MetaSGAlgorithm2
-from tests.meta_stackelberg.integration.test_paper_bsmg_environment import _make_env
+from meta_stackelberg.experiments.deterministic_paper_env import make_deterministic_paper_env
+
+
+def _make_env(seed=9):
+    return make_deterministic_paper_env(seed=seed)
 
 
 def _agent(obs_dim, role, seed):

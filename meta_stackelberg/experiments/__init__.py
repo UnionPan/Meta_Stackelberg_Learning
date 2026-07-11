@@ -64,6 +64,12 @@ from meta_stackelberg.experiments.scientific_run import (
     PaperScientificRunResult,
     ScientificTrainingBudget,
 )
+from meta_stackelberg.experiments.deterministic_paper_env import (
+    DeterministicBenignTrainer,
+    DeterministicFourClientSampler,
+    deterministic_paper_dataset,
+    make_deterministic_paper_env,
+)
 
 __all__ = [
     'ClipControllabilityGate',
@@ -118,4 +124,8 @@ __all__ = [
     'PaperScientificGateRunner',
     'PaperScientificRunResult',
     'ScientificTrainingBudget',
+    'DeterministicBenignTrainer',
+    'DeterministicFourClientSampler',
+    'deterministic_paper_dataset',
+    'make_deterministic_paper_env',
 ]
