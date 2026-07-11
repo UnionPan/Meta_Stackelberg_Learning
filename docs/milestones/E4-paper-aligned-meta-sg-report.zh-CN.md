@@ -203,6 +203,11 @@ synthetic CIFAR-shaped integration 已用真实 ResNet-18、local SGD、RL local
 aggregation 跑通一轮；Defender/Attacker observation dimensions 分别为 5131/5135，并提供
 `run_paper_cifar_scaled_evidence` 一键训练/Gate 入口。尝试显式下载 torchvision CIFAR-10 时外部源
 仅约 40 KB/s，170 MB 文件预计超过一小时，已中止，因此不宣称完成真实 CIFAR 数据运行。
+
+Scaled evidence 现在可原子持久化为 `policies.pt + manifest.json`：前者包含 Algorithm 1/2
+Defenders 与全部 type-specific Attackers 的完整 TD3 snapshots；后者包含参数快照、training/query
+seeds、trajectory budgets、fresh-BR 数量、oracle labels、六项 primary/alternative Gate records 和
+所有 policy fingerprints。这样长运行结束后可继续独立诊断，而不再丢失进程内 policies。
 - Algorithm 1、policy-level BR、Algorithm 2 和 Reptile 隔离测试均通过。
 - 2026-07-12 全仓库测试：`866 passed in 69.63s`。
 

@@ -94,6 +94,11 @@ from meta_stackelberg.experiments.paper_cifar_env import (
 from meta_stackelberg.experiments.paper_cifar_evidence import (
     run_paper_cifar_scaled_evidence,
 )
+from meta_stackelberg.experiments.scaled_artifact import (
+    ScaledEvidenceArtifact,
+    load_scaled_evidence_snapshots,
+    save_scaled_evidence_artifact,
+)
 
 __all__ = [
     'ClipControllabilityGate',
@@ -166,4 +171,7 @@ __all__ = [
     'PaperCIFAREnvironmentFactory',
     'load_paper_cifar_datasets',
     'run_paper_cifar_scaled_evidence',
+    'ScaledEvidenceArtifact',
+    'load_scaled_evidence_snapshots',
+    'save_scaled_evidence_artifact',
 ]
