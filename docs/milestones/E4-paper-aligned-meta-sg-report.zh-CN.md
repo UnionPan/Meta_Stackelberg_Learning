@@ -29,6 +29,12 @@
 `φ(0) → … → φ(N_A)`，只有最终 `φ(N_A)` 被当作当前冻结 Defender 的近似 best response。
 Algorithm 2 的 `l` 是另一套 Reptile 任务适应计数，不与 `N_D` 或 `N_A`互为别名。
 
+Algorithm 1 严格区分两个 Defender 参数点：先按原文第 11 行用 `eta` 做一次适应得到
+`theta_xi`；Attacker 随后按第 14 行针对未适应的 meta policy `theta_t` 做 `N_A` 次更新；
+Defender 梯度再按第 17 行于 `theta_xi`、`phi_xi(N_A)` 条件下估计。各任务的
+`kappa_D`-scaled 更新差量最后按第 24 行以 `1/K` 汇总到 `theta_t`。`kappa_A`、`eta`、
+`kappa_D`各自只进入对应 optimizer 一次，不重复缩放。
+
 Defender 每个 FL round 输出三维连续动作 `(alpha, beta, epsilon)`；Attacker 每个 FL round
 输出三维连续动作 `(gamma, E, lambda)`。动作网络范围统一为 `[-1, 1]^3`，再由严格 codec
 映射到物理参数范围。
@@ -56,7 +62,7 @@ Defender 每个 FL round 输出三维连续动作 `(alpha, beta, epsilon)`；Att
 - 科学 Gate 已实现六项不可调结果：attacker BR、Defender-conditioned response、Defender task
   adaptation、meta initialization、specialized-oracle regret、action/objective 双信号。
 - Algorithm 1、policy-level BR、Algorithm 2 和 Reptile 隔离测试均通过。
-- 2026-07-12 全仓库测试：`822 passed in 54.01s`。
+- 2026-07-12 全仓库测试：`828 passed in 52.97s`。
 
 ## 尚未宣称的结果
 

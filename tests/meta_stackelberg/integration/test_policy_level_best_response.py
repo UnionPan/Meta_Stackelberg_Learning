@@ -28,7 +28,7 @@ def test_policy_response_updates_attacker_na_times_and_freezes_full_defender() -
             replay.add(obs, action, reward, obs + 0.1, False,
                        generation=step, role='attacker')
 
-    trainer = PolicyBestResponseTrainer(N_A=3, batch_size=4)
+    trainer = PolicyBestResponseTrainer(N_A=3, batch_size=4, kappa_A=0.001)
     result = trainer.train(
         defender=defender,
         attacker=attacker,
@@ -44,6 +44,7 @@ def test_policy_response_updates_attacker_na_times_and_freezes_full_defender() -
     assert len(result.update_stats) == 3
     assert result.initial_attacker_fingerprint != result.adapted_attacker_fingerprint
     assert result.approximate_best_response.schema_version == 1
+    assert result.kappa_A == 0.001
 
 
 def test_policy_response_detects_defender_mutation_inside_collection() -> None:
@@ -60,7 +61,7 @@ def test_policy_response_detects_defender_mutation_inside_collection() -> None:
             next(defender.actor.parameters()).add_(1.0)
 
     try:
-        PolicyBestResponseTrainer(N_A=1, batch_size=4).train(
+        PolicyBestResponseTrainer(N_A=1, batch_size=4, kappa_A=0.001).train(
             defender=defender, attacker=attacker, replay=replay,
             collect_fresh=mutate, independent_objective=lambda policy: 0.0,
         )
