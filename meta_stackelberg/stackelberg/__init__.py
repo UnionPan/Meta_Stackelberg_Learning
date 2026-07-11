@@ -43,6 +43,12 @@ from meta_stackelberg.stackelberg.policy_algorithm1 import (
     PolicyAlgorithm1TaskTrace,
     PolicyMetaSGAlgorithm1,
 )
+from meta_stackelberg.stackelberg.policy_algorithm2 import (
+    PolicyAlgorithm2IterationTrace,
+    PolicyAlgorithm2Result,
+    PolicyAlgorithm2TaskTrace,
+    PolicyMetaSGAlgorithm2,
+)
 
 __all__ = [
     'BestResponseResult',
@@ -74,4 +80,8 @@ __all__ = [
     'PolicyAlgorithm1Result',
     'PolicyAlgorithm1TaskTrace',
     'PolicyMetaSGAlgorithm1',
+    'PolicyAlgorithm2IterationTrace',
+    'PolicyAlgorithm2Result',
+    'PolicyAlgorithm2TaskTrace',
+    'PolicyMetaSGAlgorithm2',
 ]

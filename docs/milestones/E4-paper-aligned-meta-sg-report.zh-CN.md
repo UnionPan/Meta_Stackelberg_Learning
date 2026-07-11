@@ -35,6 +35,11 @@ Defender 梯度再按第 17 行于 `theta_xi`、`phi_xi(N_A)` 条件下估计。
 `kappa_D`-scaled 更新差量最后按第 24 行以 `1/K` 汇总到 `theta_t`。`kappa_A`、`eta`、
 `kappa_D`各自只进入对应 optimizer 一次，不重复缩放。
 
+Algorithm 2 的真实 TD3 runner 从同一个 `theta_t`隔离克隆 `K` 个任务策略；每个副本以
+`kappa` 为 optimizer 步长执行恰好 `l` 次更新，任务 response policy 在整个适应块冻结。
+完成后只执行一次 `meta_update_step/K` Reptile 参数更新。论文配置中 `meta_update_step=1`；
+它不是任务 optimizer 的第二个 learning rate。
+
 Defender 每个 FL round 输出三维连续动作 `(alpha, beta, epsilon)`；Attacker 每个 FL round
 输出三维连续动作 `(gamma, E, lambda)`。动作网络范围统一为 `[-1, 1]^3`，再由严格 codec
 映射到物理参数范围。
