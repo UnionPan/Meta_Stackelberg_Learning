@@ -168,7 +168,6 @@ task 显式声明与 capability 对应的六个 `allows_*` 布尔字段。`valid
 ```python
 @dataclass(frozen=True)
 class AttackContext:
-    task_id: str
     client_id: int
     round_index: int
     global_model: ModelState
@@ -183,9 +182,11 @@ class MaliciousUpdateGenerator(Protocol):
     ) -> ClientUpdate: ...
 ```
 
-`AttackContext` 是从 server state 构造的最小 client view，不包含 `component_states`、其他客户端 update、恶意身份全集或 private diagnostics。需要复用 `TorchLocalTrainer` 的 generator 可在内部用 context 构造 `component_states={}` 的最小 `RoundState` adapter；不得接收原始 server `RoundState`。
+`AttackContext` 是从 server state 构造的最小 client view，不包含 task id、`component_states`、其他客户端 update、恶意身份全集或 private diagnostics。所有 clean、benign 和 malicious local training 都使用统一的 `component_states={}` client state adapter，不得接收原始 server `RoundState`。
 
-generator 只能访问被注入的自身 local dataset/trainer 与上述 context。必须返回对应 client id、`is_malicious=True`、有限浮点 delta 和正 `num_examples`。
+内建 generator 只接受 `ScopedLocalTrainer`，其 immutable allowed IDs 与 malicious population 对齐；实验装配必须分别构造 benign-only 和 malicious-only dataset mappings。generator 必须返回对应 client id、`is_malicious=True`、有限浮点 delta 和正 `num_examples`。
+
+capability/knowledge 是可审计、可测试的研究 contract，不是对任意第三方 Python 插件的安全沙箱。任意外部插件进入可信实验 registry 前仍需代码审查；engine 会在构造时冻结 capability manifest，并在每轮采样前验证 manifest 未变化且仍符合 task knowledge。
 
 ### 5.5 MaliciousPopulation
 

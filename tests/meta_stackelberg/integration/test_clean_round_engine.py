@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 import numpy as np
+import pytest
 
 from meta_stackelberg.core.model_state import ModelState
 from meta_stackelberg.core.random_state import RandomSource
@@ -130,3 +131,24 @@ def test_round_engine_accepts_an_alternative_aggregator_without_changes() -> Non
 
     np.testing.assert_allclose(transition.aggregate_delta.vector(), [1.0, 1.0])
     np.testing.assert_allclose(transition.state_after.global_model.vector(), [0.5, 0.5])
+
+
+@pytest.mark.parametrize('invalid_client_id', [1.9, True])
+def test_round_engine_rejects_non_integer_sampled_client_ids(invalid_client_id) -> None:
+    source = RandomSource(seed=23)
+    engine = RoundEngine(
+        sampler=FixedSampler((invalid_client_id,)),
+        trainer=ScriptedTrainer(),
+        aggregator=FedAvg(),
+        server_optimizer=ServerSGD(),
+    )
+
+    with pytest.raises(ValueError, match='integers'):
+        engine.run_round(
+            RoundRequest(
+                task_id='invalid-client-id',
+                state=_initial_state(source),
+                sample_size=1,
+            ),
+            source,
+        )

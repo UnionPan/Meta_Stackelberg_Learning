@@ -29,3 +29,24 @@ def test_canonical_package_exists() -> None:
 
 def test_canonical_package_does_not_import_legacy_packages() -> None:
     assert _legacy_imports() == []
+
+
+def test_security_layer_does_not_import_oracle_evaluation() -> None:
+    violations = []
+    for path in sorted((PACKAGE_ROOT / 'security').rglob('*.py')):
+        tree = ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                names = [node.module]
+            else:
+                continue
+            for name in names:
+                if name == 'meta_stackelberg.evaluation' or name.startswith(
+                    'meta_stackelberg.evaluation.'
+                ):
+                    violations.append(
+                        f'{path.relative_to(PACKAGE_ROOT)}:{node.lineno}:{name}'
+                    )
+    assert violations == []
