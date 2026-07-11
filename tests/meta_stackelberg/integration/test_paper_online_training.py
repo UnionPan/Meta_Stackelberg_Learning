@@ -1,0 +1,59 @@
+import numpy as np
+
+from meta_stackelberg.agents.td3.agent import TD3Agent
+from meta_stackelberg.agents.td3.config import PaperMetaSGConfig
+from meta_stackelberg.agents.td3.replay import flatten_observation
+from meta_stackelberg.experiments.paper_meta_sg import (
+    ATTACKER_OBSERVATION_KEYS,
+    DEFENDER_OBSERVATION_KEYS,
+    PaperOnlineAdaptationTrainingRunner,
+)
+from tests.meta_stackelberg.integration.test_paper_bsmg_environment import _make_env
+
+
+def _agent(obs_dim, role, seed):
+    return TD3Agent(
+        obs_dim=obs_dim, action_dim=3, role=role, seed=seed,
+        hidden_sizes=(8,), learning_rate=0.001, gamma=0.99, tau=0.005,
+        policy_delay=2, target_policy_noise=0.2, noise_clip=0.5,
+    )
+
+
+def test_real_online_runner_executes_T_l_H_and_trajectory_batch_budget() -> None:
+    config = PaperMetaSGConfig().scaled_online(
+        online_T=2, online_H=2, online_l=2, online_steps=4,
+        td3_batch_size=4, learning_starts=4, replay_capacity=128,
+    )
+    defender_dim = len(flatten_observation(
+        _make_env(seed=1).defender_observation(), DEFENDER_OBSERVATION_KEYS,
+    ))
+    attacker_dim = len(flatten_observation(
+        _make_env(seed=1).begin_round(np.zeros(3, np.float32)).attacker_observation,
+        ATTACKER_OBSERVATION_KEYS,
+    ))
+    defender = _agent(defender_dim, 'defender', 1)
+    attacker = _agent(attacker_dim, 'attacker', 2)
+    defender_before = defender.fingerprint()
+    attacker_before = attacker.fingerprint()
+
+    def env_factory(task, seed, horizon):
+        del task
+        env = _make_env(seed=seed)
+        env.horizon = horizon
+        return env
+
+    result = PaperOnlineAdaptationTrainingRunner(
+        config=config,
+        env_factory=env_factory,
+        defender_obs_dim=defender_dim,
+        attacker_obs_dim=attacker_dim,
+        support_seeds=tuple(range(4000, 4008)),
+    ).run(task='rl', meta_defender=defender, attacker=attacker)
+
+    assert result.trajectory_count == 8
+    assert result.fl_round_count == 16
+    assert result.trajectories_per_update == 2
+    assert result.adaptation.total_updates == 4
+    assert result.adaptation.adapted_defender.fingerprint() != defender_before
+    assert defender.fingerprint() == defender_before
+    assert attacker.fingerprint() == attacker_before

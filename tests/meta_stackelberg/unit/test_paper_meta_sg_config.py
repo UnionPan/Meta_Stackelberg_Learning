@@ -81,3 +81,17 @@ def test_action_bound_ledger_exposes_every_non_paper_range_and_deviation() -> No
     assert beta.source == 'implementation-declared'
     assert 'paper' in beta.deviation
     assert all(item.deviation for item in ledger)
+
+
+def test_scaled_online_config_keeps_T_l_and_total_steps_consistent() -> None:
+    scaled = PaperMetaSGConfig().scaled_online(
+        online_T=2, online_H=8, online_l=3, online_steps=6,
+        td3_batch_size=16, learning_starts=16, replay_capacity=256,
+    )
+    assert scaled.online_T * scaled.online_l == scaled.online_steps == 6
+    assert scaled.scale_provenance == 'scaled-online-conformance-only-v1'
+    with pytest.raises(ValueError, match='online_steps'):
+        PaperMetaSGConfig().scaled_online(
+            online_T=2, online_H=8, online_l=3, online_steps=3,
+            td3_batch_size=16, learning_starts=16, replay_capacity=256,
+        )

@@ -160,6 +160,22 @@ class PaperMetaSGConfig:
             replay_capacity,
         )
 
+    def scaled_online(
+        self,
+        *,
+        online_T: int,
+        online_H: int,
+        online_l: int,
+        online_steps: int,
+        td3_batch_size: int,
+        learning_starts: int,
+        replay_capacity: int,
+    ) -> ScaledOnlineAdaptationConfig:
+        return ScaledOnlineAdaptationConfig(
+            self, online_T, online_H, online_l, online_steps,
+            td3_batch_size, learning_starts, replay_capacity,
+        )
+
 
 @dataclass(frozen=True)
 class ScaledMetaSGConfig:
@@ -206,6 +222,30 @@ class ScaledMetaSGConfig:
     @property
     def state_encoder(self) -> str:
         return self.paper_reference.state_encoder
+
+
+@dataclass(frozen=True)
+class ScaledOnlineAdaptationConfig:
+    paper_reference: PaperMetaSGConfig
+    online_T: int
+    online_H: int
+    online_l: int
+    online_steps: int
+    td3_batch_size: int
+    learning_starts: int
+    replay_capacity: int
+    scale_provenance: str = 'scaled-online-conformance-only-v1'
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.paper_reference, PaperMetaSGConfig):
+            raise TypeError('paper_reference must be PaperMetaSGConfig')
+        for name in (
+            'online_T', 'online_H', 'online_l', 'online_steps',
+            'td3_batch_size', 'learning_starts', 'replay_capacity',
+        ):
+            _positive_integer(getattr(self, name), name)
+        if self.online_T * self.online_l != self.online_steps:
+            raise ValueError('online_steps must equal online_T * online_l')
 
 
 def _positive_integer(value: int, name: str) -> int:

@@ -18,6 +18,8 @@
 | Algorithm 2 | `K` | 10 | 每个元迭代采样的攻击任务数 |
 | Algorithm 2 | `l` | 10 | 每个任务副本上的适应更新次数 |
 | Episode | `H` | MNIST 200 / CIFAR-10 500 | 一条 trajectory 的 FL round 数 |
+| Online | `T / l / steps` | 10 / 10 / 100 | 10 个连续块，每块 10 次更新，总计 100 次；不等于 pre-training `T` |
+| Online | `H` | MNIST 100 / CIFAR-10 200 | online adaptation trajectory horizon |
 | TD3 | learning rate | 0.001 | actor/critic optimizer learning rate |
 | TD3 | batch size | 256 | 每次 TD3 更新采样数 |
 | TD3 | `gamma` | 0.99 | Markov return 折扣 |
@@ -46,6 +48,11 @@ Algorithm 2 的真实 TD3 runner 从同一个 `theta_t`隔离克隆 `K` 个任�
 `kappa` 为 optimizer 步长执行恰好 `l` 次更新，任务 response policy 在整个适应块冻结。
 完成后只执行一次 `meta_update_step/K` Reptile 参数更新。论文配置中 `meta_update_step=1`；
 它不是任务 optimizer 的第二个 learning rate。
+
+Online adaptation 另有独立 runner，并强制 `online_steps = online_T × online_l`。同一个
+Meta-SG policy copy 顺序执行全部 100 次更新，不在每个 online `T` 重新初始化，也不将
+`online_T` 复用为 pre-training `T`。真实缩放测试 `T=2,l=2,H=2` 自动采集 8 条 trajectories
+（16 个 FL rounds）完成 4 次连续更新，攻击策略全程冻结。
 
 Defender 每个 FL round 输出三维连续动作 `(alpha, beta, epsilon)`；Attacker 每个 FL round
 输出三维连续动作 `(gamma, E, lambda)`。动作网络范围统一为 `[-1, 1]^3`，再由严格 codec

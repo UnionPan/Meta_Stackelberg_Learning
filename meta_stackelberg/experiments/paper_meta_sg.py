@@ -9,7 +9,10 @@ import numpy as np
 
 from meta_stackelberg.agents.td3.agent import TD3Agent
 from meta_stackelberg.agents.td3.replay import TD3ReplayBuffer, flatten_observation
-from meta_stackelberg.agents.td3.config import ScaledMetaSGConfig
+from meta_stackelberg.agents.td3.config import (
+    ScaledMetaSGConfig,
+    ScaledOnlineAdaptationConfig,
+)
 from meta_stackelberg.environments.paper_bsmg import PaperBSMGEnv, PaperRoundStep
 from meta_stackelberg.security.attacks.rl_action import RLAttackActionCodec
 from meta_stackelberg.security.defenses.paper_action import PaperDefenderActionCodec
@@ -22,6 +25,10 @@ from meta_stackelberg.stackelberg.policy_algorithm1 import (
 from meta_stackelberg.stackelberg.policy_algorithm2 import (
     PolicyAlgorithm2Result,
     PolicyMetaSGAlgorithm2,
+)
+from meta_stackelberg.stackelberg.policy_online import (
+    PolicyOnlineAdaptationResult,
+    PolicyOnlineAdaptationRunner,
 )
 
 
@@ -104,6 +111,16 @@ class ScaledPolicyTrainingResult:
     trajectory_count: int
     trajectories_per_update: int
     scale_provenance: str = 'scaled-training-conformance-v1'
+
+
+@dataclass(frozen=True)
+class PaperOnlineTrainingResult:
+    adaptation: PolicyOnlineAdaptationResult
+    support_seeds: tuple[int, ...]
+    trajectory_count: int
+    fl_round_count: int
+    trajectories_per_update: int
+    scale_provenance: str = 'scaled-online-training-v1'
 
 
 def evaluate_scaled_conformance(
@@ -375,3 +392,84 @@ class ScaledPaperMetaSGTrainingRunner:
                 deterministic=False,
                 explore_role=target_role,
             )
+
+
+class PaperOnlineAdaptationTrainingRunner:
+    """Execute real H-round rollouts for the paper online adaptation budget."""
+
+    def __init__(
+        self,
+        *,
+        config: ScaledOnlineAdaptationConfig,
+        env_factory,
+        defender_obs_dim: int,
+        attacker_obs_dim: int,
+        support_seeds: tuple[int, ...],
+    ) -> None:
+        if not isinstance(config, ScaledOnlineAdaptationConfig):
+            raise TypeError('config must be ScaledOnlineAdaptationConfig')
+        self.config = config
+        self.env_factory = env_factory
+        self.defender_obs_dim = defender_obs_dim
+        self.attacker_obs_dim = attacker_obs_dim
+        self.support_seeds = support_seeds
+        required = max(config.td3_batch_size, config.learning_starts)
+        self.trajectories_per_update = max(
+            1, int(np.ceil(required / config.online_H)),
+        )
+        required_seeds = config.online_steps * self.trajectories_per_update
+        if len(support_seeds) != required_seeds or len(set(support_seeds)) != required_seeds:
+            raise ValueError('online support seeds must exactly match trajectory budget')
+        self._seed_cursor = 0
+        self._replay_serial = 0
+
+    def run(self, *, task, meta_defender, attacker) -> PaperOnlineTrainingResult:
+        replay = self._new_replay('defender')
+        result = PolicyOnlineAdaptationRunner(
+            online_T=self.config.online_T,
+            online_l=self.config.online_l,
+            online_steps=self.config.online_steps,
+            batch_size=self.config.td3_batch_size,
+            adaptation_step=self.config.paper_reference.adaptation_step,
+        ).run(
+            meta_defender=meta_defender,
+            attacker=attacker,
+            replay=replay,
+            collect_fresh=lambda defender, frozen, target, iteration, local, global_step: self._collect(
+                task, defender, frozen, target, iteration,
+            ),
+        )
+        if self._seed_cursor != len(self.support_seeds):
+            raise RuntimeError('online trajectory seed budget was not exhausted exactly')
+        return PaperOnlineTrainingResult(
+            result,
+            self.support_seeds,
+            self._seed_cursor,
+            self._seed_cursor * self.config.online_H,
+            self.trajectories_per_update,
+        )
+
+    def _collect(self, task, defender, attacker, replay, generation):
+        for _ in range(self.trajectories_per_update):
+            seed = self.support_seeds[self._seed_cursor]
+            self._seed_cursor += 1
+            PaperTD3TrajectoryCollector().collect(
+                env=self.env_factory(task, seed, self.config.online_H),
+                defender=defender,
+                attacker=attacker,
+                defender_replay=replay,
+                attacker_replay=self._new_replay('attacker'),
+                generation=generation,
+                deterministic=False,
+                explore_role='defender',
+            )
+
+    def _new_replay(self, role):
+        self._replay_serial += 1
+        return TD3ReplayBuffer(
+            self.config.replay_capacity,
+            obs_dim=(self.defender_obs_dim if role == 'defender' else self.attacker_obs_dim),
+            action_dim=3,
+            role=role,
+            seed=30_000_000 + self._replay_serial,
+        )
