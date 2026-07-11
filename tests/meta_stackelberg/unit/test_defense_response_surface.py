@@ -24,6 +24,7 @@ def _observation(seed: int, radius: float, branch: str) -> RawClipObservation:
         clipped_client_fractions=(0.5, 0.25),
         sampled_clients=((0, 1), (1, 2)),
         final_random_snapshot=RandomSource(seed).capture(),
+        final_model_vector=np.array([radius, branch_loss], dtype=np.float32),
     )
 
 
@@ -99,6 +100,16 @@ def test_runner_rejects_empty_identifiers(field: str) -> None:
 def test_raw_observation_rejects_non_finite_metrics() -> None:
     with pytest.raises(ValueError, match='finite'):
         replace(_observation(1, 0.5, 'clean'), final_clean_loss=np.nan)
+
+
+def test_raw_observation_copies_and_freezes_final_model_vector() -> None:
+    source = np.array([1.0, 2.0], dtype=np.float32)
+    observation = replace(_observation(1, 0.5, 'clean'), final_model_vector=source)
+
+    source[0] = 9.0
+
+    np.testing.assert_array_equal(observation.final_model_vector, np.array([1.0, 2.0]))
+    assert not observation.final_model_vector.flags.writeable
 
 
 @pytest.mark.parametrize('mismatch', ['coordinates', 'samples', 'snapshot', 'length'])

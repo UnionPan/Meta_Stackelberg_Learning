@@ -31,6 +31,7 @@ class RawClipObservation:
     clipped_client_fractions: tuple[float, ...]
     sampled_clients: tuple[tuple[int, ...], ...]
     final_random_snapshot: RandomSnapshot
+    final_model_vector: np.ndarray
 
     def __post_init__(self) -> None:
         if not isinstance(self.seed, Integral) or isinstance(self.seed, bool):
@@ -51,6 +52,14 @@ class RawClipObservation:
             raise ValueError('aggregate_norms must be finite and non-negative')
         if any(not math.isfinite(value) or value < 0.0 or value > 1.0 for value in fractions):
             raise ValueError('clipped_client_fractions must be finite and within [0, 1]')
+        model_vector = np.array(self.final_model_vector, copy=True)
+        if model_vector.ndim != 1 or model_vector.size == 0:
+            raise ValueError('final_model_vector must be a non-empty vector')
+        if not np.issubdtype(model_vector.dtype, np.floating):
+            raise TypeError('final_model_vector must have a floating dtype')
+        if not np.all(np.isfinite(model_vector)):
+            raise ValueError('final_model_vector must be finite')
+        model_vector.setflags(write=False)
         object.__setattr__(self, 'seed', int(self.seed))
         object.__setattr__(self, 'radius', float(self.radius))
         object.__setattr__(self, 'final_clean_loss', float(self.final_clean_loss))
@@ -58,6 +67,7 @@ class RawClipObservation:
         object.__setattr__(self, 'aggregate_norms', norms)
         object.__setattr__(self, 'clipped_client_fractions', fractions)
         object.__setattr__(self, 'sampled_clients', samples)
+        object.__setattr__(self, 'final_model_vector', model_vector)
 
 
 @dataclass(frozen=True)
@@ -194,6 +204,8 @@ def _validate_matched(clean: RawClipObservation, attack: RawClipObservation) -> 
         raise ValueError('clean and attack sampled clients do not match')
     if len(clean.aggregate_norms) != len(attack.aggregate_norms):
         raise ValueError('clean and attack horizons do not match')
+    if clean.final_model_vector.shape != attack.final_model_vector.shape:
+        raise ValueError('clean and attack final model structures do not match')
     if not _snapshots_equal(clean.final_random_snapshot, attack.final_random_snapshot):
         raise ValueError('clean and attack final random snapshots do not match')
 

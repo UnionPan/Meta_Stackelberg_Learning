@@ -147,6 +147,7 @@ def _run_observation(
         clipped_client_fractions=clipped_fractions,
         sampled_clients=tuple(step.sampled_clients for step in trajectory.transitions),
         final_random_snapshot=trajectory.final_state.random_snapshot,
+        final_model_vector=trajectory.final_state.global_model.vector(),
     )
 
 
@@ -195,6 +196,7 @@ def _assert_observations_exact(left: RawClipObservation, right: RawClipObservati
     assert left.aggregate_norms == right.aggregate_norms
     assert left.clipped_client_fractions == right.clipped_client_fractions
     assert left.sampled_clients == right.sampled_clients
+    np.testing.assert_array_equal(left.final_model_vector, right.final_model_vector)
     _assert_snapshots_equal(left.final_random_snapshot, right.final_random_snapshot)
 
 
@@ -232,4 +234,5 @@ def test_clip_radius_has_a_matched_deterministic_non_flat_response_surface() -> 
             assert reference.final_clean_accuracy == fedavg.final_clean_accuracy
             assert reference.aggregate_norms == fedavg.aggregate_norms
             assert reference.sampled_clients == fedavg.sampled_clients
+            np.testing.assert_array_equal(reference.final_model_vector, fedavg.final_model_vector)
             _assert_snapshots_equal(reference.final_random_snapshot, fedavg.final_random_snapshot)
