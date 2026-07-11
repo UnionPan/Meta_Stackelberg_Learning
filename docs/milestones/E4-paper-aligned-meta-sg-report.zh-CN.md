@@ -170,6 +170,12 @@ tiny 环境没有的正向 adaptation signal，但不能据此降低阈值宣布
 cosine similarity 未定义，`eps=1e-12` 产生约 `1e12` 梯度并导致 MNIST malicious update 非有限。
 现仅在 exact-zero deviation 处将 cosine 项定义为零值/零梯度，让 empirical loss 产生第一条方向；
 线性回归案例的 update norm 从 `5.54e10` 降至 `<10`，相同真实 MNIST 端到端随后完整通过。
+
+为支持更长 MNIST 运行，增加 trusted-local 原子 checkpoint：一次保存/恢复 online/target
+actor、双 critics、optimizers、policy RNG/counter，以及 role-local replay 的全部 transitions、
+generation、ring cursor 和 sampling RNG。加载前验证 role 与 policy/replay shapes，加载后重新计算
+双方 fingerprint；临时文件通过 atomic replace 提交。PyTorch pickle checkpoint 明确只允许加载本地
+可信产物。
 - Algorithm 1、policy-level BR、Algorithm 2 和 Reptile 隔离测试均通过。
 - 2026-07-12 全仓库测试：`855 passed in 66.82s`。
 

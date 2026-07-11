@@ -17,6 +17,11 @@ from meta_stackelberg.agents.td3.replay import (
     TD3ReplaySnapshot,
     flatten_observation,
 )
+from meta_stackelberg.agents.td3.checkpoint import (
+    TD3TrainingCheckpoint,
+    load_td3_training_checkpoint,
+    save_td3_training_checkpoint,
+)
 
 __all__ = [
     'PaperMetaSGConfig',
@@ -30,4 +35,7 @@ __all__ = [
     'TD3Snapshot',
     'TD3UpdateStats',
     'flatten_observation',
+    'TD3TrainingCheckpoint',
+    'load_td3_training_checkpoint',
+    'save_td3_training_checkpoint',
 ]
