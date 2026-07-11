@@ -46,14 +46,21 @@ Defender 每个 FL round 输出三维连续动作 `(alpha, beta, epsilon)`；Att
 
 ## 验证证据
 
-- 真实 `PaperBSMGEnv` 小规模 trajectory：2 个 FL rounds，每轮双方各执行一次三维连续动作；
-  两个角色 replay 各得到 2 条 transition。
+- 不可变缩放配置为 `T=2,K=2,H=8,l=2,N_A=2,N_D=2`，6 clients、3 attackers、
+  sample size 4、TD3 batch/learning-start 16、hidden `(64,64)`、replay 4096；记录明确标为
+  `scaled-conformance-only-v1`。
+- 真实 `PaperBSMGEnv` 缩放 trajectory：8 个 FL rounds，每轮双方各执行一次三维连续动作；
+  Algorithm 1 的 leader/attacker 次数与 Algorithm 2 的 meta/adaptation 次数均和上述配置精确相等。
+- support seeds `(1,2)` 与 query seeds `(101,102)` 严格不相交；真实环境 query trajectories
+  执行前后 Attacker 的完整 TD3 fingerprint 相同。任何 query 内 policy mutation 都会直接抛错。
+- 科学 Gate 已实现六项不可调结果：attacker BR、Defender-conditioned response、Defender task
+  adaptation、meta initialization、specialized-oracle regret、action/objective 双信号。
 - Algorithm 1、policy-level BR、Algorithm 2 和 Reptile 隔离测试均通过。
-- 2026-07-12 全仓库测试：`817 passed in 54.19s`。
+- 2026-07-12 全仓库测试：`822 passed in 54.01s`。
 
 ## 尚未宣称的结果
 
-当前证据只证明实现结构、调用次数、冻结边界和小规模执行路径符合设计。尚未执行论文规模训练，
-因此不宣称达到论文准确率、攻击收益或 meta-adaptation 性能。后续科学 Gate 应使用独立 query
-trajectories 比较 `φ(N_A)` 与 `φ(0)`、不同 Defender、adapted 与 initial Defender，以及在相同
-预算下 meta initialization 与 random/no-adaptation；query 数据不得参与更新或模型选择。
+当前证据证明实现结构、调用次数、冻结/query 边界和缩放执行路径符合设计。科学 Gate 的执行器
+已经存在，但尚未执行论文规模训练，因此没有伪造一个 performance pass，也不宣称达到论文准确率、
+攻击收益或 meta-adaptation 性能。论文规模证据仍须训练并冻结所有比较策略，再使用预先声明的
+阈值、独立 query seeds 和 held-out data 运行；query 数据不得参与更新或模型选择。

@@ -39,6 +39,17 @@ from meta_stackelberg.experiments.paper_meta_sg import (
     DEFENDER_OBSERVATION_KEYS,
     PaperTD3TrajectoryCollector,
     PaperTrajectory,
+    ScaledConformanceResult,
+    evaluate_scaled_conformance,
+)
+from meta_stackelberg.experiments.scientific_gate import (
+    MetaSGScientificGateResult,
+    QueryEvidencePlan,
+    QueryPolicyEvidence,
+    ScientificGateCheck,
+    ScientificGateThresholds,
+    evaluate_frozen_policy,
+    evaluate_meta_sg_scientific_gate,
 )
 
 __all__ = [
@@ -74,4 +85,13 @@ __all__ = [
     'DEFENDER_OBSERVATION_KEYS',
     'PaperTD3TrajectoryCollector',
     'PaperTrajectory',
+    'ScaledConformanceResult',
+    'evaluate_scaled_conformance',
+    'MetaSGScientificGateResult',
+    'QueryEvidencePlan',
+    'QueryPolicyEvidence',
+    'ScientificGateCheck',
+    'ScientificGateThresholds',
+    'evaluate_frozen_policy',
+    'evaluate_meta_sg_scientific_gate',
 ]

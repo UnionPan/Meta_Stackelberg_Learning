@@ -8,7 +8,10 @@ import numpy as np
 
 from meta_stackelberg.agents.td3.agent import TD3Agent
 from meta_stackelberg.agents.td3.replay import TD3ReplayBuffer, flatten_observation
+from meta_stackelberg.agents.td3.config import ScaledMetaSGConfig
 from meta_stackelberg.environments.paper_bsmg import PaperBSMGEnv, PaperRoundStep
+from meta_stackelberg.stackelberg.algorithm1 import Algorithm1Result
+from meta_stackelberg.stackelberg.algorithm2 import Algorithm2Result
 
 
 DEFENDER_OBSERVATION_KEYS = ('model_tail', 'round_progress')
@@ -23,6 +26,64 @@ class PaperTrajectory:
     steps: tuple[PaperRoundStep, ...]
     defender_return: float
     attacker_return: float
+
+
+@dataclass(frozen=True)
+class ScaledConformanceResult:
+    passed: bool
+    checks: tuple[tuple[str, bool, int, int], ...]
+    scale_provenance: str
+
+
+def evaluate_scaled_conformance(
+    *,
+    config: ScaledMetaSGConfig,
+    algorithm1: Algorithm1Result,
+    algorithm2: Algorithm2Result,
+    trajectory: PaperTrajectory,
+) -> ScaledConformanceResult:
+    """Check paper parameter meanings against immutable execution traces."""
+    counts = {
+        'algorithm1_leader_iterations': len(algorithm1.iterations),
+        'algorithm1_attacker_updates': sum(
+            event.kind == 'attacker_update' for event in algorithm1.events
+        ),
+        'algorithm1_leader_updates': sum(
+            event.kind == 'leader_update' for event in algorithm1.events
+        ),
+        'algorithm2_meta_iterations': len(algorithm2.iterations),
+        'algorithm2_task_adaptations': sum(
+            event.kind == 'adapt_task' for event in algorithm2.events
+        ),
+        'algorithm2_meta_updates': sum(
+            event.kind == 'meta_update' for event in algorithm2.events
+        ),
+        'trajectory_fl_rounds': len(trajectory.steps),
+        'defender_3d_actions': sum(
+            step.defender_raw_action.shape == (3,) for step in trajectory.steps
+        ),
+        'attacker_3d_actions': sum(
+            step.attacker_raw_action.shape == (3,) for step in trajectory.steps
+        ),
+    }
+    expected = {
+        'algorithm1_leader_iterations': config.N_D,
+        'algorithm1_attacker_updates': config.N_D * config.K * config.N_A,
+        'algorithm1_leader_updates': config.N_D,
+        'algorithm2_meta_iterations': config.T,
+        'algorithm2_task_adaptations': config.T * config.K * config.l,
+        'algorithm2_meta_updates': config.T,
+        'trajectory_fl_rounds': config.H,
+        'defender_3d_actions': config.H,
+        'attacker_3d_actions': config.H,
+    }
+    checks = tuple(
+        (name, counts[name] == wanted, counts[name], wanted)
+        for name, wanted in expected.items()
+    )
+    return ScaledConformanceResult(
+        all(check[1] for check in checks), checks, config.scale_provenance,
+    )
 
 
 class PaperTD3TrajectoryCollector:
