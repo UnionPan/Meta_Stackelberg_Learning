@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
+import json
 from pathlib import Path
 
 import numpy as np
@@ -168,6 +170,15 @@ class PaperMNISTBackdoorEnvironmentFactory:
 
     def model_factory(self) -> PaperMNISTCNN:
         return _model_factory(self.model_seed)
+
+    @property
+    def client_partition_sha256(self) -> str:
+        partitions = tuple(
+            tuple(int(index) for index in self.client_datasets[client_id].indices)
+            for client_id in range(self.workers)
+        )
+        payload = json.dumps(partitions, separators=(',', ':')).encode('utf-8')
+        return hashlib.sha256(payload).hexdigest()
 
     @property
     def defender_observation_dim(self) -> int:

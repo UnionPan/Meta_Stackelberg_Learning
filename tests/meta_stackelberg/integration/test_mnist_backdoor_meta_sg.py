@@ -109,3 +109,19 @@ def test_mnist_whitebox_runner_executes_algorithm1_against_adapted_defender(
         'brl-norm': 'pretrained-against-norm-bounding',
     }
     assert manifest['query_data_used_for_training'] is False
+    assert manifest['data']['client_training_samples'] == 80
+    assert manifest['data']['reward_view_samples'] == 20
+    assert manifest['data']['query_samples'] == 20
+    assert len(manifest['data']['reward_indices']) == 20
+    assert len(manifest['data']['client_partition_sha256']) == 64
+    assert manifest['task']['trigger_id'] == 'mnist-global-1-to-7-v1'
+    assert manifest['task']['trigger_sha256'] == (
+        'c5226726b8b70efa2f667d59784a81e6f3f7e1a359a53d067b2db086d570c93b'
+    )
+    assert manifest['task']['source_class'] == 1
+    assert manifest['task']['target_class'] == 7
+    assert manifest['federation'] == {
+        'workers': 4,
+        'backdoor_attackers': 2,
+        'sample_size': 4,
+    }

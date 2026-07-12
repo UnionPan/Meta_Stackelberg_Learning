@@ -27,6 +27,7 @@ from meta_stackelberg.experiments.paper_mnist_backdoor_meta_sg import (
     MNISTWhiteBoxMetaSGConfig,
     run_mnist_whitebox_backdoor_meta_sg,
 )
+from meta_stackelberg.security.data.mnist_global_trigger import mnist_global_trigger
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -166,6 +167,7 @@ def _pretrain(args, paper, factory) -> int:
         resume_checkpoints=args.resume,
     )
     save_attack_type_domain(output, result.domain)
+    fixture = mnist_global_trigger()
     manifest = {
         'schema_version': 1,
         'protocol': result.protocol,
@@ -176,6 +178,16 @@ def _pretrain(args, paper, factory) -> int:
         'client_training_samples': len(factory.datasets.client_train),
         'reward_view_samples': len(factory.datasets.reward),
         'query_data_used_for_training': False,
+        'query_samples': len(factory.datasets.query),
+        'reward_indices': list(factory.datasets.reward_indices),
+        'client_partition_sha256': factory.client_partition_sha256,
+        'trigger_id': fixture.identifier,
+        'trigger_sha256': fixture.sha256,
+        'source_class': fixture.source_class,
+        'target_class': fixture.target_class,
+        'workers': factory.workers,
+        'backdoor_attackers': factory.backdoor_attackers,
+        'sample_size': factory.sample_size,
         'pretraining_config': asdict(config),
         'attack_origins': dict(result.domain.origins),
         'norm_clip_radius': args.norm_clip_radius,

@@ -23,6 +23,7 @@ from meta_stackelberg.experiments.paper_meta_sg import PaperTD3TrajectoryCollect
 from meta_stackelberg.experiments.paper_mnist_backdoor_env import (
     PaperMNISTBackdoorEnvironmentFactory,
 )
+from meta_stackelberg.security.data.mnist_global_trigger import mnist_global_trigger
 from meta_stackelberg.stackelberg.policy_algorithm1 import (
     PolicyAlgorithm1Result,
     PolicyMetaSGAlgorithm1,
@@ -276,6 +277,7 @@ def run_mnist_whitebox_backdoor_meta_sg(
         result=result,
         config=resolved,
         origins=attack_domain.origins,
+        environment_factory=environment_factory,
     )
     return result
 
@@ -308,10 +310,12 @@ def _write_manifest(
     result: MNISTWhiteBoxMetaSGResult,
     config: MNISTWhiteBoxMetaSGConfig,
     origins: Mapping[str, str],
+    environment_factory: PaperMNISTBackdoorEnvironmentFactory,
 ) -> None:
     directory = Path(output_dir)
     directory.mkdir(parents=True, exist_ok=True)
     target = directory / 'manifest.json'
+    fixture = mnist_global_trigger()
     payload = {
         'schema_version': 1,
         'protocol': result.protocol,
@@ -328,6 +332,26 @@ def _write_manifest(
             for label, policy in sorted(result.attackers.items())
         },
         'query_data_used_for_training': False,
+        'data': {
+            'client_training_samples': len(
+                environment_factory.datasets.client_train,
+            ),
+            'reward_view_samples': len(environment_factory.datasets.reward),
+            'query_samples': len(environment_factory.datasets.query),
+            'reward_indices': list(environment_factory.datasets.reward_indices),
+            'client_partition_sha256': environment_factory.client_partition_sha256,
+        },
+        'task': {
+            'trigger_id': fixture.identifier,
+            'trigger_sha256': fixture.sha256,
+            'source_class': fixture.source_class,
+            'target_class': fixture.target_class,
+        },
+        'federation': {
+            'workers': environment_factory.workers,
+            'backdoor_attackers': environment_factory.backdoor_attackers,
+            'sample_size': environment_factory.sample_size,
+        },
     }
     descriptor, temporary = tempfile.mkstemp(
         prefix='.manifest.', suffix='.tmp', dir=directory,
