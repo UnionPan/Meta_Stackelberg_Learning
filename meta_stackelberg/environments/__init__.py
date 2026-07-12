@@ -16,6 +16,11 @@ from meta_stackelberg.environments.backdoor_rewards import (
     WhiteBoxDefenderReward,
     evaluate_whitebox_backdoor_rewards,
 )
+from meta_stackelberg.environments.paper_backdoor_bsmg import (
+    PaperBackdoorBSMGEnv,
+    PaperBackdoorRoundStep,
+    PendingBackdoorRound,
+)
 
 __all__ = [
     'ModelTailObservationEncoder',
@@ -28,4 +33,7 @@ __all__ = [
     'WhiteBoxAttackerReward',
     'WhiteBoxDefenderReward',
     'evaluate_whitebox_backdoor_rewards',
+    'PaperBackdoorBSMGEnv',
+    'PaperBackdoorRoundStep',
+    'PendingBackdoorRound',
 ]
