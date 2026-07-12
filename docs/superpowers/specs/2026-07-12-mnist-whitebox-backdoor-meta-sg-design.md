@@ -45,10 +45,12 @@ override the paper-aligned `0.5` primary configuration. A `0.4` run may appear o
 ablation.
 The exact Figure-3 global-trigger pixels must be captured as a checked-in immutable fixture and recorded by pixel
 coordinates, values, shape, and hash in every manifest. The held-out clean and triggered query sets never enter
-replay, reward fitting, checkpoint selection, or cGAN training.
+replay, reward fitting, checkpoint selection, or cGAN training. In white-box Phase A, the server reward set is
+an authorized read-only view of true client training examples; those examples remain assigned to clients and are
+not removed from the 60,000-example FL training set.
 
 The existing source-class poisoning/evaluator is the correct task family and is extended only where required to
-enforce the exact global-trigger fixture and disjoint white-box data roles. DBA sub-trigger behavior remains a
+enforce the exact global-trigger fixture and isolated held-out query role. DBA sub-trigger behavior remains a
 separate baseline and is not used by the primary BRL task.
 
 ## 3. BSMG information and state compression
@@ -221,9 +223,13 @@ roles, action semantics, reward permissions, or task identity.
 
 ### 8.1 Phase A: real-data white-box upper bound
 
-Split real MNIST deterministically into client training, white-box reward data, and held-out query data. No sample
-appears in more than one role. The server's access to real client training data is explicit in the manifest and
-the run protocol is named `mnist-whitebox-real-data-v1`.
+Assign all 60,000 real MNIST training examples exactly once across 100 clients; under the default IID setup this
+is approximately 600 examples per client. Construct the white-box reward dataset as a deterministic, stratified,
+read-only server view into those same true training examples. This overlap is intentional and permitted only by
+the white-box threat model: reward access does not remove, duplicate, or reassign any client example. The 10,000
+official test examples form the held-out query dataset and never enter reward, replay, policy updates, checkpoint
+selection, or client training. The manifest records all client partitions and reward-view indices, and the run
+protocol is named `mnist-whitebox-real-data-v1`.
 
 ### 8.2 Phase B0: original-200 generated-data experiment
 
@@ -294,7 +300,9 @@ This prevents white-box permissions or triggered query data from leaking into un
 
 ## 12. Failure handling and provenance
 
-- Reject missing/overlapping clean, reward, cGAN, and query splits.
+- Reject any query overlap with client, reward, cGAN, replay, or checkpoint-selection data. In white-box Phase A,
+  require reward indices to be a declared subset of client training indices; reject this overlap in non-white-box
+  protocols.
 - Reject trigger/target mismatch between poisoned clients, evaluator, reward, and checkpoint.
 - Reject post-defense kind/action-decoder mismatch.
 - Reject infeasible per-round trimming and invalid realized pruning counts.

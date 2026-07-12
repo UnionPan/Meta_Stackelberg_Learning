@@ -346,15 +346,15 @@ git commit -m "feat: add white-box backdoor BSMG environment"
 - [ ] **Step 1: Write failing split and paper-configuration tests**
 
 ```python
-def test_whitebox_factory_uses_disjoint_roles_and_paper_defaults(tiny_mnist):
+def test_whitebox_factory_keeps_full_client_train_and_isolates_query(tiny_mnist):
     bundle = split_whitebox_mnist(tiny_mnist, seed=17, reward_samples=200)
-    assert set(bundle.client_indices).isdisjoint(bundle.reward_indices)
-    assert set(bundle.client_indices).isdisjoint(bundle.query_indices)
-    assert set(bundle.reward_indices).isdisjoint(bundle.query_indices)
+    assert len(bundle.client_train) == 60_000
+    assert set(bundle.reward_indices).issubset(set(range(60_000)))
+    assert bundle.query is not bundle.client_train
     factory = PaperMNISTBackdoorEnvironmentFactory.from_bundle(bundle, seed=17)
     assert factory.workers == 100
     assert len(factory.malicious_ids) == 5
-    assert factory.poison_fraction == 0.5
+    assert sum(len(part.indices) for part in factory.client_datasets.values()) == 60_000
 ```
 
 - [ ] **Step 2: Verify RED**
@@ -370,9 +370,7 @@ class WhiteBoxMNISTBundle:
     client_train: Dataset
     reward: Dataset
     query: Dataset
-    client_indices: tuple[int, ...]
     reward_indices: tuple[int, ...]
-    query_indices: tuple[int, ...]
 
 class PaperMNISTBackdoorEnvironmentFactory:
     workers = 100
