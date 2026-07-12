@@ -53,7 +53,7 @@ Defender fingerprint is:
 ## Verification
 
 ```text
-928 passed in 77.94s
+928 passed in 75.03s
 ```
 
 Artifact invariants verified independently:
