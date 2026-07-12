@@ -91,7 +91,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _common(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument('--profile', choices=('micro', 'paper'), default='micro')
+    parser.add_argument(
+        '--profile', choices=('micro', 'actor-active', 'paper'), default='micro',
+    )
     parser.add_argument('--allow-paper-scale', action='store_true')
     parser.add_argument('--data-root', required=True)
     parser.add_argument('--download', action='store_true')
@@ -112,6 +114,15 @@ def make_pretraining_config(
         if not args.allow_paper_scale:
             raise ValueError('paper profile requires --allow-paper-scale')
         return AttackPolicyPretrainingConfig.from_paper(paper), paper.hidden_sizes
+    if args.profile == 'actor-active':
+        return AttackPolicyPretrainingConfig(
+            fl_rounds=8,
+            batch_size=2,
+            learning_starts=2,
+            train_freq=1,
+            gradient_steps=1,
+            replay_capacity=512,
+        ), (8,)
     return AttackPolicyPretrainingConfig(
         fl_rounds=2,
         batch_size=1,
@@ -128,6 +139,18 @@ def make_meta_config(args) -> MNISTWhiteBoxMetaSGConfig:
             raise ValueError('paper profile requires --allow-paper-scale')
         args.execution_only = False
         return MNISTWhiteBoxMetaSGConfig()
+    if args.profile == 'actor-active':
+        args.execution_only = True
+        return MNISTWhiteBoxMetaSGConfig(
+            N_D=2,
+            K=2,
+            N_A=2,
+            H=2,
+            td3_batch_size=2,
+            learning_starts=2,
+            replay_capacity=512,
+            hidden_sizes=(8,),
+        )
     args.execution_only = True
     return MNISTWhiteBoxMetaSGConfig(
         N_D=1,
@@ -213,7 +236,7 @@ def _pretrain(args, paper, factory) -> int:
         'dataset': 'MNIST',
         'knowledge': 'white-box',
         'profile': args.profile,
-        'execution_only': args.profile == 'micro',
+        'execution_only': args.profile != 'paper',
         'client_training_samples': len(factory.datasets.client_train),
         'reward_view_samples': len(factory.datasets.reward),
         'query_data_used_for_training': False,
@@ -367,7 +390,7 @@ def _scientific(args, paper, factory) -> int:
         'schema_version': 1,
         'protocol': result.protocol,
         'profile': args.profile,
-        'execution_only': args.profile == 'micro',
+        'execution_only': args.profile != 'paper',
         'passed': result.passed,
         'meta_gate': {
             'passed': result.meta_sg.gate.passed,

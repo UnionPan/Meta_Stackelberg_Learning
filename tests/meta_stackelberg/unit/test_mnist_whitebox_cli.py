@@ -57,6 +57,31 @@ def test_whitebox_micro_profiles_are_execution_only() -> None:
     assert meta.execution_only is True
 
 
+def test_whitebox_actor_active_profile_updates_both_td3_actors() -> None:
+    parser = build_parser()
+    pretrain = parser.parse_args([
+        'pretrain', '--profile', 'actor-active',
+        '--data-root', '/tmp/data', '--output', '/tmp/domain.pt',
+    ])
+    meta = parser.parse_args([
+        'meta-sg', '--profile', 'actor-active',
+        '--data-root', '/tmp/data',
+        '--attack-domain', '/tmp/domain.pt', '--output', '/tmp/run',
+    ])
+
+    pretraining_config, hidden_sizes = make_pretraining_config(pretrain)
+    meta_config = make_meta_config(meta)
+
+    assert pretraining_config.fl_rounds == 8
+    assert pretraining_config.batch_size == 2
+    assert hidden_sizes == (8,)
+    assert (meta_config.N_D, meta_config.K, meta_config.N_A, meta_config.H) == (
+        2, 2, 2, 2,
+    )
+    assert meta_config.td3_batch_size == meta_config.learning_starts == 2
+    assert meta.execution_only is True
+
+
 @pytest.mark.parametrize('command', ['pretrain', 'meta-sg'])
 def test_whitebox_paper_profile_requires_explicit_scale_acknowledgement(
     command: str,
