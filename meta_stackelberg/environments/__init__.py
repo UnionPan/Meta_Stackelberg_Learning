@@ -11,6 +11,11 @@ from meta_stackelberg.environments.paper_bsmg import (
     PaperRoundStep,
     PendingPaperRound,
 )
+from meta_stackelberg.environments.backdoor_rewards import (
+    WhiteBoxAttackerReward,
+    WhiteBoxDefenderReward,
+    evaluate_whitebox_backdoor_rewards,
+)
 
 __all__ = [
     'ModelTailObservationEncoder',
@@ -20,4 +25,7 @@ __all__ = [
     'PaperBSMGEnv',
     'PaperRoundStep',
     'PendingPaperRound',
+    'WhiteBoxAttackerReward',
+    'WhiteBoxDefenderReward',
+    'evaluate_whitebox_backdoor_rewards',
 ]
