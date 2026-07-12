@@ -88,17 +88,24 @@ class RLBackdoorAttack:
         for client_id, rng in zip(context.malicious_client_ids, rngs, strict=True):
             if not isinstance(rng, RandomSource):
                 raise TypeError('malicious-client RNGs must be RandomSource instances')
-            poisoned = SourceTargetPoisonedDataset(
-                dataset=self.client_datasets[client_id],
-                trigger=self.trigger,
-                source_class=self.source_class,
-                target_class=self.target_class,
-                poison_fraction=self.action.poison_fraction,
-                rng=rng,
-            )
+            local_dataset = self.client_datasets[client_id]
+            eligible_count = _source_count(local_dataset, self.source_class)
+            if eligible_count:
+                training_dataset: Dataset = SourceTargetPoisonedDataset(
+                    dataset=local_dataset,
+                    trigger=self.trigger,
+                    source_class=self.source_class,
+                    target_class=self.target_class,
+                    poison_fraction=self.action.poison_fraction,
+                    rng=rng,
+                )
+                poisoned_count = training_dataset.poisoned_count
+            else:
+                training_dataset = local_dataset
+                poisoned_count = 0
             trainer = TorchLocalTrainer(
                 model_factory=self.model_factory,
-                client_datasets={client_id: poisoned},
+                client_datasets={client_id: training_dataset},
                 codec=self.codec,
                 learning_rate=self.action.learning_rate,
                 local_epochs=self.action.local_epochs,
@@ -114,8 +121,8 @@ class RLBackdoorAttack:
                 'poison_fraction': self.action.poison_fraction,
                 'malicious_learning_rate': self.action.learning_rate,
                 'malicious_local_epochs': self.action.local_epochs,
-                'poisoned_count': poisoned.poisoned_count,
-                'eligible_source_count': poisoned.eligible_count,
+                'poisoned_count': poisoned_count,
+                'eligible_source_count': eligible_count,
             })
             updates.append(ClientUpdate(
                 client_id=client_id,
@@ -125,3 +132,17 @@ class RLBackdoorAttack:
                 metadata=metadata,
             ))
         return tuple(updates)
+
+
+def _source_count(dataset: Dataset, source_class: int) -> int:
+    count = 0
+    for index in range(len(dataset)):
+        label = dataset[index][1]
+        if isinstance(label, torch.Tensor):
+            if label.numel() != 1:
+                raise ValueError('classification labels must be scalar')
+            value = int(label.item())
+        else:
+            value = int(label)
+        count += value == source_class
+    return count

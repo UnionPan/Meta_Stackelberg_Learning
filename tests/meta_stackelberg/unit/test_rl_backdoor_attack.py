@@ -82,3 +82,29 @@ def test_rl_backdoor_requires_one_rng_and_dataset_per_malicious_client() -> None
         assert 'RNG count' in str(error)
     else:
         raise AssertionError('missing malicious-client RNG was accepted')
+
+
+def test_rl_backdoor_records_zero_poisoning_when_client_has_no_source_class() -> None:
+    codec = TorchParameterCodec()
+    global_model = codec.capture(_model_factory())
+    dataset = TensorDataset(
+        torch.zeros(4, 1, 28, 28),
+        torch.tensor([2, 3, 4, 5], dtype=torch.long),
+    )
+    attack = RLBackdoorAttack(
+        action=BackdoorAction(0.5, 0.05, 1),
+        model_factory=_model_factory,
+        codec=codec,
+        client_datasets={3: dataset},
+        trigger=mnist_global_trigger().trigger,
+        source_class=1,
+        target_class=7,
+        batch_size=2,
+    )
+    context = RoundAttackContext(0, global_model, (3,), ())
+
+    update = attack.craft_round(context, (RandomSource(101),))[0]
+
+    assert update.is_malicious
+    assert update.metadata['eligible_source_count'] == 0
+    assert update.metadata['poisoned_count'] == 0
