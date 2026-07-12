@@ -70,7 +70,7 @@ class MetaSGAlgorithm1:
                 response_steps = []
                 for response_step in range(self.N_A):
                     response_steps.append(update_attacker(
-                        task, adapted, response_step,
+                        task, meta_defender, response_step,
                     ))
                     events.append(Algorithm1Event(
                         'attacker_update', leader_iteration, task, response_step,

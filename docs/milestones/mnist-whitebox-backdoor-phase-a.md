@@ -23,7 +23,8 @@ execution and determinism smoke run, not a scientific performance result.
 - BRL Attacker action: `(rho, eta, E)`
 - Both action dimensions: 3
 - Algorithm: Meta-SG Algorithm 1 with the practical Reptile leader update
-- Attacker response target: the task-adapted, frozen Defender
+- Attacker response target: the current outer-loop meta Defender (Algorithm 1 line 14)
+- Reptile Defender-gradient point: the task-adapted Defender (Algorithm 1 line 17)
 - Pretrained attack origins:
   - `brl-norm`: fixed Norm Bounding
   - `brl-neuroclip`: fixed NeuroClip

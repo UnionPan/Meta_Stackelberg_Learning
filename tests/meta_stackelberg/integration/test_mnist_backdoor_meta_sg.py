@@ -40,7 +40,7 @@ def _attacker(obs_dim: int, seed: int) -> TD3Agent:
     )
 
 
-def test_mnist_whitebox_runner_executes_algorithm1_against_adapted_defender(
+def test_mnist_whitebox_runner_executes_algorithm1_with_meta_defender_br(
     tmp_path,
 ) -> None:
     datasets = make_whitebox_mnist_datasets(

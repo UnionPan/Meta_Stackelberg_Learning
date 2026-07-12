@@ -207,15 +207,17 @@ for n_D in 0 .. N_D-1:
     sample K BRL tasks uniformly from Q(Xi)
     for each sampled task xi:
         adapt Defender once: theta -> theta_xi
-        freeze theta_xi
-        update the same BRL policy N_A times -> phi_xi(N_A)
+        freeze the current meta Defender theta
+        update the same BRL policy N_A times against theta -> phi_xi(N_A)
         freeze phi_xi(N_A)
         update task Defender at theta_xi -> theta_bar_xi
     theta <- theta + (1/K) * sum(theta_bar_xi - theta)
 ```
 
-The Attacker BR is conditioned on the adapted Defender `theta_xi`. Full TD3 policy/replay fingerprints enforce
-both freeze directions. Paper parameters remain `K=10`, `N_A=10`, `N_D=10`, `eta=0.01`, and
+The Attacker BR is conditioned on the current outer-loop meta Defender `theta`, exactly as Algorithm 1 line 14;
+the Reptile Defender gradient is evaluated at the adapted `theta_xi`, exactly as line 17. Full TD3
+policy/replay fingerprints enforce both freeze directions. Paper parameters remain `K=10`, `N_A=10`,
+`N_D=10`, `eta=0.01`, and
 `kappa_A=kappa_D=0.001`, with `H=200` for MNIST trajectories. Scaled runs may reduce counts but not nesting,
 roles, action semantics, reward permissions, or task identity.
 
@@ -273,7 +275,7 @@ an offline Algorithm 1 operation and is not rerun every online FL round.
 All comparisons use matched FL-round, trajectory, TD3-update, and query-seed budgets. Primary white-box evidence
 must establish:
 
-1. BRL changes under a frozen adapted Defender or reaches a preregistered oracle plateau.
+1. BRL changes under a frozen current meta Defender or reaches a preregistered oracle plateau.
 2. Different Defender commitments induce different BRL responses.
 3. Few-shot Defender adaptation improves the joint clean/backdoor objective.
 4. Algorithm 1 initialization beats random initialization and no-adaptation baselines under equal budgets.

@@ -421,14 +421,14 @@ git commit -m "feat: build canonical MNIST white-box environment"
 - [ ] **Step 1: Write failing policy-dimension and nesting tests**
 
 ```python
-def test_mnist_backdoor_runner_uses_two_3d_policies_and_adapted_defender(tmp_path, bundle):
+def test_mnist_backdoor_runner_uses_two_3d_policies_and_meta_defender_br(tmp_path, bundle):
     result = run_mnist_whitebox_backdoor_meta_sg(
         bundle=bundle, output_dir=tmp_path, seed=9,
         config=smoke_config(k=2, n_a=2, n_d=1, horizon=2),
     )
     assert result.defender_action_dim == 3
     assert result.attacker_action_dim == 3
-    assert result.trace[0].attacker_response.defender_origin == 'adapted'
+    assert result.trace[0].attacker_response.defender_origin == 'meta'
     assert result.trace[0].attacker_response.update_steps == 2
     assert result.manifest['protocol'] == 'mnist-whitebox-real-data-v1'
 ```

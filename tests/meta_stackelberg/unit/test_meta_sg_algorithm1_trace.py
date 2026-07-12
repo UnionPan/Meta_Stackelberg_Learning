@@ -18,9 +18,9 @@ def test_algorithm1_uses_nd_k_na_with_paper_meanings_and_order() -> None:
         calls.append(('adapt', leader_iteration, task))
         return f'adapted-{leader_iteration}-{task}'
 
-    def attacker_update(task, adapted_defender, response_step):
-        assert adapted_defender.startswith('adapted-')
-        calls.append(('attacker', int(adapted_defender.split('-')[1]), task, response_step))
+    def attacker_update(task, meta_defender, response_step):
+        assert meta_defender.startswith('theta-')
+        calls.append(('attacker', int(meta_defender.split('-')[1]), task, response_step))
 
     def defender_gradient(task, adapted, response):
         calls.append(('gradient', leader_iteration_from(adapted), task, response))
@@ -65,7 +65,7 @@ def test_algorithm1_uses_only_final_phi_na_as_response() -> None:
     assert task.attacker_steps == ('phi-1', 'phi-2', 'phi-3')
     assert task.approximate_best_response == 'phi-3'
     assert used == [('rl', 'phi-3')]
-    assert response_defenders == ['theta-adapted'] * 3
+    assert response_defenders == ['theta-meta'] * 3
 
 
 def test_algorithm1_rejects_invalid_counts_and_wrong_task_batch_size() -> None:

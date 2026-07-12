@@ -44,7 +44,7 @@ class PolicyAlgorithm1Result:
 
 
 class PolicyMetaSGAlgorithm1:
-    """Run θξ adaptation, BR against θξ, then leader gradient at θξ."""
+    """Adapt θξ, find BR against θt, then evaluate leader gradient at θξ."""
 
     def __init__(
         self,
@@ -122,11 +122,11 @@ class PolicyMetaSGAlgorithm1:
                     task, 'attacker', 'best_response', leader_iteration,
                 )
                 response = self.response_trainer.train(
-                    defender=adaptation.adapted_defender,
+                    defender=defender,
                     attacker=attacker,
                     replay=response_replay,
                     collect_fresh=lambda step, task=task: collect_response(
-                        task, step, adaptation.adapted_defender, attacker,
+                        task, step, defender, attacker,
                         response_replay,
                         leader_iteration,
                     ),
