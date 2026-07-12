@@ -229,7 +229,10 @@ def run_mnist_whitebox_backdoor_meta_sg(
     if not isinstance(attack_domain, AttackTypeDomainSource):
         raise TypeError('attack_domain must be AttackTypeDomainSource')
     origins = set(attack_domain.origins.values())
-    if not {'norm-bounding', 'neuroclip'}.issubset(origins):
+    if not {
+        'pretrained-against-norm-bounding',
+        'pretrained-against-neuroclip',
+    }.issubset(origins):
         raise ValueError('white-box attack domain requires norm-bounding and neuroclip BRL origins')
     resolved = config or MNISTWhiteBoxMetaSGConfig()
     defender = _agent(

@@ -157,6 +157,12 @@ def fixed_pretraining_aggregator(
 
 
 def _aggregator_spec(aggregator) -> dict[str, object]:
+    custom = getattr(aggregator, 'pretraining_spec', None)
+    if callable(custom):
+        result = custom()
+        if not isinstance(result, dict) or not result or 'defense' not in result:
+            raise ValueError('custom pre-training defense spec is invalid')
+        return result
     if isinstance(aggregator, Krum):
         return {
             'defense': 'krum',
@@ -479,7 +485,12 @@ class AttackPolicyPretrainer:
         ):
             raise ValueError('checkpoint_interval must be a positive integer')
         env.aggregator_factory = lambda action: aggregator
-        env.post_defense_factory = lambda model, epsilon: model
+        post_defense = getattr(aggregator, 'post_defense_factory', None)
+        env.post_defense_factory = (
+            post_defense
+            if callable(post_defense)
+            else lambda model, epsilon: model
+        )
         defender_guard = defender.freeze_guard()
 
         while env.state.round_index < env.horizon:

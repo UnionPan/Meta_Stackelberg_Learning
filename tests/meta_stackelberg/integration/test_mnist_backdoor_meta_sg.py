@@ -75,8 +75,8 @@ def test_mnist_whitebox_runner_executes_algorithm1_against_adapted_defender(
             'brl-neuroclip': _attacker(factory.attacker_observation_dim, 32),
         },
         origins={
-            'brl-norm': 'norm-bounding',
-            'brl-neuroclip': 'neuroclip',
+            'brl-norm': 'pretrained-against-norm-bounding',
+            'brl-neuroclip': 'pretrained-against-neuroclip',
         },
     )
 
@@ -105,7 +105,7 @@ def test_mnist_whitebox_runner_executes_algorithm1_against_adapted_defender(
     assert manifest['protocol'] == 'mnist-whitebox-real-data-v1'
     assert manifest['algorithm'] == 'meta-sg-algorithm1-reptile'
     assert manifest['attack_origins'] == {
-        'brl-neuroclip': 'neuroclip',
-        'brl-norm': 'norm-bounding',
+        'brl-neuroclip': 'pretrained-against-neuroclip',
+        'brl-norm': 'pretrained-against-norm-bounding',
     }
     assert manifest['query_data_used_for_training'] is False
