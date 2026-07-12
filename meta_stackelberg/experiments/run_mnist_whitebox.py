@@ -9,6 +9,9 @@ import os
 from pathlib import Path
 import tempfile
 
+import torch
+
+from meta_stackelberg.agents.td3.agent import TD3Agent
 from meta_stackelberg.agents.td3.config import PaperMetaSGConfig
 from meta_stackelberg.experiments.attack_domain import (
     load_attack_type_domain,
@@ -25,7 +28,18 @@ from meta_stackelberg.experiments.paper_mnist_backdoor_env import (
 )
 from meta_stackelberg.experiments.paper_mnist_backdoor_meta_sg import (
     MNISTWhiteBoxMetaSGConfig,
+    load_mnist_whitebox_policy_artifact,
     run_mnist_whitebox_backdoor_meta_sg,
+)
+from meta_stackelberg.experiments.paper_mnist_backdoor_scientific import (
+    run_mnist_whitebox_scientific_evidence,
+)
+from meta_stackelberg.experiments.scientific_gate import (
+    QueryEvidencePlan,
+    ScientificGateThresholds,
+)
+from meta_stackelberg.experiments.whitebox_backdoor_evidence import (
+    WhiteBoxSafetyThresholds,
 )
 from meta_stackelberg.security.data.mnist_global_trigger import mnist_global_trigger
 
@@ -50,6 +64,29 @@ def build_parser() -> argparse.ArgumentParser:
     meta.add_argument('--support-seed', type=int, default=1_000_000)
     meta.add_argument('--query-seed', type=int, default=101)
     meta.set_defaults(execution_only=True)
+
+    scientific = subparsers.add_parser('scientific')
+    _common(scientific)
+    scientific.add_argument('--attack-domain', required=True)
+    scientific.add_argument('--policy-artifact', required=True)
+    scientific.add_argument('--output', required=True)
+    scientific.add_argument('--task', default='brl-norm')
+    scientific.add_argument('--support-seed', type=int, default=2_000_000)
+    scientific.add_argument('--support-seed-count', type=int, default=10_000)
+    scientific.add_argument('--query-seed', type=int, default=101)
+    scientific.add_argument('--query-seed-count', type=int, default=2)
+    scientific.add_argument('--adaptation-steps', type=int)
+    scientific.add_argument('--attacker-improvement', type=float, default=0.001)
+    scientific.add_argument('--response-difference', type=float, default=0.001)
+    scientific.add_argument('--adaptation-improvement', type=float, default=0.001)
+    scientific.add_argument('--meta-advantage', type=float, default=0.001)
+    scientific.add_argument('--oracle-regret', type=float, default=0.1)
+    scientific.add_argument('--action-difference', type=float, default=0.001)
+    scientific.add_argument('--attacker-plateau-gap', type=float, default=0.001)
+    scientific.add_argument('--clean-accuracy-floor', type=float, default=0.8)
+    scientific.add_argument('--asr-ceiling', type=float, default=0.2)
+    scientific.add_argument('--asr-reduction', type=float, default=0.2)
+    scientific.add_argument('--require-gate-pass', action='store_true')
     return parser
 
 
@@ -135,7 +172,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     if args.command == 'pretrain':
         return _pretrain(args, paper, factory)
-    return _meta_sg(args, factory)
+    if args.command == 'meta-sg':
+        return _meta_sg(args, factory)
+    return _scientific(args, paper, factory)
 
 
 def _pretrain(args, paper, factory) -> int:
@@ -226,6 +265,188 @@ def _meta_sg(args, factory) -> int:
         'defender_fingerprint': result.defender.fingerprint(),
     }, indent=2, sort_keys=True))
     return 0
+
+
+def _scientific(args, paper, factory) -> int:
+    artifact = load_mnist_whitebox_policy_artifact(args.policy_artifact)
+    domain = load_attack_type_domain(args.attack_domain)
+    if dict(artifact.attack_origins) != dict(domain.origins):
+        raise ValueError('policy artifact and attack domain origins differ')
+    if args.task not in domain.snapshots:
+        raise ValueError(f'attack domain does not contain task {args.task!r}')
+    learned_config = MNISTWhiteBoxMetaSGConfig(**dict(artifact.config))
+    learned = _policy_agent(
+        factory.defender_observation_dim,
+        'defender',
+        args.seed,
+        learned_config,
+    )
+    learned.restore(artifact.defender)
+    random_defender = _policy_agent(
+        factory.defender_observation_dim,
+        'defender',
+        args.seed + 1,
+        learned_config,
+    )
+    initial_attacker = _policy_agent(
+        factory.attacker_observation_dim,
+        'attacker',
+        args.seed + 2,
+        learned_config,
+    )
+    initial_attacker.restore(domain.snapshots[args.task])
+    adaptation_steps = args.adaptation_steps
+    if adaptation_steps is None:
+        adaptation_steps = paper.l if args.profile == 'paper' else 1
+    scientific_config = paper.scaled(
+        T=1,
+        K=learned_config.K,
+        H=learned_config.H,
+        l=adaptation_steps,
+        N_A=learned_config.N_A,
+        N_D=learned_config.N_D,
+        workers=factory.workers,
+        untargeted_attackers=factory.backdoor_attackers,
+        sample_size=factory.sample_size,
+        td3_batch_size=learned_config.td3_batch_size,
+        learning_starts=learned_config.learning_starts,
+        hidden_sizes=learned_config.hidden_sizes,
+        replay_capacity=learned_config.replay_capacity,
+    )
+    support_seeds = tuple(range(
+        args.support_seed,
+        args.support_seed + args.support_seed_count,
+    ))
+    query_seeds = tuple(range(
+        args.query_seed,
+        args.query_seed + args.query_seed_count,
+    ))
+    result = run_mnist_whitebox_scientific_evidence(
+        config=scientific_config,
+        environment_factory=factory,
+        evidence_plan=QueryEvidencePlan(support_seeds, query_seeds),
+        meta_thresholds=ScientificGateThresholds(
+            args.attacker_improvement,
+            args.response_difference,
+            args.adaptation_improvement,
+            args.meta_advantage,
+            args.oracle_regret,
+            args.action_difference,
+            attacker_plateau_gap=args.attacker_plateau_gap,
+        ),
+        safety_thresholds=WhiteBoxSafetyThresholds(
+            args.clean_accuracy_floor,
+            args.asr_ceiling,
+            args.asr_reduction,
+        ),
+        learned_defender=learned,
+        random_defender=random_defender,
+        initial_attacker=initial_attacker,
+        specialized_defenders={
+            'tight': _constant_policy(learned, (-0.8, 0.0, -0.8)),
+            'balanced': _constant_policy(learned, (0.0, 0.0, 0.0)),
+            'loose': _constant_policy(learned, (0.8, 0.0, 0.8)),
+        },
+        attacker_oracle_policies={
+            'low-poison': _constant_policy(
+                initial_attacker, (-0.8, 0.0, -0.9),
+            ),
+            'mid-poison': _constant_policy(
+                initial_attacker, (0.0, 0.0, -0.9),
+            ),
+            'high-poison': _constant_policy(
+                initial_attacker, (0.8, 0.0, -0.9),
+            ),
+        },
+        task=args.task,
+        query_batch_size=paper.fl_batch_size,
+    )
+    output = Path(args.output)
+    output.mkdir(parents=True, exist_ok=True)
+    payload = {
+        'schema_version': 1,
+        'protocol': result.protocol,
+        'profile': args.profile,
+        'execution_only': args.profile == 'micro',
+        'passed': result.passed,
+        'meta_gate': {
+            'passed': result.meta_sg.gate.passed,
+            'thresholds': asdict(result.meta_sg.gate.thresholds),
+            'checks': [asdict(check) for check in result.meta_sg.gate.checks],
+        },
+        'safety_gate': {
+            'passed': result.safety_gate.passed,
+            'thresholds': asdict(result.safety_gate.thresholds),
+            'checks': [asdict(check) for check in result.safety_gate.checks],
+        },
+        'metrics': {
+            label: {
+                'mean_clean_accuracy': item.mean_clean_accuracy,
+                'mean_clean_loss': item.mean_clean_loss,
+                'mean_attack_success_rate': item.mean_attack_success_rate,
+                'mean_safe_loss': item.mean_safe_loss,
+                'mean_target_loss': item.mean_target_loss,
+                'query_seeds': list(item.query_seeds),
+                'per_seed': [asdict(metric) for metric in item.per_seed],
+            }
+            for label, item in result.metrics.items()
+        },
+        'budgets': {
+            label: asdict(budget)
+            for label, budget in result.meta_sg.budgets.items()
+        },
+        'used_support_seeds': list(result.meta_sg.used_support_seeds),
+        'query_seeds': list(result.meta_sg.query_seeds),
+        'specialized_oracle_label': result.meta_sg.specialized_oracle_label,
+        'attacker_oracle_label': result.meta_sg.attacker_oracle_label,
+        'query_data_used_for_training': False,
+        'client_partition_sha256': factory.client_partition_sha256,
+        'trigger_sha256': mnist_global_trigger().sha256,
+    }
+    evidence_path = output / 'scientific.json'
+    _atomic_json(evidence_path, payload)
+    print(json.dumps({
+        'scientific_evidence': str(evidence_path),
+        'passed': result.passed,
+        'meta_gate_passed': result.meta_sg.gate.passed,
+        'safety_gate_passed': result.safety_gate.passed,
+    }, indent=2, sort_keys=True))
+    if args.require_gate_pass and not result.passed:
+        return 2
+    return 0
+
+
+def _policy_agent(
+    obs_dim: int,
+    role: str,
+    seed: int,
+    config: MNISTWhiteBoxMetaSGConfig,
+) -> TD3Agent:
+    return TD3Agent(
+        obs_dim=obs_dim,
+        action_dim=3,
+        role=role,
+        seed=seed,
+        hidden_sizes=tuple(config.hidden_sizes),
+        learning_rate=config.policy_learning_rate,
+        gamma=config.gamma,
+        tau=config.tau,
+        policy_delay=config.policy_delay,
+        target_policy_noise=config.target_policy_noise,
+        noise_clip=config.noise_clip,
+    )
+
+
+def _constant_policy(
+    source: TD3Agent,
+    raw_action: tuple[float, float, float],
+) -> TD3Agent:
+    result = source.clone()
+    for parameter in result.actor.parameters():
+        parameter.data.zero_()
+    final = tuple(result.actor.modules())[-1]
+    final.bias.data.copy_(torch.atanh(torch.tensor(raw_action) * 0.999))
+    return result
 
 
 def _atomic_json(path: Path, payload: dict) -> None:

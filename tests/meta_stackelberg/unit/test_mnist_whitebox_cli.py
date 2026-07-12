@@ -18,11 +18,20 @@ def test_whitebox_cli_has_separate_pretrain_and_meta_sg_stages() -> None:
         'meta-sg', '--data-root', '/tmp/data',
         '--attack-domain', '/tmp/domain.pt', '--output', '/tmp/run',
     ])
+    scientific = parser.parse_args([
+        'scientific', '--data-root', '/tmp/data',
+        '--attack-domain', '/tmp/domain.pt',
+        '--policy-artifact', '/tmp/policies.pt', '--output', '/tmp/evidence',
+    ])
 
     assert pretrain.command == 'pretrain'
     assert pretrain.norm_clip_radius == 1.0
     assert pretrain.neuroclip_epsilon == 7.0
     assert meta.command == 'meta-sg'
+    assert scientific.command == 'scientific'
+    assert scientific.clean_accuracy_floor == 0.8
+    assert scientific.asr_ceiling == 0.2
+    assert scientific.asr_reduction == 0.2
 
 
 def test_whitebox_micro_profiles_are_execution_only() -> None:
