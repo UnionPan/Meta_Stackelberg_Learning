@@ -541,4 +541,6 @@ git commit -m "docs: record MNIST white-box phase A evidence"
 After Phase A is green, write two separate plans:
 
 1. `mnist-prun-defense`: activation-based Prun implementation, `(alpha,beta,sigma)` codec, and matched NeuroClip/Prun evidence.
-2. `mnist-generated-data`: 200-sample seed, 5,000 augmented examples, 100-epoch cGAN, 60,000 generated examples, provenance, and generated-data comparison.
+2. `mnist-generated-data`: original 200-sample seed, 100-epoch cGAN without augmentation, 60,000 generated
+   examples, provenance, and generated-data comparison. A separate later plan covers the matched 5,000-example
+   paper-augmentation reproduction.

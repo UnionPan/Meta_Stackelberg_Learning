@@ -16,8 +16,10 @@ The implementation has two ordered milestones:
 
 1. **White-box vertical slice:** the server knows the real trigger and target label and uses real MNIST
    client data. This is an upper-bound experiment and proves the BRL/Defender/Algorithm 1 path.
-2. **Generated-data experiment:** start from 200 seed samples with `q=0.1`, augment to 5,000 samples,
-   train the referenced MNIST cGAN for 100 epochs, generate 60,000 samples, and repeat the same protocol.
+2. **Generated-data experiment:** start from the original 200 seed samples with `q=0.1`, train the referenced
+   MNIST cGAN directly for 100 epochs without augmentation, generate 60,000 samples, and repeat the same
+   protocol. The paper's 5,000-sample augmentation path is a later matched reproduction, not a dependency of
+   the first generated-data run.
 
 Generated-data results must not be labeled white-box upper-bound results. CIFAR-10 and unknown-trigger
 GAN experiments are outside this first implementation cycle.
@@ -223,16 +225,31 @@ Split real MNIST deterministically into client training, white-box reward data, 
 appears in more than one role. The server's access to real client training data is explicit in the manifest and
 the run protocol is named `mnist-whitebox-real-data-v1`.
 
-### 8.2 Phase B: generated-data experiment
+### 8.2 Phase B0: original-200 generated-data experiment
 
-Use 200 initial samples with `q=0.1`. Apply normalization, random rotation, and dataset-appropriate augmentation
-to produce exactly 5,000 cGAN training examples. Train the referenced conditional MNIST GAN for 100 epochs with
-its default network parameters, versioning the reference commit/config. Generate exactly 60,000 labeled images
-with declared class counts and generator seed. The real held-out MNIST query data remains isolated.
+Use the original 200 initial samples with `q=0.1` exactly once as the cGAN training dataset. Normalization that
+belongs to the model input pipeline remains enabled, but random rotation, color jitter, geometric augmentation,
+synthetic duplication to 5,000, and augmentation-based resampling are disabled. Train the referenced conditional
+MNIST GAN for 100 epochs with its default network parameters, versioning the reference commit/config. Generate
+exactly 60,000 labeled images—6,000 requested samples per class—with a declared generator seed. The real held-out
+MNIST query data remains isolated.
 
-Artifacts include generator/discriminator checkpoints, augmentation manifest, loss history, sample-grid QA,
-class histogram, image range/shape validation, and dataset hash. A typed generated-data bundle is accepted by the
-same environment factory used in Phase A.
+Because 200 examples may be insufficient for a stable cGAN, Phase B0 is an explicit small-data experiment rather
+than an assumed replacement for the paper result. Evidence must report seed-set class counts, per-class generated
+counts, discriminator/generator losses, deterministic sample grids, diversity statistics, and downstream clean
+accuracy/ASR. Mode collapse or missing class support is a scientific result and must not be repaired by silently
+adding augmented examples.
+
+Artifacts include generator/discriminator checkpoints, the original-seed index manifest, loss history,
+sample-grid QA, class histogram, image range/shape validation, and dataset hash. A typed generated-data bundle is
+accepted by the same environment factory used in Phase A.
+
+### 8.3 Phase B1: paper augmentation reproduction
+
+After Phase B0, a separate matched run may augment the same 200 seeds to 5,000 examples using normalization,
+random rotation, and color jitter before the same 100-epoch cGAN training and 60,000-sample generation. Phase B1
+uses separate artifact identities and is compared against B0 under the same GAN seed, architecture, optimizer,
+generation class counts, FL budget, and query seeds. B1 is not required to begin or complete B0.
 
 ## 9. Online adaptation
 
@@ -294,7 +311,9 @@ This prevents white-box permissions or triggered query data from leaking into un
 5. MNIST white-box BSMG environment and Algorithm 1 runner.
 6. White-box evidence/Gates and real-data scaled run.
 7. Online 50-round collection/update blocks.
-8. MNIST augmentation, cGAN training, 60,000-sample bundle, and generated-data comparison.
+8. Original-200 MNIST cGAN training, 60,000-sample bundle, and generated-data comparison.
+9. Optional matched 5,000-example augmentation reproduction.
 
 The first implementation cycle is complete only after Phase A runs end-to-end with frozen white-box artifacts and
-scientific evidence. Phase B is a required subsequent milestone, not a substitute for Phase A verification.
+scientific evidence. Phase B0 is a required subsequent milestone, not a substitute for Phase A verification;
+Phase B1 is the later paper-augmentation reproduction.
