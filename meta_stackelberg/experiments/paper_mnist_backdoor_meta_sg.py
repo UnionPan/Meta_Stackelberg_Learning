@@ -12,8 +12,9 @@ from types import MappingProxyType
 from typing import Mapping
 
 import numpy as np
+import torch
 
-from meta_stackelberg.agents.td3.agent import TD3Agent
+from meta_stackelberg.agents.td3.agent import TD3Agent, TD3Snapshot
 from meta_stackelberg.agents.td3.replay import TD3ReplayBuffer
 from meta_stackelberg.experiments.attack_domain import (
     AttackTypeDomainSource,
@@ -92,6 +93,29 @@ class MNISTWhiteBoxMetaSGResult:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, 'attackers', MappingProxyType(dict(self.attackers)))
+
+
+@dataclass(frozen=True)
+class MNISTWhiteBoxPolicyArtifact:
+    defender: TD3Snapshot
+    attackers: Mapping[str, TD3Snapshot]
+    attack_origins: Mapping[str, str]
+    config: Mapping[str, object]
+    schema_version: int = 1
+    protocol: str = 'mnist-whitebox-policy-artifact-v1'
+
+    def __post_init__(self) -> None:
+        if self.schema_version != 1 or self.defender.role != 'defender':
+            raise ValueError('invalid white-box Defender policy artifact')
+        attackers = dict(self.attackers)
+        origins = dict(self.attack_origins)
+        if not attackers or set(attackers) != set(origins):
+            raise ValueError('attacker snapshots and origins must match')
+        if any(snapshot.role != 'attacker' for snapshot in attackers.values()):
+            raise ValueError('white-box attack artifact contains non-attacker policy')
+        object.__setattr__(self, 'attackers', MappingProxyType(attackers))
+        object.__setattr__(self, 'attack_origins', MappingProxyType(origins))
+        object.__setattr__(self, 'config', MappingProxyType(dict(self.config)))
 
 
 class _Algorithm1WhiteBoxRunner:
@@ -272,6 +296,20 @@ def run_mnist_whitebox_backdoor_meta_sg(
         trajectory_count=len(runner.support_seeds),
         trajectories_per_update=runner.trajectories_per_update,
     )
+    directory = Path(output_dir)
+    directory.mkdir(parents=True, exist_ok=True)
+    save_mnist_whitebox_policy_artifact(
+        directory / 'policies.pt',
+        MNISTWhiteBoxPolicyArtifact(
+            defender=result.defender.snapshot(),
+            attackers={
+                label: policy.snapshot()
+                for label, policy in result.attackers.items()
+            },
+            attack_origins=attack_domain.origins,
+            config=asdict(resolved),
+        ),
+    )
     _write_manifest(
         output_dir=output_dir,
         result=result,
@@ -332,6 +370,7 @@ def _write_manifest(
             for label, policy in sorted(result.attackers.items())
         },
         'query_data_used_for_training': False,
+        'policy_artifact': 'policies.pt',
         'data': {
             'client_training_samples': len(
                 environment_factory.datasets.client_train,
@@ -364,3 +403,47 @@ def _write_manifest(
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
+
+
+def save_mnist_whitebox_policy_artifact(
+    path: str | Path,
+    artifact: MNISTWhiteBoxPolicyArtifact,
+) -> None:
+    if not isinstance(artifact, MNISTWhiteBoxPolicyArtifact):
+        raise TypeError('artifact must be MNISTWhiteBoxPolicyArtifact')
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(
+        prefix=f'.{target.name}.', suffix='.tmp', dir=target.parent,
+    )
+    os.close(descriptor)
+    try:
+        torch.save({
+            'schema_version': artifact.schema_version,
+            'protocol': artifact.protocol,
+            'defender': artifact.defender,
+            'attackers': dict(artifact.attackers),
+            'attack_origins': dict(artifact.attack_origins),
+            'config': dict(artifact.config),
+        }, temporary)
+        os.replace(temporary, target)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def load_mnist_whitebox_policy_artifact(
+    path: str | Path,
+) -> MNISTWhiteBoxPolicyArtifact:
+    """Load a trusted-local white-box policy artifact."""
+    payload = torch.load(Path(path), map_location='cpu', weights_only=False)
+    if not isinstance(payload, dict):
+        raise ValueError('invalid white-box policy artifact payload')
+    return MNISTWhiteBoxPolicyArtifact(
+        defender=payload.get('defender'),
+        attackers=payload.get('attackers', {}),
+        attack_origins=payload.get('attack_origins', {}),
+        config=payload.get('config', {}),
+        schema_version=payload.get('schema_version', -1),
+        protocol=payload.get('protocol', ''),
+    )

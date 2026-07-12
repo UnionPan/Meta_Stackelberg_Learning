@@ -13,6 +13,7 @@ from meta_stackelberg.experiments.paper_mnist_backdoor_env import (
 )
 from meta_stackelberg.experiments.paper_mnist_backdoor_meta_sg import (
     MNISTWhiteBoxMetaSGConfig,
+    load_mnist_whitebox_policy_artifact,
     run_mnist_whitebox_backdoor_meta_sg,
 )
 
@@ -125,3 +126,21 @@ def test_mnist_whitebox_runner_executes_algorithm1_with_meta_defender_br(
         'backdoor_attackers': 2,
         'sample_size': 4,
     }
+    assert manifest['policy_artifact'] == 'policies.pt'
+    artifact = load_mnist_whitebox_policy_artifact(tmp_path / 'policies.pt')
+    restored_defender = TD3Agent(
+        obs_dim=factory.defender_observation_dim,
+        action_dim=3,
+        role='defender',
+        seed=999,
+        hidden_sizes=(8,),
+        learning_rate=0.001,
+        gamma=0.99,
+        tau=0.005,
+        policy_delay=2,
+        target_policy_noise=0.2,
+        noise_clip=0.5,
+    )
+    restored_defender.restore(artifact.defender)
+    assert restored_defender.fingerprint() == result.defender.fingerprint()
+    assert set(artifact.attackers) == {'brl-norm', 'brl-neuroclip'}
