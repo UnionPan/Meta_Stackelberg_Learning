@@ -42,6 +42,8 @@ Artifacts:
 - `fl_sandbox/runs/mnist_whitebox_micro/brl_domain.pt.checkpoints/brl-norm.pt`
 - `fl_sandbox/runs/mnist_whitebox_micro/brl_domain.pt.checkpoints/brl-neuroclip.pt`
 - `fl_sandbox/runs/mnist_whitebox_micro/meta_sg/manifest.json`
+- `fl_sandbox/runs/mnist_whitebox_micro/meta_sg/policies.pt`
+- `fl_sandbox/runs/mnist_whitebox_micro/scientific/scientific.json`
 
 The pretraining and Meta-SG manifests contain matching client-partition and trigger hashes. The final micro
 Defender fingerprint is:
@@ -53,7 +55,7 @@ Defender fingerprint is:
 ## Verification
 
 ```text
-928 passed in 75.03s
+933 passed in 77.40s
 ```
 
 Artifact invariants verified independently:
@@ -70,6 +72,23 @@ Artifact invariants verified independently:
 
 ## Scientific status
 
-The micro run proves execution, artifact provenance, checkpoint/resume, and protocol wiring only. It does not
-evaluate clean accuracy, ASR reduction, best-response improvement, adaptation advantage, meta-initialization
-advantage, or specialized-oracle regret. No scientific threshold was lowered and no Gate is reported as passed.
+The held-out scientific protocol now evaluates all Meta-SG behavior checks plus clean accuracy, source-class ASR,
+safe loss, and target loss on the complete 10,000-example official MNIST test set. The micro result failed without
+changing any threshold:
+
+```text
+combined Gate: failed
+Meta-SG Gate: failed
+white-box safety Gate: failed
+
+learned clean accuracy: 0.4045       required >= 0.8
+learned ASR:            0.0          required <= 0.2
+ASR reduction:          0.0          required >= 0.2
+Defender adaptation:    0.0          required >= 0.001
+meta margin:            -0.00002717  required >= 0.001
+```
+
+The ASR ceiling check passes in isolation, but it is not evidence of a useful defense: the one-round model has low
+clean accuracy and no-adaptation ASR is already zero. The micro run therefore proves execution, artifact provenance,
+checkpoint/resume, query isolation, and Gate preservation only. A performance claim requires the preregistered
+scaled run; no scientific threshold was lowered and no Gate is reported as passed.
