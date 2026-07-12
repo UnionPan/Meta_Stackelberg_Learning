@@ -170,12 +170,16 @@ class PaperMNISTBackdoorEnvironmentFactory:
         return _model_factory(self.model_seed)
 
     @property
-    def attacker_observation_dim(self) -> int:
+    def defender_observation_dim(self) -> int:
         tail = sum(
             self.initial_global_model.tensors[index].size
             for index in self.observation_encoder.parameter_indices
         )
-        return tail + 1 + 1 + 3
+        return tail + 1
+
+    @property
+    def attacker_observation_dim(self) -> int:
+        return self.defender_observation_dim + 1 + 3
 
     def make(
         self,
