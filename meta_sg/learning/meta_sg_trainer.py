@@ -14,6 +14,7 @@ from __future__ import annotations
 import math
 import os
 import json
+import random
 import shutil
 import time
 import uuid
@@ -50,6 +51,18 @@ class MetaSGResult:
     defender_actor_losses: List[float] = field(default_factory=list)
     reptile_delta_norms: List[float] = field(default_factory=list)
     meta_iterations: int = 0
+
+
+CHECKPOINT_SCHEMA_VERSION = 2
+
+
+@dataclass
+class _ValidatedCheckpoint:
+    defender: TD3Agent
+    attacker_agents: Dict[str, TD3Agent]
+    attacker_buffers: Dict[str, ReplayBuffer]
+    rng_state: Dict
+    completed_iteration: int
 
 
 class MetaSGTrainer:
@@ -106,6 +119,8 @@ class MetaSGTrainer:
         self.start_iteration = max(0, int(start_iteration))
         self.total_iterations = int(total_iterations or (self.start_iteration + meta_config.T))
         self.memory_maintenance = memory_maintenance
+        self.resume_fidelity = "fresh"
+        self.loaded_completed_iteration: int | None = None
         if self.metrics_jsonl_path:
             Path(self.metrics_jsonl_path).parent.mkdir(parents=True, exist_ok=True)
 
@@ -637,16 +652,34 @@ class MetaSGTrainer:
         self.defender.save(os.path.join(directory, "defender_meta.pt"))
         for name, agent in self.attacker_agents.items():
             agent.save(os.path.join(directory, f"attacker_{name}.pt"))
-        if completed_iteration is not None:
-            metadata = {
-                "completed_iteration": int(completed_iteration),
-                "master_seed": self.checkpoint_master_seed,
-                "saved_at": datetime.now(timezone.utc).isoformat(),
-            }
-            Path(directory, "checkpoint.json").write_text(
-                json.dumps(metadata, indent=2, sort_keys=True) + "\n",
-                encoding="utf-8",
-            )
+        for name, buffer in self.attacker_buffers.items():
+            buffer.save(Path(directory, f"attacker_buffer_{name}.hdf5"))
+        torch.save(
+            {
+                "python": random.getstate(),
+                "numpy": np.random.get_state(),
+                "torch_cpu": torch.get_rng_state(),
+                "torch_cuda": (
+                    torch.cuda.get_rng_state_all()
+                    if torch.cuda.is_available()
+                    else None
+                ),
+            },
+            Path(directory, "rng_state.pt"),
+        )
+        metadata = {
+            "schema_version": CHECKPOINT_SCHEMA_VERSION,
+            "completed_iteration": (
+                None if completed_iteration is None else int(completed_iteration)
+            ),
+            "master_seed": self.checkpoint_master_seed,
+            "saved_at": datetime.now(timezone.utc).isoformat(),
+            "invariants": self._checkpoint_invariants(),
+        }
+        Path(directory, "checkpoint.json").write_text(
+            json.dumps(metadata, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
 
     def _replace_checkpoint_directory(
         self,
@@ -682,12 +715,156 @@ class MetaSGTrainer:
             if backup.exists():
                 shutil.rmtree(backup)
 
-    def load(self, directory: str) -> None:
-        self.defender.load(os.path.join(directory, "defender_meta.pt"))
-        for name, agent in self.attacker_agents.items():
-            path = os.path.join(directory, f"attacker_{name}.pt")
-            if os.path.exists(path):
-                agent.load(path)
+    def _checkpoint_invariants(self) -> Dict[str, object]:
+        return {
+            "obs_dim": int(self.obs_dim),
+            "defender_act_dim": int(self.act_dim),
+            "attacker_act_dim": int(self.attacker_act_dim),
+            "buffer_capacity": int(self.td3_cfg.buffer_capacity),
+            "attackers": sorted(self.attacker_agents),
+        }
+
+    def _validate_checkpoint(self, directory: str | os.PathLike[str]) -> _ValidatedCheckpoint:
+        checkpoint = Path(directory)
+        metadata_path = checkpoint / "checkpoint.json"
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ValueError(f"invalid checkpoint manifest: {exc}") from exc
+
+        schema_version = metadata.get("schema_version")
+        if schema_version != CHECKPOINT_SCHEMA_VERSION:
+            raise ValueError(
+                "checkpoint is model-only or uses an unsupported schema; "
+                "continuous resume requires schema_version=2"
+            )
+        completed_iteration = metadata.get("completed_iteration")
+        if (
+            isinstance(completed_iteration, bool)
+            or not isinstance(completed_iteration, int)
+            or completed_iteration < 0
+        ):
+            raise ValueError("checkpoint has invalid completed_iteration")
+
+        actual_invariants = metadata.get("invariants")
+        if not isinstance(actual_invariants, dict):
+            raise ValueError("checkpoint invariant mismatch: invariants")
+        for key, expected in self._checkpoint_invariants().items():
+            if actual_invariants.get(key) != expected:
+                raise ValueError(f"checkpoint invariant mismatch: {key}")
+
+        required_paths = [
+            checkpoint / "defender_meta.pt",
+            checkpoint / "rng_state.pt",
+        ]
+        for name in self.attacker_agents:
+            required_paths.extend(
+                [
+                    checkpoint / f"attacker_{name}.pt",
+                    checkpoint / f"attacker_buffer_{name}.hdf5",
+                ]
+            )
+        missing = [path.name for path in required_paths if not path.is_file()]
+        if missing:
+            raise ValueError(
+                "checkpoint missing required files: " + ", ".join(sorted(missing))
+            )
+
+        defender = TD3Agent(
+            self.obs_dim,
+            self.act_dim,
+            self.td3_cfg,
+            self.device,
+        )
+        defender.load(str(checkpoint / "defender_meta.pt"))
+        attacker_agents: Dict[str, TD3Agent] = {}
+        attacker_buffers: Dict[str, ReplayBuffer] = {}
+        for name in self.attacker_agents:
+            agent = TD3Agent(
+                self.obs_dim,
+                self.attacker_act_dim,
+                self.td3_cfg,
+                self.device,
+            )
+            agent.load(str(checkpoint / f"attacker_{name}.pt"))
+            attacker_agents[name] = agent
+            attacker_buffers[name] = ReplayBuffer.load(
+                checkpoint / f"attacker_buffer_{name}.hdf5",
+                capacity=self.td3_cfg.buffer_capacity,
+                obs_dim=self.obs_dim,
+                act_dim=self.attacker_act_dim,
+            )
+
+        try:
+            rng_state = torch.load(
+                checkpoint / "rng_state.pt",
+                map_location="cpu",
+                weights_only=False,
+            )
+        except (OSError, RuntimeError, ValueError, TypeError) as exc:
+            raise ValueError(f"invalid checkpoint RNG state: {exc}") from exc
+        required_rng_keys = {"python", "numpy", "torch_cpu", "torch_cuda"}
+        if not isinstance(rng_state, dict) or set(rng_state) != required_rng_keys:
+            raise ValueError("invalid checkpoint RNG state keys")
+        if rng_state["torch_cuda"] is not None and not torch.cuda.is_available():
+            raise ValueError("checkpoint contains CUDA RNG state but CUDA is unavailable")
+
+        return _ValidatedCheckpoint(
+            defender=defender,
+            attacker_agents=attacker_agents,
+            attacker_buffers=attacker_buffers,
+            rng_state=rng_state,
+            completed_iteration=completed_iteration,
+        )
+
+    def load(self, directory: str, *, allow_model_only: bool = False) -> None:
+        metadata_path = Path(directory, "checkpoint.json")
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            metadata = {}
+        if metadata.get("schema_version") != CHECKPOINT_SCHEMA_VERSION:
+            if not allow_model_only:
+                raise ValueError(
+                    "checkpoint is model-only; pass allow_model_only=True to accept "
+                    "a discontinuous resume"
+                )
+            self.defender.load(os.path.join(directory, "defender_meta.pt"))
+            for name, agent in self.attacker_agents.items():
+                path = os.path.join(directory, f"attacker_{name}.pt")
+                if os.path.exists(path):
+                    agent.load(path)
+            self.resume_fidelity = "model_only_discontinuity"
+            completed_iteration = metadata.get("completed_iteration")
+            self.loaded_completed_iteration = (
+                int(completed_iteration)
+                if isinstance(completed_iteration, int)
+                and not isinstance(completed_iteration, bool)
+                else None
+            )
+            print(
+                "[MetaSG] WARNING: loaded model-only checkpoint; replay buffers and "
+                "RNG state were not restored",
+                flush=True,
+            )
+            return
+
+        validated = self._validate_checkpoint(directory)
+        self.defender = validated.defender
+        self.attacker_agents = validated.attacker_agents
+        self.attacker_buffers = validated.attacker_buffers
+        self.best_response.attacker_agents = self.attacker_agents
+        self.best_response.attacker_buffers = self.attacker_buffers
+        self.task_runner.attacker_agents = self.attacker_agents
+        self.task_runner.attacker_buffers = self.attacker_buffers
+
+        random.setstate(validated.rng_state["python"])
+        np.random.set_state(validated.rng_state["numpy"])
+        torch.set_rng_state(validated.rng_state["torch_cpu"])
+        if validated.rng_state["torch_cuda"] is not None:
+            torch.cuda.set_rng_state_all(validated.rng_state["torch_cuda"])
+        self.resume_fidelity = "continuous"
+        self.loaded_completed_iteration = validated.completed_iteration
         print(f"[MetaSG] Loaded checkpoint from {directory}")
 
     # ------------------------------------------------------------------

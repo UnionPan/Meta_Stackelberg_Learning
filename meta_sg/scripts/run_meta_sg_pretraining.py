@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
 import sys
 import time
 from dataclasses import asdict
@@ -332,6 +333,11 @@ def parse_args(argv=None):
         help="Run Python GC and best-effort allocator trimming after each completed task.",
     )
     parser.add_argument("--resume-from", default="", help="Checkpoint directory to load before training.")
+    parser.add_argument(
+        "--allow-model-only-resume",
+        action="store_true",
+        help="Explicitly allow a discontinuous legacy resume without replay/RNG state.",
+    )
     parser.add_argument("--start-iteration", type=int, default=0, help="Completed outer iterations before this run.")
     parser.add_argument(
         "--total-iterations",
@@ -340,7 +346,10 @@ def parse_args(argv=None):
         help="Total planned global outer iterations for resumed logging.",
     )
     parser.add_argument("--tensorboard", action="store_true")
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.allow_model_only_resume and not args.resume_from:
+        parser.error("--allow-model-only-resume requires --resume-from")
+    return args
 
 
 def build_meta_config(args) -> MetaSGConfig:
@@ -529,6 +538,7 @@ def probe_obs_dim(args, meta_config: MetaSGConfig) -> int:
 def main(argv=None):
     args = parse_args(argv)
     device = resolve_torch_device(args.device)
+    random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     if device.type == "cuda":
@@ -596,7 +606,18 @@ def main(argv=None):
         ),
     )
     if args.resume_from:
-        trainer.load(args.resume_from)
+        trainer.load(
+            args.resume_from,
+            allow_model_only=args.allow_model_only_resume,
+        )
+        if (
+            trainer.loaded_completed_iteration is not None
+            and trainer.loaded_completed_iteration != args.start_iteration
+        ):
+            raise ValueError(
+                "checkpoint completed_iteration does not match --start-iteration: "
+                f"{trainer.loaded_completed_iteration} != {args.start_iteration}"
+            )
     result = trainer.train()
     trainer.save(str(output_dir / "final"), completed_iteration=result.meta_iterations)
 
