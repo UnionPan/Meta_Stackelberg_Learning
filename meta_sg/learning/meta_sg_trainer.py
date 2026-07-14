@@ -154,6 +154,7 @@ class MetaSGTrainer:
             batch_types = self._sample_attack_types(cfg.K)
             adapted_params: List[Dict] = []
             task_results: List[TaskResult] = []
+            task_elapsed_seconds: List[float] = []
             iter_started_at = time.perf_counter()
 
             for task_index, xi in enumerate(batch_types, start=1):
@@ -171,11 +172,13 @@ class MetaSGTrainer:
                 )
                 adapted_params.append(task_result.adapted_params)
                 task_results.append(task_result)
+                task_elapsed = time.perf_counter() - task_started_at
+                task_elapsed_seconds.append(task_elapsed)
                 if self.log_interval <= 1:
                     print(
                         f"[MetaSG] iter {t + 1}/{self.total_iterations} "
                         f"task {task_index}/{len(batch_types)} done attack={xi.name} "
-                        f"elapsed={time.perf_counter() - task_started_at:.1f}s "
+                        f"elapsed={task_elapsed:.1f}s "
                         f"r_D={task_result.mean_defender_reward:.4f}",
                         flush=True,
                     )
@@ -202,6 +205,7 @@ class MetaSGTrainer:
             self._result.defender_rewards.append(mean_d_rew)
             self._result.reptile_delta_norms.append(reptile_norms["full"])
             self._result.meta_iterations = t + 1
+            iteration_elapsed_seconds = time.perf_counter() - iter_started_at
 
             if (t + 1) % self.log_interval == 0:
                 query_metrics = _query_metric_values(task_results)
@@ -216,15 +220,31 @@ class MetaSGTrainer:
                     f"r_D={mean_d_rew:.4f}  "
                     f"reptile_δ={reptile_norms['actor']:.5f}  "
                     f"{query_suffix}  "
-                    f"elapsed={time.perf_counter() - iter_started_at:.1f}s  "
+                    f"elapsed={iteration_elapsed_seconds:.1f}s  "
                     f"batch={[xi.name for xi in batch_types]}",
                     flush=True,
                 )
 
             if self.writer is not None:
-                self._log_all(t, batch_types, task_results, d_rewards, reptile_norms)
+                self._log_all(
+                    t,
+                    batch_types,
+                    task_results,
+                    d_rewards,
+                    reptile_norms,
+                    task_elapsed_seconds,
+                    iteration_elapsed_seconds,
+                )
 
-            self._write_metrics_record(t, batch_types, task_results, d_rewards, reptile_norms)
+            self._write_metrics_record(
+                t,
+                batch_types,
+                task_results,
+                d_rewards,
+                reptile_norms,
+                task_elapsed_seconds,
+                iteration_elapsed_seconds,
+            )
 
             if (
                 self.checkpoint_dir
@@ -254,6 +274,8 @@ class MetaSGTrainer:
         task_results: List[TaskResult],
         d_rewards: List[float],
         reptile_norms: Dict[str, float],
+        task_elapsed_seconds: Sequence[float],
+        iteration_elapsed_seconds: float,
     ) -> None:
         w = self.writer
 
@@ -285,6 +307,22 @@ class MetaSGTrainer:
         for name, vals in per_attack.items():
             w.add_scalar(f"reward_per_attack/{name}", float(np.mean(vals)), t)
             self._result.per_attack_rewards.setdefault(name, []).append(float(np.mean(vals)))
+
+        per_attack_diag: Dict[str, Dict[str, List[float]]] = defaultdict(
+            lambda: defaultdict(list)
+        )
+        for result in task_results:
+            for key in ("clean_acc", "backdoor_acc"):
+                value = result.diagnostics.get(key)
+                if value is not None and math.isfinite(float(value)):
+                    per_attack_diag[result.attack_type.name][key].append(float(value))
+        for attack_name, diagnostic_buckets in per_attack_diag.items():
+            for key, values in diagnostic_buckets.items():
+                w.add_scalar(
+                    f"metrics_per_attack/{attack_name}_{key}",
+                    float(np.mean(values)),
+                    t,
+                )
 
         # ── td3/defender/ ─────────────────────────────────────────────
         def_losses = _aggregate_task_losses([r.defender_losses for r in task_results])
@@ -361,6 +399,18 @@ class MetaSGTrainer:
         local_buf_sizes = [r.diagnostics.get("buffer_size", 0) for r in task_results]
         w.add_scalar("buffers/local_defender_mean", float(np.mean(local_buf_sizes)), t)
 
+        # ── timing/ ───────────────────────────────────────────────────
+        w.add_scalar("timing/iteration_elapsed_seconds", iteration_elapsed_seconds, t)
+        per_attack_elapsed: Dict[str, List[float]] = defaultdict(list)
+        for result, elapsed in zip(task_results, task_elapsed_seconds):
+            per_attack_elapsed[result.attack_type.name].append(float(elapsed))
+        for name, values in per_attack_elapsed.items():
+            w.add_scalar(
+                f"timing/task_{name}_elapsed_seconds",
+                float(np.mean(values)),
+                t,
+            )
+
     def _write_metrics_record(
         self,
         t: int,
@@ -368,6 +418,8 @@ class MetaSGTrainer:
         task_results: List[TaskResult],
         d_rewards: List[float],
         reptile_norms: Dict[str, float],
+        task_elapsed_seconds: Sequence[float],
+        iteration_elapsed_seconds: float,
     ) -> None:
         if not self.metrics_jsonl_path:
             return
@@ -396,12 +448,32 @@ class MetaSGTrainer:
         for result in task_results:
             per_attack[result.attack_type.name].append(result.mean_defender_reward)
 
+        defender_losses = _aggregate_task_losses(
+            [result.defender_losses for result in task_results]
+        )
+        attacker_losses: Dict[str, Dict[str, float]] = {}
+        attacker_loss_buckets: Dict[str, List[Dict]] = defaultdict(list)
+        for result in task_results:
+            if result.attacker_br_losses:
+                attacker_loss_buckets[result.attack_type.name].append(
+                    result.attacker_br_losses
+                )
+        for name, loss_dicts in attacker_loss_buckets.items():
+            attacker_losses[name] = _aggregate_task_losses(loss_dicts)
+
+        inner_delta_norms = [float(result.inner_delta_norm) for result in task_results]
+        local_buffer_sizes = [
+            int(result.diagnostics.get("buffer_size", 0)) for result in task_results
+        ]
+
         record = {
             "iteration": int(t + 1),
             "local_iteration": int(t - self.start_iteration + 1),
             "batch_attack_types": [xi.name for xi in batch_types],
             "reward_mean": float(np.mean(d_rewards)) if d_rewards else float("nan"),
             "reward_std": float(np.std(d_rewards)) if d_rewards else float("nan"),
+            "reward_min": float(np.min(d_rewards)) if d_rewards else float("nan"),
+            "reward_max": float(np.max(d_rewards)) if d_rewards else float("nan"),
             "attacker_reward_mean": float(np.mean(a_rewards)) if a_rewards else float("nan"),
             "adaptive_fraction": float(np.mean([xi.adaptive for xi in batch_types])) if batch_types else 0.0,
             "clean_acc": env_diag.get("clean_acc"),
@@ -412,11 +484,42 @@ class MetaSGTrainer:
             "per_attack_reward_mean": {
                 name: float(np.mean(vals)) for name, vals in per_attack.items()
             },
+            "defender_losses": defender_losses,
+            "attacker_losses": attacker_losses,
+            "inner_delta_norm_mean": (
+                float(np.mean(inner_delta_norms)) if inner_delta_norms else float("nan")
+            ),
+            "inner_delta_norm_min": (
+                float(np.min(inner_delta_norms)) if inner_delta_norms else float("nan")
+            ),
+            "inner_delta_norm_max": (
+                float(np.max(inner_delta_norms)) if inner_delta_norms else float("nan")
+            ),
+            "trajectories_collected": int(
+                sum(result.trajectories_collected for result in task_results)
+            ),
+            "transitions_collected": int(
+                sum(result.transitions_collected for result in task_results)
+            ),
+            "buffer_sizes": {
+                "local_defender_mean": (
+                    float(np.mean(local_buffer_sizes)) if local_buffer_sizes else 0.0
+                ),
+                "local_defender_per_task": local_buffer_sizes,
+                "attackers": {
+                    name: int(len(buffer)) for name, buffer in self.attacker_buffers.items()
+                },
+            },
+            "iteration_elapsed_seconds": float(iteration_elapsed_seconds),
+            "task_records": [
+                _task_metrics_record(result, elapsed)
+                for result, elapsed in zip(task_results, task_elapsed_seconds)
+            ],
         }
         record.update(_query_metric_values(task_results))
         record.update(action_diag)
         with open(self.metrics_jsonl_path, "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(record, sort_keys=True) + "\n")
+            fh.write(json.dumps(_json_safe(record), allow_nan=False, sort_keys=True) + "\n")
 
     # ------------------------------------------------------------------
     # Reptile meta-update
@@ -579,6 +682,56 @@ class MetaSGTrainer:
 
 
 # ── Module-level helpers ──────────────────────────────────────────────────────
+
+def _json_safe(value):
+    """Return bounded metrics data with standards-compliant JSON scalars."""
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, np.ndarray):
+        return [_json_safe(item) for item in value.tolist()]
+    if isinstance(value, (bool, np.bool_)):
+        return bool(value)
+    if isinstance(value, (np.floating, float)):
+        number = float(value)
+        return number if math.isfinite(number) else None
+    if isinstance(value, (np.integer, int)):
+        return int(value)
+    return value
+
+
+def _task_metrics_record(result: TaskResult, elapsed_seconds: float) -> Dict:
+    return {
+        "attack_type": str(result.attack_type.name),
+        "attack_objective": str(result.attack_type.objective),
+        "adaptive": bool(result.attack_type.adaptive),
+        "mean_defender_reward": float(result.mean_defender_reward),
+        "mean_attacker_reward": float(result.mean_attacker_reward),
+        "defender_reward_sum": float(result.defender_reward_sum),
+        "trajectories_collected": int(result.trajectories_collected),
+        "transitions_collected": int(result.transitions_collected),
+        "defender_losses": dict(result.defender_losses),
+        "attacker_losses": dict(result.attacker_br_losses),
+        "inner_delta_norm": float(result.inner_delta_norm),
+        "query": {
+            "base_reward": float(result.query_base_reward),
+            "adapted_reward": float(result.query_adapted_reward),
+            "gain": float(result.query_gain),
+            "base_clean_acc": float(result.query_base_clean_acc),
+            "adapted_clean_acc": float(result.query_adapted_clean_acc),
+            "clean_drop": float(result.query_clean_drop),
+            "base_backdoor_acc": float(result.query_base_backdoor_acc),
+            "adapted_backdoor_acc": float(result.query_adapted_backdoor_acc),
+            "gain_accepted": bool(result.query_gain_accepted),
+            "clean_accepted": bool(result.query_clean_accepted),
+            "backdoor_accepted": bool(result.query_backdoor_accepted),
+            "accepted": bool(result.query_accepted),
+        },
+        "diagnostics": dict(result.diagnostics),
+        "elapsed_seconds": float(elapsed_seconds),
+    }
+
 
 def _mean_diag_values(task_results: List[TaskResult], *keys: str) -> Dict[str, float]:
     """Mean of diagnostics[key] over all task results (ignores NaN)."""

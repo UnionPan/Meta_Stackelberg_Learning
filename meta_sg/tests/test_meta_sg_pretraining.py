@@ -3967,6 +3967,23 @@ def test_pretraining_script_writes_traceable_metrics_and_latest_checkpoint(tmp_p
     assert json.loads(summary_path.read_text())["meta_iterations"] == 2
     assert json.loads(config_path.read_text())["args"]["checkpoint_interval"] == 1
     assert json.loads(config_path.read_text())["resolved_device"] == "cpu"
+    record = records[-1]
+    assert {"reward_min", "reward_max", "iteration_elapsed_seconds"} <= record.keys()
+    assert {
+        "defender_losses",
+        "attacker_losses",
+        "buffer_sizes",
+        "task_records",
+    } <= record.keys()
+    assert len(record["task_records"]) == 1
+    task = record["task_records"][0]
+    assert {
+        "attack_type",
+        "elapsed_seconds",
+        "transitions_collected",
+        "diagnostics",
+    } <= task.keys()
+    json.dumps(record, allow_nan=False)
 
 
 def test_pretraining_latest_only_checkpoint_replaces_history_and_records_iteration(tmp_path):
