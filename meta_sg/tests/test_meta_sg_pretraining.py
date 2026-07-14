@@ -4505,6 +4505,63 @@ def test_4d_global_backdoor_job_defaults_to_checkpoint_every_five_iterations():
     assert 'CHECKPOINT_INTERVAL="${CHECKPOINT_INTERVAL:-5}"' in script.read_text()
 
 
+def test_experiment_artifacts_status_preserves_stage_history(tmp_path):
+    from meta_sg.scripts.experiment_artifacts import main
+
+    status_path = tmp_path / "status.json"
+    main(
+        [
+            "status",
+            "--output",
+            str(status_path),
+            "--stage",
+            "initializing",
+            "--message",
+            "run created",
+        ]
+    )
+    main(
+        [
+            "status",
+            "--output",
+            str(status_path),
+            "--stage",
+            "training",
+            "--message",
+            "started",
+            "--last-completed-iteration",
+            "0",
+        ]
+    )
+
+    status = json.loads(status_path.read_text())
+    assert status["stage"] == "training"
+    assert status["message"] == "started"
+    assert status["last_completed_iteration"] == 0
+    assert [entry["stage"] for entry in status["history"]] == [
+        "initializing",
+        "training",
+    ]
+    json.dumps(status, allow_nan=False)
+
+
+def test_global_model_poisoning_h200_launcher_has_observable_job_contract():
+    script = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "run_global_model_poisoning_h200_30c6a.sh"
+    )
+    text = script.read_text()
+
+    assert 'CHECKPOINT_INTERVAL="${CHECKPOINT_INTERVAL:-10}"' in text
+    assert "--latest-checkpoint-only" in text
+    assert "--summary-json" in text
+    assert "experiment_artifacts.py provenance" in text
+    assert "experiment_artifacts.py status" in text
+    assert "resource_metrics.csv" in text
+    assert "--scenario-set model_poisoning" in text
+
+
 def test_curriculum_job_runs_three_domains_with_short_then_full_schedule():
     script = (
         Path(__file__).resolve().parents[1]
