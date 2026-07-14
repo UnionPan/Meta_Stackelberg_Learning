@@ -19,6 +19,13 @@ BACKEND="${BACKEND:-fl_sandbox}"
 DEVICE="${DEVICE:-cuda:0}"
 RESUME_FROM="${RESUME_FROM:-}"
 START_ITERATION="${START_ITERATION:-0}"
+if [[ -z "${POST_DEFENSE_MODE:-}" ]]; then
+  if [[ "${BACKEND}" == "stub" ]]; then
+    POST_DEFENSE_MODE="weight_copy"
+  else
+    POST_DEFENSE_MODE="model_aware_neuroclip"
+  fi
+fi
 
 T="${T:-100}"
 K="${K:-10}"
@@ -194,6 +201,7 @@ cd "${ROOT_DIR}"
   --evaluation-seed "${EVALUATION_SEED}" \
   --device "${DEVICE}" \
   --config "backend=${BACKEND}" \
+  --config "post_defense_mode=${POST_DEFENSE_MODE}" \
   --config "run_id=${RUN_ID}" \
   --config "T=${T}" \
   --config "K=${K}" \
@@ -228,7 +236,7 @@ training_command=(
   --meta-step "${META_STEP}"
   --query-diagnostics-horizon "${H}"
   --defender-third-action neuroclip
-  --post-defense-mode model_aware_neuroclip
+  --post-defense-mode "${POST_DEFENSE_MODE}"
   --neuroclip-eps-min 1.0
   --neuroclip-eps-max 10.0
   --num-clients "${NUM_CLIENTS}"
@@ -293,7 +301,7 @@ evaluation_command=(
   --seed "${EVALUATION_SEED}"
   --rl-seed "${EVALUATION_SEED}"
   --defender-third-action neuroclip
-  --post-defense-mode model_aware_neuroclip
+  --post-defense-mode "${POST_DEFENSE_MODE}"
   --neuroclip-eps-min 1.0
   --neuroclip-eps-max 10.0
 )

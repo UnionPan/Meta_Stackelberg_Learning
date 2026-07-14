@@ -4562,6 +4562,19 @@ def test_global_model_poisoning_h200_launcher_has_observable_job_contract():
     assert "--scenario-set model_poisoning" in text
 
 
+def test_global_model_poisoning_h200_launcher_uses_weight_copy_for_stub_smoke():
+    script = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "run_global_model_poisoning_h200_30c6a.sh"
+    )
+    text = script.read_text()
+
+    assert 'if [[ "${BACKEND}" == "stub" ]]' in text
+    assert 'POST_DEFENSE_MODE="weight_copy"' in text
+    assert text.count('--post-defense-mode "${POST_DEFENSE_MODE}"') == 2
+
+
 def test_curriculum_job_runs_three_domains_with_short_then_full_schedule():
     script = (
         Path(__file__).resolve().parents[1]
