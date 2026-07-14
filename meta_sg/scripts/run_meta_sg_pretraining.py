@@ -21,6 +21,7 @@ import torch
 
 from meta_sg.games.bsmg_env import BSMGConfig, BSMGEnv
 from meta_sg.learning.config import MetaSGConfig, TD3Config
+from meta_sg.learning.memory_maintenance import perform_memory_maintenance
 from meta_sg.learning.meta_sg_trainer import MetaSGTrainer
 from meta_sg.learning.task_runner import NativeSandboxAttackMarker
 from meta_sg.simulation.fl_sandbox_adapter import FLSandboxCoordinatorAdapter, SandboxConfig
@@ -324,6 +325,12 @@ def parse_args(argv=None):
         action="store_true",
         help="Replace checkpoints/latest without retaining iter_NNNN history.",
     )
+    parser.add_argument(
+        "--memory-maintenance",
+        choices=("off", "task"),
+        default="off",
+        help="Run Python GC and best-effort allocator trimming after each completed task.",
+    )
     parser.add_argument("--resume-from", default="", help="Checkpoint directory to load before training.")
     parser.add_argument("--start-iteration", type=int, default=0, help="Completed outer iterations before this run.")
     parser.add_argument(
@@ -582,6 +589,11 @@ def main(argv=None):
         metrics_jsonl_path=str(output_dir / "metrics.jsonl"),
         start_iteration=args.start_iteration,
         total_iterations=args.total_iterations,
+        memory_maintenance=(
+            perform_memory_maintenance
+            if args.memory_maintenance == "task"
+            else None
+        ),
     )
     if args.resume_from:
         trainer.load(args.resume_from)

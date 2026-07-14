@@ -28,6 +28,7 @@ import torch
 
 from meta_sg.learning.best_response import AttackerBestResponse
 from meta_sg.learning.config import MetaSGConfig, TD3Config
+from meta_sg.learning.memory_maintenance import MemoryMaintenanceResult
 from meta_sg.learning.replay_buffer import ReplayBuffer
 from meta_sg.learning.task_runner import (
     AttackTaskRunner,
@@ -84,6 +85,7 @@ class MetaSGTrainer:
         metrics_jsonl_path: Optional[str] = None,
         start_iteration: int = 0,
         total_iterations: Optional[int] = None,
+        memory_maintenance: Callable[[], MemoryMaintenanceResult] | None = None,
     ) -> None:
         self.coordinator_factory = coordinator_factory
         self.attack_domain = list(attack_domain)
@@ -103,6 +105,7 @@ class MetaSGTrainer:
         self.metrics_jsonl_path = metrics_jsonl_path
         self.start_iteration = max(0, int(start_iteration))
         self.total_iterations = int(total_iterations or (self.start_iteration + meta_config.T))
+        self.memory_maintenance = memory_maintenance
         if self.metrics_jsonl_path:
             Path(self.metrics_jsonl_path).parent.mkdir(parents=True, exist_ok=True)
 
@@ -155,6 +158,7 @@ class MetaSGTrainer:
             adapted_params: List[Dict] = []
             task_results: List[TaskResult] = []
             task_elapsed_seconds: List[float] = []
+            task_memory_maintenance: List[MemoryMaintenanceResult | None] = []
             iter_started_at = time.perf_counter()
 
             for task_index, xi in enumerate(batch_types, start=1):
@@ -174,6 +178,12 @@ class MetaSGTrainer:
                 task_results.append(task_result)
                 task_elapsed = time.perf_counter() - task_started_at
                 task_elapsed_seconds.append(task_elapsed)
+                maintenance_result = (
+                    self.memory_maintenance()
+                    if self.memory_maintenance is not None
+                    else None
+                )
+                task_memory_maintenance.append(maintenance_result)
                 if self.log_interval <= 1:
                     print(
                         f"[MetaSG] iter {t + 1}/{self.total_iterations} "
@@ -233,6 +243,7 @@ class MetaSGTrainer:
                     d_rewards,
                     reptile_norms,
                     task_elapsed_seconds,
+                    task_memory_maintenance,
                     iteration_elapsed_seconds,
                 )
 
@@ -243,6 +254,7 @@ class MetaSGTrainer:
                 d_rewards,
                 reptile_norms,
                 task_elapsed_seconds,
+                task_memory_maintenance,
                 iteration_elapsed_seconds,
             )
 
@@ -275,6 +287,7 @@ class MetaSGTrainer:
         d_rewards: List[float],
         reptile_norms: Dict[str, float],
         task_elapsed_seconds: Sequence[float],
+        task_memory_maintenance: Sequence[MemoryMaintenanceResult | None],
         iteration_elapsed_seconds: float,
     ) -> None:
         w = self.writer
@@ -410,6 +423,24 @@ class MetaSGTrainer:
                 float(np.mean(values)),
                 t,
             )
+        maintenance_metrics = _memory_maintenance_metrics(task_memory_maintenance)
+        if maintenance_metrics is not None:
+            w.add_scalar(
+                "memory_maintenance/elapsed_seconds",
+                maintenance_metrics["elapsed_seconds"],
+                t,
+            )
+            w.add_scalar(
+                "memory_maintenance/objects_collected",
+                maintenance_metrics["objects_collected"],
+                t,
+            )
+            if maintenance_metrics["rss_released_kib"] is not None:
+                w.add_scalar(
+                    "memory_maintenance/rss_released_kib",
+                    maintenance_metrics["rss_released_kib"],
+                    t,
+                )
 
     def _write_metrics_record(
         self,
@@ -419,6 +450,7 @@ class MetaSGTrainer:
         d_rewards: List[float],
         reptile_norms: Dict[str, float],
         task_elapsed_seconds: Sequence[float],
+        task_memory_maintenance: Sequence[MemoryMaintenanceResult | None],
         iteration_elapsed_seconds: float,
     ) -> None:
         if not self.metrics_jsonl_path:
@@ -512,10 +544,17 @@ class MetaSGTrainer:
             },
             "iteration_elapsed_seconds": float(iteration_elapsed_seconds),
             "task_records": [
-                _task_metrics_record(result, elapsed)
-                for result, elapsed in zip(task_results, task_elapsed_seconds)
+                _task_metrics_record(result, elapsed, maintenance)
+                for result, elapsed, maintenance in zip(
+                    task_results,
+                    task_elapsed_seconds,
+                    task_memory_maintenance,
+                )
             ],
         }
+        maintenance_metrics = _memory_maintenance_metrics(task_memory_maintenance)
+        if maintenance_metrics is not None:
+            record["memory_maintenance"] = maintenance_metrics
         record.update(_query_metric_values(task_results))
         record.update(action_diag)
         with open(self.metrics_jsonl_path, "a", encoding="utf-8") as fh:
@@ -701,8 +740,12 @@ def _json_safe(value):
     return value
 
 
-def _task_metrics_record(result: TaskResult, elapsed_seconds: float) -> Dict:
-    return {
+def _task_metrics_record(
+    result: TaskResult,
+    elapsed_seconds: float,
+    memory_maintenance: MemoryMaintenanceResult | None = None,
+) -> Dict:
+    record = {
         "attack_type": str(result.attack_type.name),
         "attack_objective": str(result.attack_type.objective),
         "adaptive": bool(result.attack_type.adaptive),
@@ -730,6 +773,39 @@ def _task_metrics_record(result: TaskResult, elapsed_seconds: float) -> Dict:
         },
         "diagnostics": dict(result.diagnostics),
         "elapsed_seconds": float(elapsed_seconds),
+    }
+    if memory_maintenance is not None:
+        record["memory_maintenance"] = memory_maintenance.as_dict()
+    return record
+
+
+def _memory_maintenance_metrics(
+    results: Sequence[MemoryMaintenanceResult | None],
+) -> Dict[str, object] | None:
+    completed = [result for result in results if result is not None]
+    if not completed:
+        return None
+    released = [
+        result.rss_released_kib
+        for result in completed
+        if result.rss_released_kib is not None
+    ]
+    return {
+        "calls": len(completed),
+        "elapsed_seconds": float(sum(result.elapsed_seconds for result in completed)),
+        "objects_collected": int(
+            sum(result.objects_collected for result in completed)
+        ),
+        "rss_released_kib": int(sum(released)) if released else None,
+        "malloc_trim_supported_calls": int(
+            sum(result.malloc_trim_supported for result in completed)
+        ),
+        "malloc_trim_succeeded_calls": int(
+            sum(result.malloc_trim_succeeded for result in completed)
+        ),
+        "warnings": [
+            result.warning for result in completed if result.warning is not None
+        ],
     }
 
 
