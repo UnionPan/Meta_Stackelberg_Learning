@@ -4705,6 +4705,10 @@ def test_global_model_poisoning_h200_launcher_has_observable_job_contract():
     assert "--allow-model-only-resume" in text
     assert 'export MALLOC_ARENA_MAX="${MALLOC_ARENA_MAX:-2}"' in text
     assert '--config "malloc_arena_max=${MALLOC_ARENA_MAX}"' in text
+    assert 'QUERY_DIAGNOSTICS_HORIZON="${QUERY_DIAGNOSTICS_HORIZON:-20}"' in text
+    assert 'FL_PARALLEL_CLIENTS="${FL_PARALLEL_CLIENTS:-4}"' in text
+    assert '--query-diagnostics-horizon "${QUERY_DIAGNOSTICS_HORIZON}"' in text
+    assert '--config "query_diagnostics_horizon=${QUERY_DIAGNOSTICS_HORIZON}"' in text
 
 
 def test_global_model_poisoning_h200_launcher_appends_a_stub_resume(tmp_path):
@@ -4720,6 +4724,7 @@ def test_global_model_poisoning_h200_launcher_appends_a_stub_resume(tmp_path):
         "T": "1",
         "K": "1",
         "H": "1",
+        "QUERY_DIAGNOSTICS_HORIZON": "1",
         "L": "1",
         "N_A": "1",
         "TOTAL_ITERATIONS": "2",

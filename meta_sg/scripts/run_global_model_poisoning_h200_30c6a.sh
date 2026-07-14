@@ -34,6 +34,7 @@ fi
 T="${T:-100}"
 K="${K:-10}"
 H="${H:-200}"
+QUERY_DIAGNOSTICS_HORIZON="${QUERY_DIAGNOSTICS_HORIZON:-20}"
 L="${L:-10}"
 N_A="${N_A:-10}"
 SUPPORT_EPISODES="${SUPPORT_EPISODES:-1}"
@@ -47,7 +48,7 @@ CLIENT_SAMPLES="${CLIENT_SAMPLES:-64}"
 EVAL_SAMPLES="${EVAL_SAMPLES:-500}"
 FL_BATCH_SIZE="${FL_BATCH_SIZE:-32}"
 EVAL_BATCH_SIZE="${EVAL_BATCH_SIZE:-256}"
-FL_PARALLEL_CLIENTS="${FL_PARALLEL_CLIENTS:-2}"
+FL_PARALLEL_CLIENTS="${FL_PARALLEL_CLIENTS:-4}"
 FL_NUM_WORKERS="${FL_NUM_WORKERS:-0}"
 
 HIDDEN_DIM="${HIDDEN_DIM:-256}"
@@ -261,6 +262,7 @@ if [[ ! -f "${PROVENANCE_JSON}" ]]; then
     --config "T=${T}" \
     --config "K=${K}" \
     --config "H=${H}" \
+    --config "query_diagnostics_horizon=${QUERY_DIAGNOSTICS_HORIZON}" \
     --config "l=${L}" \
     --config "N_A=${N_A}" \
     --config "checkpoint_interval=${CHECKPOINT_INTERVAL}" \
@@ -296,7 +298,7 @@ training_command=(
   --task-sampler stratified
   --meta-objective reptile
   --meta-step "${META_STEP}"
-  --query-diagnostics-horizon "${H}"
+  --query-diagnostics-horizon "${QUERY_DIAGNOSTICS_HORIZON}"
   --defender-third-action neuroclip
   --post-defense-mode "${POST_DEFENSE_MODE}"
   --neuroclip-eps-min 1.0
