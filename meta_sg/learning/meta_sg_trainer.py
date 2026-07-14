@@ -14,9 +14,12 @@ from __future__ import annotations
 import math
 import os
 import json
+import shutil
 import time
+import uuid
 from collections import defaultdict
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence
 
@@ -76,6 +79,8 @@ class MetaSGTrainer:
         writer=None,
         checkpoint_dir: Optional[str] = None,
         checkpoint_interval: int = 0,
+        checkpoint_latest_only: bool = False,
+        checkpoint_master_seed: Optional[int] = None,
         metrics_jsonl_path: Optional[str] = None,
         start_iteration: int = 0,
         total_iterations: Optional[int] = None,
@@ -91,6 +96,10 @@ class MetaSGTrainer:
         self.writer = writer
         self.checkpoint_dir = checkpoint_dir
         self.checkpoint_interval = max(0, int(checkpoint_interval))
+        self.checkpoint_latest_only = bool(checkpoint_latest_only)
+        self.checkpoint_master_seed = (
+            None if checkpoint_master_seed is None else int(checkpoint_master_seed)
+        )
         self.metrics_jsonl_path = metrics_jsonl_path
         self.start_iteration = max(0, int(start_iteration))
         self.total_iterations = int(total_iterations or (self.start_iteration + meta_config.T))
@@ -222,8 +231,15 @@ class MetaSGTrainer:
                 and self.checkpoint_interval > 0
                 and (t + 1) % self.checkpoint_interval == 0
             ):
-                self.save(os.path.join(self.checkpoint_dir, f"iter_{t + 1:04d}"))
-                self.save(os.path.join(self.checkpoint_dir, "latest"))
+                latest_path = os.path.join(self.checkpoint_dir, "latest")
+                if self.checkpoint_latest_only:
+                    self.save(latest_path, completed_iteration=t + 1, replace=True)
+                else:
+                    self.save(
+                        os.path.join(self.checkpoint_dir, f"iter_{t + 1:04d}"),
+                        completed_iteration=t + 1,
+                    )
+                    self.save(latest_path, completed_iteration=t + 1, replace=True)
 
         return self._result
 
@@ -449,12 +465,80 @@ class MetaSGTrainer:
     # Checkpointing
     # ------------------------------------------------------------------
 
-    def save(self, directory: str) -> None:
+    def save(
+        self,
+        directory: str,
+        *,
+        completed_iteration: Optional[int] = None,
+        replace: bool = False,
+    ) -> None:
+        if replace:
+            self._replace_checkpoint_directory(
+                directory,
+                completed_iteration=completed_iteration,
+            )
+        else:
+            self._write_checkpoint_directory(
+                directory,
+                completed_iteration=completed_iteration,
+            )
+        print(f"[MetaSG] Saved checkpoint to {directory}")
+
+    def _write_checkpoint_directory(
+        self,
+        directory: str | os.PathLike[str],
+        *,
+        completed_iteration: Optional[int],
+    ) -> None:
+        directory = os.fspath(directory)
         os.makedirs(directory, exist_ok=True)
         self.defender.save(os.path.join(directory, "defender_meta.pt"))
         for name, agent in self.attacker_agents.items():
             agent.save(os.path.join(directory, f"attacker_{name}.pt"))
-        print(f"[MetaSG] Saved checkpoint to {directory}")
+        if completed_iteration is not None:
+            metadata = {
+                "completed_iteration": int(completed_iteration),
+                "master_seed": self.checkpoint_master_seed,
+                "saved_at": datetime.now(timezone.utc).isoformat(),
+            }
+            Path(directory, "checkpoint.json").write_text(
+                json.dumps(metadata, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+
+    def _replace_checkpoint_directory(
+        self,
+        directory: str | os.PathLike[str],
+        *,
+        completed_iteration: Optional[int],
+    ) -> None:
+        destination = Path(directory)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        suffix = f"{os.getpid()}-{uuid.uuid4().hex}"
+        staging = destination.parent / f".{destination.name}.staging-{suffix}"
+        backup = destination.parent / f".{destination.name}.backup-{suffix}"
+        moved_existing = False
+
+        try:
+            self._write_checkpoint_directory(
+                staging,
+                completed_iteration=completed_iteration,
+            )
+            if destination.exists():
+                os.replace(destination, backup)
+                moved_existing = True
+            os.replace(staging, destination)
+        except BaseException:
+            if staging.exists():
+                shutil.rmtree(staging, ignore_errors=True)
+            if moved_existing and backup.exists():
+                if destination.exists():
+                    shutil.rmtree(destination, ignore_errors=True)
+                os.replace(backup, destination)
+            raise
+        else:
+            if backup.exists():
+                shutil.rmtree(backup)
 
     def load(self, directory: str) -> None:
         self.defender.load(os.path.join(directory, "defender_meta.pt"))

@@ -3969,6 +3969,59 @@ def test_pretraining_script_writes_traceable_metrics_and_latest_checkpoint(tmp_p
     assert json.loads(config_path.read_text())["resolved_device"] == "cpu"
 
 
+def test_pretraining_latest_only_checkpoint_replaces_history_and_records_iteration(tmp_path):
+    from meta_sg.scripts.run_meta_sg_pretraining import main
+
+    main(
+        [
+            "--backend",
+            "stub",
+            "--output-dir",
+            str(tmp_path),
+            "--run-name",
+            "run",
+            "--T",
+            "2",
+            "--K",
+            "1",
+            "--H",
+            "1",
+            "--l",
+            "1",
+            "--N-A",
+            "1",
+            "--post-br-defender-updates",
+            "0",
+            "--hidden-dim",
+            "8",
+            "--batch-size",
+            "2",
+            "--buffer-capacity",
+            "32",
+            "--num-clients",
+            "6",
+            "--num-attackers",
+            "1",
+            "--subsample-rate",
+            "1.0",
+            "--seed",
+            "42",
+            "--device",
+            "cpu",
+            "--checkpoint-interval",
+            "1",
+            "--latest-checkpoint-only",
+        ]
+    )
+
+    checkpoint_root = tmp_path / "run" / "checkpoints"
+    assert sorted(path.name for path in checkpoint_root.iterdir()) == ["latest"]
+    metadata = json.loads((checkpoint_root / "latest" / "checkpoint.json").read_text())
+    assert metadata["completed_iteration"] == 2
+    assert metadata["master_seed"] == 42
+    assert (checkpoint_root / "latest" / "defender_meta.pt").exists()
+
+
 def test_pretraining_script_can_train_transition_server_lr_defender(tmp_path):
     from meta_sg.scripts.run_meta_sg_pretraining import main
 

@@ -136,6 +136,11 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--backend", choices=["stub", "fl_sandbox"], default="fl_sandbox")
     parser.add_argument("--output-dir", default="runs/meta_sg_pretraining")
+    parser.add_argument(
+        "--run-name",
+        default="",
+        help="Exact child directory under --output-dir; timestamped when empty.",
+    )
     parser.add_argument("--dataset", choices=["mnist", "cifar10"], default="mnist")
     parser.add_argument(
         "--attack-domain",
@@ -314,6 +319,11 @@ def parse_args(argv=None):
     parser.add_argument("--device", default="auto", help="Torch device: auto, cpu, cuda, cuda:0")
     parser.add_argument("--log-interval", type=int, default=5)
     parser.add_argument("--checkpoint-interval", type=int, default=25)
+    parser.add_argument(
+        "--latest-checkpoint-only",
+        action="store_true",
+        help="Replace checkpoints/latest without retaining iter_NNNN history.",
+    )
     parser.add_argument("--resume-from", default="", help="Checkpoint directory to load before training.")
     parser.add_argument("--start-iteration", type=int, default=0, help="Completed outer iterations before this run.")
     parser.add_argument(
@@ -517,7 +527,8 @@ def main(argv=None):
     if device.type == "cuda":
         torch.cuda.manual_seed_all(args.seed)
 
-    output_dir = Path(args.output_dir) / time.strftime("%Y%m%d-%H%M%S")
+    run_name = str(args.run_name).strip() or time.strftime("%Y%m%d-%H%M%S")
+    output_dir = Path(args.output_dir) / run_name
     output_dir.mkdir(parents=True, exist_ok=True)
 
     writer = None
@@ -566,6 +577,8 @@ def main(argv=None):
         writer=writer,
         checkpoint_dir=str(output_dir / "checkpoints"),
         checkpoint_interval=args.checkpoint_interval,
+        checkpoint_latest_only=args.latest_checkpoint_only,
+        checkpoint_master_seed=args.seed,
         metrics_jsonl_path=str(output_dir / "metrics.jsonl"),
         start_iteration=args.start_iteration,
         total_iterations=args.total_iterations,
@@ -573,7 +586,7 @@ def main(argv=None):
     if args.resume_from:
         trainer.load(args.resume_from)
     result = trainer.train()
-    trainer.save(str(output_dir / "final"))
+    trainer.save(str(output_dir / "final"), completed_iteration=result.meta_iterations)
 
     summary = {
         "meta_iterations": int(result.meta_iterations),
