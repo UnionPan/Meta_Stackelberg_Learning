@@ -726,6 +726,97 @@ def test_direct_eval_script_threads_server_lr_penalty_to_bsmg_config():
     assert cfg.server_lr_penalty_weight == pytest.approx(0.5)
 
 
+def test_direct_eval_records_requested_horizon_round_metrics_and_summary(monkeypatch):
+    import meta_sg.scripts.evaluate_meta_sg_direct as direct_eval
+
+    args = direct_eval.parse_args(
+        [
+            "--checkpoint",
+            "dummy.pt",
+            "--output-json",
+            "out.json",
+            "--H",
+            "7",
+            "--lambda-bd",
+            "2.0",
+            "--defender-third-action",
+            "both",
+        ]
+    )
+    scenario = direct_eval._scenarios(args)[0]
+
+    class FakeEnv:
+        def __init__(self):
+            self.round = 0
+
+        def reset(self, seed):
+            del seed
+            self.round = 0
+            return np.zeros(3, dtype=np.float32)
+
+        def step(self, defender_action, attacker_action):
+            del defender_action, attacker_action
+            self.round += 1
+            info = {
+                "clean_acc": 0.80 + 0.01 * self.round,
+                "backdoor_acc": 0.10 - 0.01 * self.round,
+                "server_lr_penalty": 0.001 * self.round,
+                "defense_decision": DefenseDecision(
+                    norm_bound_alpha=2.0 + self.round,
+                    trimmed_mean_beta=0.1,
+                    neuroclip_epsilon=4.0,
+                    server_lr=0.8,
+                ),
+                "non_scalar_payload": {"must": "not leak"},
+            }
+            return (
+                np.full(3, self.round, dtype=np.float32),
+                0.5 + 0.01 * self.round,
+                -0.5 - 0.01 * self.round,
+                False,
+                info,
+            )
+
+    class FakeDefender:
+        def reset(self):
+            return None
+
+        def get_action(self, obs, noise=0.0):
+            del obs, noise
+            return np.zeros(4, dtype=np.float32)
+
+    monkeypatch.setattr(direct_eval, "_make_env", lambda *args, **kwargs: FakeEnv())
+
+    record = direct_eval._evaluate_scenario_at(
+        args,
+        FakeDefender(),
+        scenario,
+        seed=123,
+        horizon=3,
+    )
+
+    assert record["horizon"] == 3
+    assert len(record["round_metrics"]) == 3
+    assert record["round_metrics"][-1]["round"] == 3
+    assert record["round_metrics"][-1]["clean_acc"] == pytest.approx(0.83)
+    assert "non_scalar_payload" not in record["round_metrics"][-1]
+    json.dumps(record["round_metrics"], allow_nan=False)
+
+    summary = direct_eval.summarize_evaluation_records(
+        [record],
+        checkpoint="final",
+        master_seed=42,
+        evaluation_seed=10042,
+    )
+    scenario_summary = summary["scenarios"][record["scenario"]]
+    assert summary["single_seed"] is True
+    assert summary["confidence_interval"] is None
+    assert scenario_summary["rounds"] == 3
+    assert scenario_summary["metrics"]["clean_acc"]["final"] == pytest.approx(0.83)
+    assert scenario_summary["metrics"]["clean_acc"]["worst_round"] == 1
+    json.dumps(summary, allow_nan=False)
+
+
 def test_direct_eval_script_accepts_model_aware_neuroclip_overlay_args():
     from meta_sg.scripts.evaluate_meta_sg_direct import parse_args
 

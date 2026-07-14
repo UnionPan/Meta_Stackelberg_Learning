@@ -168,6 +168,17 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", required=True, help="Path to defender_meta.pt or checkpoint directory.")
     parser.add_argument("--output-json", required=True)
+    parser.add_argument(
+        "--summary-json",
+        default="",
+        help="Optional aggregate single-seed summary output path.",
+    )
+    parser.add_argument(
+        "--master-seed",
+        type=int,
+        default=None,
+        help="Master experiment seed recorded in the aggregate summary.",
+    )
     parser.add_argument("--dataset", choices=["mnist", "cifar10"], default="mnist")
     parser.add_argument(
         "--scenario-set",
@@ -521,7 +532,23 @@ def main(argv=None) -> None:
 
     output_path = Path(args.output_json)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(records, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    output_path.write_text(
+        json.dumps(_json_safe(records), allow_nan=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    if str(args.summary_json).strip():
+        summary = summarize_evaluation_records(
+            records,
+            checkpoint=str(args.checkpoint),
+            master_seed=(int(args.master_seed) if args.master_seed is not None else int(args.seed)),
+            evaluation_seed=int(args.seed),
+        )
+        summary_path = Path(args.summary_json)
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        summary_path.write_text(
+            json.dumps(summary, allow_nan=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
 
 
 def _evaluate_scenario(args, defender: TD3Agent, scenario: Scenario) -> dict:
@@ -552,15 +579,25 @@ def _evaluate_scenario_at(args, defender: TD3Agent, scenario: Scenario, *, seed:
         defender.reset()
     rewards_d: list[float] = []
     rewards_a: list[float] = []
+    round_metrics: list[dict] = []
     last_info = {}
     attacker_source = str(args.attacker_source)
-    for _ in range(int(args.H)):
+    for round_index in range(int(horizon)):
         defender_action = defender.get_action(obs, noise=0.0)
         attacker_action = _attacker_action_for_source(args, source=attacker_source)
         obs, r_d, r_a, done, info = env.step(defender_action, attacker_action)
         rewards_d.append(float(r_d))
         rewards_a.append(float(r_a))
         last_info = dict(info)
+        round_metrics.append(
+            _evaluation_round_metrics(
+                round_number=round_index + 1,
+                defender_reward=r_d,
+                attacker_reward=r_a,
+                info=last_info,
+                lambda_bd=float(args.lambda_bd),
+            )
+        )
         if done:
             break
     final_clean_acc = float(last_info.get("clean_acc", float("nan")))
@@ -577,6 +614,7 @@ def _evaluate_scenario_at(args, defender: TD3Agent, scenario: Scenario, *, seed:
         "final_defender_reward": float(rewards_d[-1]) if rewards_d else float("nan"),
         "mean_defender_reward": float(np.mean(rewards_d)) if rewards_d else float("nan"),
         "mean_attacker_reward": float(np.mean(rewards_a)) if rewards_a else float("nan"),
+        "round_metrics": round_metrics,
         "initial_action": initial_action,
         "final_defender_alpha": float(last_info.get("defense_decision").norm_bound_alpha)
         if last_info.get("defense_decision") is not None
@@ -597,6 +635,151 @@ def _evaluate_scenario_at(args, defender: TD3Agent, scenario: Scenario, *, seed:
         if args.fixed_neuroclip_epsilon is not None
         else float("nan"),
     }
+
+
+_ROUND_INFO_SCALAR_ALLOWLIST = (
+    "pre_clean_acc",
+    "pre_clean_loss",
+    "pre_backdoor_acc",
+    "clean_loss",
+    "post_clean_acc",
+    "post_clean_loss",
+    "post_backdoor_acc",
+    "action_prior_penalty",
+    "server_lr_penalty",
+    "alpha_scale",
+)
+
+
+def _json_safe(value):
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, np.ndarray):
+        return [_json_safe(item) for item in value.tolist()]
+    if isinstance(value, (bool, np.bool_)):
+        return bool(value)
+    if isinstance(value, (float, np.floating)):
+        number = float(value)
+        return number if np.isfinite(number) else None
+    if isinstance(value, (int, np.integer)):
+        return int(value)
+    return value
+
+
+def _finite_scalar(value) -> float | None:
+    if value is None or isinstance(value, (bool, np.bool_)):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if np.isfinite(number) else None
+
+
+def _evaluation_round_metrics(
+    *,
+    round_number: int,
+    defender_reward,
+    attacker_reward,
+    info: dict,
+    lambda_bd: float,
+) -> dict:
+    clean_acc = _finite_scalar(info.get("clean_acc"))
+    backdoor_acc = _finite_scalar(info.get("backdoor_acc"))
+    decision = info.get("defense_decision")
+    row = {
+        "round": int(round_number),
+        "clean_acc": clean_acc,
+        "backdoor_acc": backdoor_acc,
+        "defense_score": (
+            clean_acc - float(lambda_bd) * backdoor_acc
+            if clean_acc is not None and backdoor_acc is not None
+            else None
+        ),
+        "defender_reward": _finite_scalar(defender_reward),
+        "attacker_reward": _finite_scalar(attacker_reward),
+        "defender_alpha": _finite_scalar(
+            getattr(decision, "norm_bound_alpha", None)
+        ),
+        "defender_beta": _finite_scalar(
+            getattr(decision, "trimmed_mean_beta", None)
+        ),
+        "defender_neuroclip": _finite_scalar(
+            getattr(decision, "neuroclip_epsilon", None)
+        ),
+        "defender_server_lr": _finite_scalar(
+            getattr(decision, "server_lr", None)
+        ),
+    }
+    for key in _ROUND_INFO_SCALAR_ALLOWLIST:
+        if key in info:
+            row[key] = _finite_scalar(info[key])
+    return _json_safe(row)
+
+
+_SUMMARY_TRACE_METRICS = (
+    "clean_acc",
+    "backdoor_acc",
+    "defense_score",
+    "defender_reward",
+    "attacker_reward",
+)
+_SUMMARY_HIGH_IS_WORSE = {"backdoor_acc", "attacker_reward"}
+
+
+def summarize_evaluation_records(
+    records: list[dict],
+    *,
+    checkpoint: str,
+    master_seed: int,
+    evaluation_seed: int,
+) -> dict:
+    scenarios = {}
+    for record in records:
+        trace = list(record.get("round_metrics") or [])
+        metrics = {}
+        for metric_name in _SUMMARY_TRACE_METRICS:
+            values = [
+                (int(row.get("round", index + 1)), _finite_scalar(row.get(metric_name)))
+                for index, row in enumerate(trace)
+            ]
+            finite_values = [(round_number, value) for round_number, value in values if value is not None]
+            if not finite_values:
+                continue
+            numbers = [value for _, value in finite_values]
+            worst = (
+                max(finite_values, key=lambda item: item[1])
+                if metric_name in _SUMMARY_HIGH_IS_WORSE
+                else min(finite_values, key=lambda item: item[1])
+            )
+            metrics[metric_name] = {
+                "final": float(finite_values[-1][1]),
+                "mean": float(np.mean(numbers)),
+                "min": float(np.min(numbers)),
+                "max": float(np.max(numbers)),
+                "worst_round": int(worst[0]),
+                "worst_value": float(worst[1]),
+            }
+        scenarios[str(record.get("scenario", "unknown"))] = {
+            "attack_type": str(record.get("attack_type", "")),
+            "seed": int(record.get("seed", evaluation_seed)),
+            "horizon": int(record.get("horizon", len(trace))),
+            "rounds": int(len(trace)),
+            "metrics": metrics,
+        }
+    return _json_safe(
+        {
+            "checkpoint": str(checkpoint),
+            "master_seed": int(master_seed),
+            "evaluation_seed": int(evaluation_seed),
+            "single_seed": True,
+            "confidence_interval": None,
+            "note": "Single-seed evaluation; no confidence interval.",
+            "scenarios": scenarios,
+        }
+    )
 
 
 def _few_shot_adapt_and_evaluate(
