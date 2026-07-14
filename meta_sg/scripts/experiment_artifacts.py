@@ -129,6 +129,7 @@ def write_provenance(args: argparse.Namespace) -> None:
             "PYTHONPATH",
             "OMP_NUM_THREADS",
             "MKL_NUM_THREADS",
+            "MALLOC_ARENA_MAX",
             "CUBLAS_WORKSPACE_CONFIG",
         )
         if key in os.environ

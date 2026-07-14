@@ -22,6 +22,7 @@ RESUME_FROM="${RESUME_FROM:-}"
 START_ITERATION="${START_ITERATION:-0}"
 MEMORY_MAINTENANCE="${MEMORY_MAINTENANCE:-task}"
 ALLOW_MODEL_ONLY_RESUME="${ALLOW_MODEL_ONLY_RESUME:-0}"
+export MALLOC_ARENA_MAX="${MALLOC_ARENA_MAX:-2}"
 if [[ -z "${POST_DEFENSE_MODE:-}" ]]; then
   if [[ "${BACKEND}" == "stub" ]]; then
     POST_DEFENSE_MODE="weight_copy"
@@ -263,6 +264,9 @@ if [[ ! -f "${PROVENANCE_JSON}" ]]; then
     --config "l=${L}" \
     --config "N_A=${N_A}" \
     --config "checkpoint_interval=${CHECKPOINT_INTERVAL}" \
+    --config "memory_maintenance=${MEMORY_MAINTENANCE}" \
+    --config "malloc_arena_max=${MALLOC_ARENA_MAX}" \
+    --config "fl_parallel_clients=${FL_PARALLEL_CLIENTS}" \
     --config "num_clients=${NUM_CLIENTS}" \
     --config "num_attackers=${NUM_ATTACKERS}" \
     --config "subsample_rate=${SUBSAMPLE_RATE}"
@@ -334,9 +338,10 @@ payload = {
     "total_iterations": int(sys.argv[5]),
     "reason": sys.argv[6],
     "resume_fidelity": sys.argv[7],
+    "malloc_arena_max": int(sys.argv[8]),
 }
 path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-' "${ATTEMPT_CONFIG}" "${ATTEMPT_ID}" "${COMMAND_JSON}" "${START_ITERATION}" "${TOTAL_ITERATIONS}" "${ATTEMPT_REASON}" "${RESUME_FIDELITY}"
+' "${ATTEMPT_CONFIG}" "${ATTEMPT_ID}" "${COMMAND_JSON}" "${START_ITERATION}" "${TOTAL_ITERATIONS}" "${ATTEMPT_REASON}" "${RESUME_FIDELITY}" "${MALLOC_ARENA_MAX}"
 export META_SG_ATTEMPT_ID="${ATTEMPT_ID}"
 record_attempt "started"
 ATTEMPT_STARTED=1

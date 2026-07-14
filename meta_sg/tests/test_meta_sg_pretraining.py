@@ -4547,9 +4547,10 @@ def test_experiment_artifacts_status_preserves_stage_history(tmp_path):
     json.dumps(status, allow_nan=False)
 
 
-def test_experiment_provenance_is_immutable(tmp_path):
+def test_experiment_provenance_is_immutable(tmp_path, monkeypatch):
     from meta_sg.scripts.experiment_artifacts import main
 
+    monkeypatch.setenv("MALLOC_ARENA_MAX", "2")
     provenance_path = tmp_path / "provenance.json"
     common = [
         "provenance",
@@ -4566,6 +4567,7 @@ def test_experiment_provenance_is_immutable(tmp_path):
     ]
     main([*common, "--master-seed", "42", "--config", "attempt=first"])
     original = provenance_path.read_bytes()
+    assert json.loads(original)["environment"]["MALLOC_ARENA_MAX"] == "2"
 
     main([*common, "--master-seed", "99", "--config", "attempt=second"])
 
@@ -4701,6 +4703,8 @@ def test_global_model_poisoning_h200_launcher_has_observable_job_contract():
     assert 'record_attempt "finished"' in text
     assert 'ALLOW_MODEL_ONLY_RESUME="${ALLOW_MODEL_ONLY_RESUME:-0}"' in text
     assert "--allow-model-only-resume" in text
+    assert 'export MALLOC_ARENA_MAX="${MALLOC_ARENA_MAX:-2}"' in text
+    assert '--config "malloc_arena_max=${MALLOC_ARENA_MAX}"' in text
 
 
 def test_global_model_poisoning_h200_launcher_appends_a_stub_resume(tmp_path):
