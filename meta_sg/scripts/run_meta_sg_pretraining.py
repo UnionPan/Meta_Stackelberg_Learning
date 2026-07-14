@@ -8,6 +8,7 @@ import random
 import sys
 import time
 from dataclasses import asdict
+from datetime import datetime, timezone
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -547,6 +548,10 @@ def main(argv=None):
     run_name = str(args.run_name).strip() or time.strftime("%Y%m%d-%H%M%S")
     output_dir = Path(args.output_dir) / run_name
     output_dir.mkdir(parents=True, exist_ok=True)
+    attempt_id = os.environ.get("META_SG_ATTEMPT_ID") or (
+        datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+        + f"-{os.getpid()}"
+    )
 
     writer = None
     if args.tensorboard:
@@ -571,10 +576,6 @@ def main(argv=None):
         "td3_config": asdict(td3_config),
         "attack_domain": [attack.name for attack in attack_domain],
     }
-    (output_dir / "config.json").write_text(
-        json.dumps(config_record, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
 
     obs_dim = probe_obs_dim(args, meta_config)
     print(
@@ -618,22 +619,45 @@ def main(argv=None):
                 "checkpoint completed_iteration does not match --start-iteration: "
                 f"{trainer.loaded_completed_iteration} != {args.start_iteration}"
             )
+    config_record["attempt_id"] = attempt_id
+    config_record["resume_fidelity"] = trainer.resume_fidelity
+    encoded_config = json.dumps(config_record, indent=2, sort_keys=True) + "\n"
+    attempt_dir = output_dir / "attempts" / attempt_id
+    attempt_dir.mkdir(parents=True, exist_ok=True)
+    with (attempt_dir / "config.json").open("x", encoding="utf-8") as handle:
+        handle.write(encoded_config)
+    try:
+        with (output_dir / "config.json").open("x", encoding="utf-8") as handle:
+            handle.write(encoded_config)
+    except FileExistsError:
+        pass
+
     result = trainer.train()
-    trainer.save(str(output_dir / "final"), completed_iteration=result.meta_iterations)
+    total_iterations = (
+        int(args.total_iterations)
+        if args.total_iterations is not None
+        else int(args.start_iteration + args.T)
+    )
+    final_checkpoint = None
+    if result.meta_iterations >= total_iterations:
+        trainer.save(
+            str(output_dir / "final"),
+            completed_iteration=result.meta_iterations,
+        )
+        final_checkpoint = str(output_dir / "final")
 
     summary = {
         "meta_iterations": int(result.meta_iterations),
         "mean_r_D_last10": float(np.mean(result.defender_rewards[-10:])),
         "defender_rewards": [float(v) for v in result.defender_rewards],
         "reptile_delta_norms": [float(v) for v in result.reptile_delta_norms],
-        "final_checkpoint": str(output_dir / "final"),
+        "final_checkpoint": final_checkpoint,
         "latest_checkpoint": str(output_dir / "checkpoints" / "latest"),
         "metrics_jsonl": str(output_dir / "metrics.jsonl"),
     }
-    (output_dir / "summary.json").write_text(
-        json.dumps(summary, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    encoded_summary = json.dumps(summary, indent=2, sort_keys=True) + "\n"
+    (attempt_dir / "summary.json").write_text(encoded_summary, encoding="utf-8")
+    (output_dir / "summary.json").write_text(encoded_summary, encoding="utf-8")
 
     print(
         f"[meta_sg] done iters={result.meta_iterations} "

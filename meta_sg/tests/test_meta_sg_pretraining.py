@@ -1,7 +1,9 @@
 """Tests for paper-aligned Meta-SG model-poisoning pretraining wiring."""
 
 import json
+import os
 from pathlib import Path
+import subprocess
 from types import SimpleNamespace
 
 import pytest
@@ -4545,6 +4547,137 @@ def test_experiment_artifacts_status_preserves_stage_history(tmp_path):
     json.dumps(status, allow_nan=False)
 
 
+def test_experiment_provenance_is_immutable(tmp_path):
+    from meta_sg.scripts.experiment_artifacts import main
+
+    provenance_path = tmp_path / "provenance.json"
+    common = [
+        "provenance",
+        "--output",
+        str(provenance_path),
+        "--repo-root",
+        str(Path(__file__).resolve().parents[2]),
+        "--training-seed",
+        "42",
+        "--evaluation-seed",
+        "10042",
+        "--device",
+        "cpu",
+    ]
+    main([*common, "--master-seed", "42", "--config", "attempt=first"])
+    original = provenance_path.read_bytes()
+
+    main([*common, "--master-seed", "99", "--config", "attempt=second"])
+
+    assert provenance_path.read_bytes() == original
+
+
+def test_experiment_attempt_records_append_strict_json(tmp_path):
+    from meta_sg.scripts.experiment_artifacts import main
+
+    output = tmp_path / "attempts.jsonl"
+    config = tmp_path / "config.json"
+    config.write_text('{"seed": 42}\n')
+    common = [
+        "attempt",
+        "--output",
+        str(output),
+        "--attempt-id",
+        "attempt-1",
+        "--start-iteration",
+        "10",
+        "--reason",
+        "resume after memory fix",
+        "--command-json",
+        '["python", "train.py"]',
+        "--config",
+        str(config),
+        "--resume-fidelity",
+        "continuous",
+    ]
+    main([*common, "--phase", "started"])
+    main([*common, "--phase", "finished", "--exit-code", "0"])
+
+    records = [json.loads(line) for line in output.read_text().splitlines()]
+    assert [record["phase"] for record in records] == ["started", "finished"]
+    assert all(record["attempt_id"] == "attempt-1" for record in records)
+    assert all(record["start_iteration"] == 10 for record in records)
+    assert all(record["command"] == ["python", "train.py"] for record in records)
+    assert all(len(record["config_sha256"]) == 64 for record in records)
+    assert records[1]["exit_code"] == 0
+    json.dumps(records, allow_nan=False)
+
+
+def test_pretraining_preserves_initial_and_attempt_configs(tmp_path, monkeypatch):
+    from meta_sg.scripts.run_meta_sg_pretraining import main
+
+    common = [
+        "--backend",
+        "stub",
+        "--output-dir",
+        str(tmp_path),
+        "--run-name",
+        "run",
+        "--T",
+        "1",
+        "--K",
+        "1",
+        "--H",
+        "1",
+        "--l",
+        "1",
+        "--N-A",
+        "1",
+        "--post-br-defender-updates",
+        "0",
+        "--hidden-dim",
+        "8",
+        "--batch-size",
+        "2",
+        "--buffer-capacity",
+        "32",
+        "--num-clients",
+        "6",
+        "--num-attackers",
+        "1",
+        "--subsample-rate",
+        "1.0",
+        "--checkpoint-interval",
+        "1",
+        "--latest-checkpoint-only",
+        "--seed",
+        "42",
+        "--device",
+        "cpu",
+    ]
+    monkeypatch.setenv("META_SG_ATTEMPT_ID", "attempt-1")
+    main(common)
+    run_dir = tmp_path / "run"
+    initial_config = (run_dir / "config.json").read_bytes()
+
+    monkeypatch.setenv("META_SG_ATTEMPT_ID", "attempt-2")
+    main(
+        [
+            *common,
+            "--resume-from",
+            str(run_dir / "checkpoints" / "latest"),
+            "--start-iteration",
+            "1",
+            "--total-iterations",
+            "2",
+        ]
+    )
+
+    assert (run_dir / "config.json").read_bytes() == initial_config
+    attempt_configs = sorted((run_dir / "attempts").glob("*/config.json"))
+    assert len(attempt_configs) == 2
+    first = json.loads(attempt_configs[0].read_text())
+    second = json.loads(attempt_configs[1].read_text())
+    assert first["resume_fidelity"] == "fresh"
+    assert second["resume_fidelity"] == "continuous"
+    assert second["start_iteration"] == 1
+
+
 def test_global_model_poisoning_h200_launcher_has_observable_job_contract():
     script = (
         Path(__file__).resolve().parents[1]
@@ -4560,6 +4693,83 @@ def test_global_model_poisoning_h200_launcher_has_observable_job_contract():
     assert "experiment_artifacts.py status" in text
     assert "resource_metrics.csv" in text
     assert "--scenario-set model_poisoning" in text
+    assert 'MEMORY_MAINTENANCE="${MEMORY_MAINTENANCE:-task}"' in text
+    assert '--memory-maintenance "${MEMORY_MAINTENANCE}"' in text
+    assert 'if [[ ! -s "${RESOURCE_CSV}" ]]' in text
+    assert "attempts.jsonl" in text
+    assert 'record_attempt "started"' in text
+    assert 'record_attempt "finished"' in text
+    assert 'ALLOW_MODEL_ONLY_RESUME="${ALLOW_MODEL_ONLY_RESUME:-0}"' in text
+    assert "--allow-model-only-resume" in text
+
+
+def test_global_model_poisoning_h200_launcher_appends_a_stub_resume(tmp_path):
+    root = Path(__file__).resolve().parents[2]
+    script = root / "meta_sg" / "scripts" / "run_global_model_poisoning_h200_30c6a.sh"
+    run_root = tmp_path / "runs"
+    environment = {
+        **os.environ,
+        "RUN_ROOT": str(run_root),
+        "RUN_ID": "run",
+        "BACKEND": "stub",
+        "DEVICE": "cpu",
+        "T": "1",
+        "K": "1",
+        "H": "1",
+        "L": "1",
+        "N_A": "1",
+        "TOTAL_ITERATIONS": "2",
+        "NUM_CLIENTS": "6",
+        "NUM_ATTACKERS": "1",
+        "SUBSAMPLE_RATE": "1.0",
+        "HIDDEN_DIM": "8",
+        "TD3_BATCH_SIZE": "2",
+        "BUFFER_CAPACITY": "32",
+        "CHECKPOINT_INTERVAL": "1",
+        "LOG_INTERVAL": "1",
+        "MONITOR_INTERVAL_SECONDS": "1",
+        "MASTER_SEED": "42",
+        "TRAINING_SEED": "42",
+        "EVALUATION_SEED": "10042",
+    }
+    subprocess.run(["bash", str(script)], cwd=root, env=environment, check=True)
+    run_dir = run_root / "run"
+    provenance = (run_dir / "provenance.json").read_bytes()
+    checkpoint = run_dir / "checkpoints" / "latest"
+
+    subprocess.run(
+        ["bash", str(script)],
+        cwd=root,
+        env={
+            **environment,
+            "RESUME_FROM": str(checkpoint),
+            "START_ITERATION": "1",
+            "ATTEMPT_REASON": "stub resume integration",
+        },
+        check=True,
+    )
+
+    resource_lines = (run_dir / "resource_metrics.csv").read_text().splitlines()
+    assert sum(line.startswith("timestamp,pid,") for line in resource_lines) == 1
+    records = [
+        json.loads(line)
+        for line in (run_dir / "metrics.jsonl").read_text().splitlines()
+    ]
+    assert [record["iteration"] for record in records] == [1, 2]
+    assert (run_dir / "provenance.json").read_bytes() == provenance
+    assert len(list((run_dir / "attempts").glob("*/config.json"))) == 2
+    attempts = [
+        json.loads(line)
+        for line in (run_dir / "attempts.jsonl").read_text().splitlines()
+    ]
+    assert [record["phase"] for record in attempts] == [
+        "started",
+        "finished",
+        "started",
+        "finished",
+    ]
+    assert all(record.get("exit_code", 0) == 0 for record in attempts)
+    assert not list((run_dir / "evaluation").glob("*.json"))
 
 
 def test_global_model_poisoning_h200_launcher_uses_weight_copy_for_stub_smoke():

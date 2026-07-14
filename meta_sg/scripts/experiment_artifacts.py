@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import platform
@@ -117,6 +118,9 @@ def _config_pairs(values: list[str]) -> dict:
 
 
 def write_provenance(args: argparse.Namespace) -> None:
+    output = Path(args.output)
+    if output.exists():
+        return
     repo_root = Path(args.repo_root).resolve()
     relevant_environment = {
         key: os.environ[key]
@@ -152,7 +156,52 @@ def write_provenance(args: argparse.Namespace) -> None:
         "environment": relevant_environment,
         "artifact_command": [str(item) for item in sys.argv],
     }
-    _atomic_write_json(Path(args.output), payload)
+    _atomic_write_json(output, payload)
+
+
+def write_attempt(args: argparse.Namespace) -> None:
+    output = Path(args.output)
+    config_path = Path(args.config)
+    config_bytes = config_path.read_bytes()
+    try:
+        command = json.loads(args.command_json)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"--command-json must be valid JSON: {exc}") from exc
+    if not isinstance(command, list) or not all(
+        isinstance(item, str) for item in command
+    ):
+        raise ValueError("--command-json must encode a list of strings")
+
+    timestamp = _utc_now()
+    record = {
+        "schema_version": 1,
+        "attempt_id": str(args.attempt_id),
+        "phase": str(args.phase),
+        "start_iteration": int(args.start_iteration),
+        "reason": str(args.reason),
+        "command": command,
+        "config_path": str(config_path),
+        "config_sha256": hashlib.sha256(config_bytes).hexdigest(),
+        "resume_fidelity": str(args.resume_fidelity),
+    }
+    if args.phase == "started":
+        record["started_at"] = timestamp
+    else:
+        record["finished_at"] = timestamp
+        if args.exit_code is None:
+            raise ValueError("finished attempt records require --exit-code")
+        record["exit_code"] = int(args.exit_code)
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    encoded = json.dumps(
+        _json_safe(record),
+        allow_nan=False,
+        sort_keys=True,
+    ) + "\n"
+    with output.open("a", encoding="utf-8") as handle:
+        handle.write(encoded)
+        handle.flush()
+        os.fsync(handle.fileno())
 
 
 def write_status(args: argparse.Namespace) -> None:
@@ -203,6 +252,22 @@ def parse_args(argv=None) -> argparse.Namespace:
     provenance.add_argument("--device", required=True)
     provenance.add_argument("--config", action="append", default=[])
     provenance.set_defaults(handler=write_provenance)
+
+    attempt = subparsers.add_parser("attempt")
+    attempt.add_argument("--output", required=True)
+    attempt.add_argument("--attempt-id", required=True)
+    attempt.add_argument("--phase", choices=("started", "finished"), required=True)
+    attempt.add_argument("--start-iteration", type=int, required=True)
+    attempt.add_argument("--reason", required=True)
+    attempt.add_argument("--command-json", required=True)
+    attempt.add_argument("--config", required=True)
+    attempt.add_argument(
+        "--resume-fidelity",
+        choices=("fresh", "continuous", "model_only_discontinuity"),
+        required=True,
+    )
+    attempt.add_argument("--exit-code", type=int, default=None)
+    attempt.set_defaults(handler=write_attempt)
 
     status = subparsers.add_parser("status")
     status.add_argument("--output", required=True)

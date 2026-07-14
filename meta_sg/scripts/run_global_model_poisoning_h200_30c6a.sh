@@ -14,11 +14,14 @@ EVALUATION_DIR="${RUN_DIR}/evaluation"
 STATUS_JSON="${RUN_DIR}/status.json"
 PROVENANCE_JSON="${RUN_DIR}/provenance.json"
 RESOURCE_CSV="${RUN_DIR}/resource_metrics.csv"
+ATTEMPTS_JSONL="${RUN_DIR}/attempts.jsonl"
 
 BACKEND="${BACKEND:-fl_sandbox}"
 DEVICE="${DEVICE:-cuda:0}"
 RESUME_FROM="${RESUME_FROM:-}"
 START_ITERATION="${START_ITERATION:-0}"
+MEMORY_MAINTENANCE="${MEMORY_MAINTENANCE:-task}"
+ALLOW_MODEL_ONLY_RESUME="${ALLOW_MODEL_ONLY_RESUME:-0}"
 if [[ -z "${POST_DEFENSE_MODE:-}" ]]; then
   if [[ "${BACKEND}" == "stub" ]]; then
     POST_DEFENSE_MODE="weight_copy"
@@ -55,6 +58,19 @@ MONITOR_INTERVAL_SECONDS="${MONITOR_INTERVAL_SECONDS:-30}"
 MASTER_SEED="${MASTER_SEED:-${SEED:-42}}"
 TRAINING_SEED="${TRAINING_SEED:-${MASTER_SEED}}"
 EVALUATION_SEED="${EVALUATION_SEED:-$((MASTER_SEED + 10000))}"
+ATTEMPT_ID="${ATTEMPT_ID:-$(date -u '+%Y%m%dT%H%M%SZ')-$$}"
+ATTEMPT_DIR="${RUN_DIR}/attempts/${ATTEMPT_ID}"
+ATTEMPT_CONFIG="${ATTEMPT_DIR}/launcher_config.json"
+if [[ -n "${RESUME_FROM}" ]]; then
+  ATTEMPT_REASON="${ATTEMPT_REASON:-resume}"
+  RESUME_FIDELITY="continuous"
+else
+  ATTEMPT_REASON="${ATTEMPT_REASON:-fresh}"
+  RESUME_FIDELITY="fresh"
+fi
+if [[ "${ALLOW_MODEL_ONLY_RESUME}" == "1" ]]; then
+  RESUME_FIDELITY="model_only_discontinuity"
+fi
 
 if [[ -z "${PYTHON_BIN:-}" ]]; then
   for candidate in \
@@ -80,6 +96,9 @@ ACTIVE_PID=""
 MONITOR_PID=""
 FINAL_STAGE="initializing"
 FAILURE_RECORDED=0
+ATTEMPT_STARTED=0
+ATTEMPT_FINISHED=0
+COMMAND_JSON="[]"
 
 last_completed_iteration() {
   local metadata="${RUN_DIR}/checkpoints/latest/checkpoint.json"
@@ -109,6 +128,34 @@ write_status() {
   "${PYTHON_BIN}" "${ARTIFACT_HELPER}" "${arguments[@]}"
 }
 
+record_attempt() {
+  local phase="$1"
+  local exit_code="${2:-}"
+  local arguments=(
+    attempt
+    --output "${ATTEMPTS_JSONL}"
+    --attempt-id "${ATTEMPT_ID}"
+    --phase "${phase}"
+    --start-iteration "${START_ITERATION}"
+    --reason "${ATTEMPT_REASON}"
+    --command-json "${COMMAND_JSON}"
+    --config "${ATTEMPT_CONFIG}"
+    --resume-fidelity "${RESUME_FIDELITY}"
+  )
+  if [[ "${phase}" == "finished" ]]; then
+    arguments+=(--exit-code "${exit_code}")
+  fi
+  "${PYTHON_BIN}" "${ARTIFACT_HELPER}" "${arguments[@]}"
+}
+
+record_attempt_finished() {
+  local exit_code="$1"
+  if [[ "${ATTEMPT_STARTED}" -eq 1 ]] && [[ "${ATTEMPT_FINISHED}" -eq 0 ]]; then
+    record_attempt "finished" "${exit_code}"
+    ATTEMPT_FINISHED=1
+  fi
+}
+
 stop_monitor() {
   if [[ -n "${MONITOR_PID}" ]] && kill -0 "${MONITOR_PID}" 2>/dev/null; then
     kill "${MONITOR_PID}" 2>/dev/null || true
@@ -136,7 +183,11 @@ on_exit() {
     kill -TERM "${ACTIVE_PID}" 2>/dev/null
     wait "${ACTIVE_PID}" 2>/dev/null
   fi
-  if [[ "${FINAL_STAGE}" != "completed" ]] && [[ "${FAILURE_RECORDED}" -eq 0 ]]; then
+  record_attempt_finished "${exit_code}"
+  if [[ "${FINAL_STAGE}" != "completed" ]] && \
+     [[ "${FINAL_STAGE}" != "training_complete" ]] && \
+     [[ "${FINAL_STAGE}" != "paused" ]] && \
+     [[ "${FAILURE_RECORDED}" -eq 0 ]]; then
     write_status failed "launcher exited during ${FINAL_STAGE}" "${exit_code}"
   fi
   exit "${exit_code}"
@@ -190,33 +241,40 @@ trap 'on_signal TERM' TERM
 trap on_exit EXIT
 
 mkdir -p "${LOG_DIR}" "${EVALUATION_DIR}"
-echo "timestamp,pid,process_cpu_percent,process_rss_kb,gpu_utilization_percent,gpu_memory_used_mb,gpu_memory_total_mb,gpu_temperature_c,gpu_power_w" >"${RESOURCE_CSV}"
+if [[ ! -s "${RESOURCE_CSV}" ]]; then
+  echo "timestamp,pid,process_cpu_percent,process_rss_kb,gpu_utilization_percent,gpu_memory_used_mb,gpu_memory_total_mb,gpu_temperature_c,gpu_power_w" >"${RESOURCE_CSV}"
+fi
 
 cd "${ROOT_DIR}"
-"${PYTHON_BIN}" "${ARTIFACT_HELPER}" provenance \
-  --output "${PROVENANCE_JSON}" \
-  --repo-root "${ROOT_DIR}" \
-  --master-seed "${MASTER_SEED}" \
-  --training-seed "${TRAINING_SEED}" \
-  --evaluation-seed "${EVALUATION_SEED}" \
-  --device "${DEVICE}" \
-  --config "backend=${BACKEND}" \
-  --config "post_defense_mode=${POST_DEFENSE_MODE}" \
-  --config "run_id=${RUN_ID}" \
-  --config "T=${T}" \
-  --config "K=${K}" \
-  --config "H=${H}" \
-  --config "l=${L}" \
-  --config "N_A=${N_A}" \
-  --config "checkpoint_interval=${CHECKPOINT_INTERVAL}" \
-  --config "num_clients=${NUM_CLIENTS}" \
-  --config "num_attackers=${NUM_ATTACKERS}" \
-  --config "subsample_rate=${SUBSAMPLE_RATE}"
+if [[ ! -f "${PROVENANCE_JSON}" ]]; then
+  "${PYTHON_BIN}" "${ARTIFACT_HELPER}" provenance \
+    --output "${PROVENANCE_JSON}" \
+    --repo-root "${ROOT_DIR}" \
+    --master-seed "${MASTER_SEED}" \
+    --training-seed "${TRAINING_SEED}" \
+    --evaluation-seed "${EVALUATION_SEED}" \
+    --device "${DEVICE}" \
+    --config "backend=${BACKEND}" \
+    --config "post_defense_mode=${POST_DEFENSE_MODE}" \
+    --config "run_id=${RUN_ID}" \
+    --config "T=${T}" \
+    --config "K=${K}" \
+    --config "H=${H}" \
+    --config "l=${L}" \
+    --config "N_A=${N_A}" \
+    --config "checkpoint_interval=${CHECKPOINT_INTERVAL}" \
+    --config "num_clients=${NUM_CLIENTS}" \
+    --config "num_attackers=${NUM_ATTACKERS}" \
+    --config "subsample_rate=${SUBSAMPLE_RATE}"
+fi
 write_status initializing "run directory and provenance created"
 
 resume_args=(--start-iteration "${START_ITERATION}")
 if [[ -n "${RESUME_FROM}" ]]; then
   resume_args+=(--resume-from "${RESUME_FROM}")
+fi
+if [[ "${ALLOW_MODEL_ONLY_RESUME}" == "1" ]]; then
+  resume_args+=(--allow-model-only-resume)
 fi
 
 training_command=(
@@ -257,11 +315,31 @@ training_command=(
   --log-interval "${LOG_INTERVAL}"
   --checkpoint-interval "${CHECKPOINT_INTERVAL}"
   --latest-checkpoint-only
+  --memory-maintenance "${MEMORY_MAINTENANCE}"
   --total-iterations "${TOTAL_ITERATIONS}"
   --tensorboard
   --seed "${TRAINING_SEED}"
   "${resume_args[@]}"
 )
+
+COMMAND_JSON="$("${PYTHON_BIN}" -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "${training_command[@]}")"
+mkdir -p "${ATTEMPT_DIR}"
+"${PYTHON_BIN}" -c '
+import json, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+payload = {
+    "attempt_id": sys.argv[2],
+    "command": json.loads(sys.argv[3]),
+    "start_iteration": int(sys.argv[4]),
+    "total_iterations": int(sys.argv[5]),
+    "reason": sys.argv[6],
+    "resume_fidelity": sys.argv[7],
+}
+path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+' "${ATTEMPT_CONFIG}" "${ATTEMPT_ID}" "${COMMAND_JSON}" "${START_ITERATION}" "${TOTAL_ITERATIONS}" "${ATTEMPT_REASON}" "${RESUME_FIDELITY}"
+export META_SG_ATTEMPT_ID="${ATTEMPT_ID}"
+record_attempt "started"
+ATTEMPT_STARTED=1
 
 echo "[global-model-poisoning] start $(date '+%Y-%m-%dT%H:%M:%S%z')"
 echo "[global-model-poisoning] run=${RUN_ID} backend=${BACKEND} device=${DEVICE}"
@@ -277,6 +355,27 @@ else
   exit "${training_exit}"
 fi
 write_status training "completed"
+
+completed_iteration="$(last_completed_iteration)"
+if (( completed_iteration < TOTAL_ITERATIONS )); then
+  FINAL_STAGE="paused"
+  write_status paused "training attempt completed before total iterations"
+  record_attempt_finished 0
+  echo "[global-model-poisoning] paused at iteration ${completed_iteration}/${TOTAL_ITERATIONS}"
+  exit 0
+fi
+if (( completed_iteration > TOTAL_ITERATIONS )); then
+  FAILURE_RECORDED=1
+  write_status failed "completed iteration exceeds configured total" 1
+  exit 1
+fi
+if (( completed_iteration != 100 )); then
+  FINAL_STAGE="training_complete"
+  write_status training_complete "final evaluation deferred until iteration 100"
+  record_attempt_finished 0
+  echo "[global-model-poisoning] training complete at iteration ${completed_iteration}; evaluation deferred"
+  exit 0
+fi
 
 raw_evaluation_json="${EVALUATION_DIR}/final_model_poisoning_h${H}_seed_${EVALUATION_SEED}.json"
 evaluation_summary_json="${EVALUATION_DIR}/summary.json"
@@ -319,4 +418,5 @@ fi
 
 FINAL_STAGE="completed"
 write_status completed "training and final evaluation completed" 0
+record_attempt_finished 0
 echo "[global-model-poisoning] completed $(date '+%Y-%m-%dT%H:%M:%S%z') output=${RUN_DIR}"
