@@ -319,10 +319,13 @@ class ScaledPaperMetaSGTrainingRunner:
         initial_defender: TD3Agent,
         initial_attackers: Mapping[object, TD3Agent],
         sample_tasks,
+        training_method: str = 'both',
         checkpoint_path: str | Path | None = None,
         resume: bool = False,
         checkpoint_interval: int = 1,
     ) -> ScaledPolicyTrainingResult:
+        if training_method not in {'meta-sg', 'meta-rl', 'both'}:
+            raise ValueError('training_method must be meta-sg, meta-rl, or both')
         if resume and checkpoint_path is None:
             raise ValueError('resume requires checkpoint_path')
         if (
@@ -343,13 +346,25 @@ class ScaledPaperMetaSGTrainingRunner:
         signature = self._checkpoint_signature(
             initial_defender, initial_attackers,
         )
+        signature['training_method'] = training_method
         algorithm1_history = []
         algorithm2_history = []
         algorithm1_start = 0
         algorithm2_start = 0
         if resume:
             checkpoint = load_scaled_training_checkpoint(target)
-            if dict(checkpoint.config_signature) != signature:
+            checkpoint_signature = dict(checkpoint.config_signature)
+            legacy_meta_sg = (
+                training_method == 'meta-sg'
+                and 'training_method' not in checkpoint_signature
+                and checkpoint.algorithm2_completed == 0
+                and checkpoint_signature == {
+                    key: value
+                    for key, value in signature.items()
+                    if key != 'training_method'
+                }
+            )
+            if checkpoint_signature != signature and not legacy_meta_sg:
                 raise ValueError('scaled training checkpoint configuration mismatch')
             if set(checkpoint.algorithm1_attackers) != set(algorithm1_attackers):
                 raise ValueError('scaled training checkpoint attack domain mismatch')
@@ -396,11 +411,13 @@ class ScaledPaperMetaSGTrainingRunner:
                 len(algorithm1_history) % checkpoint_interval == 0
                 or len(algorithm1_history) == self.config.N_D
             ):
-                save_checkpoint(
-                    'algorithm2'
-                    if len(algorithm1_history) == self.config.N_D
-                    else 'algorithm1',
-                )
+                if len(algorithm1_history) == self.config.N_D:
+                    next_phase = (
+                        'algorithm2' if training_method == 'both' else 'complete'
+                    )
+                else:
+                    next_phase = 'algorithm1'
+                save_checkpoint(next_phase)
 
         algorithm1_runner = PolicyMetaSGAlgorithm1(
             N_D=self.config.N_D,
@@ -411,7 +428,10 @@ class ScaledPaperMetaSGTrainingRunner:
             kappa_A=self.config.paper_reference.kappa_attacker,
             kappa_D=self.config.paper_reference.kappa_defender,
         )
-        if algorithm1_start < self.config.N_D:
+        if (
+            training_method in {'meta-sg', 'both'}
+            and algorithm1_start < self.config.N_D
+        ):
             algorithm1_runner.run(
                 defender=algorithm1_defender,
                 attackers=algorithm1_attackers,
@@ -458,7 +478,10 @@ class ScaledPaperMetaSGTrainingRunner:
             kappa=self.config.paper_reference.kappa,
             meta_update_step=self.config.paper_reference.meta_update_step,
         )
-        if algorithm2_start < self.config.T:
+        if (
+            training_method in {'meta-rl', 'both'}
+            and algorithm2_start < self.config.T
+        ):
             algorithm2_runner.run(
                 defender=algorithm2_defender,
                 response_policies=algorithm2_responses,

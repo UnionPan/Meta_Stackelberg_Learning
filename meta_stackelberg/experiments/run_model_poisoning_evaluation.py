@@ -45,6 +45,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--ipm-scale', type=float, default=2.0)
     parser.add_argument('--lmp-scale', type=float, default=2.0)
     parser.add_argument('--device', default='cpu')
+    parser.add_argument(
+        '--method', choices=('meta-sg', 'meta-rl'), default='meta-sg',
+        help='select the independently trained policy to evaluate',
+    )
     return parser
 
 
@@ -89,7 +93,11 @@ def main(argv: list[str] | None = None) -> int:
         ATTACKER_OBSERVATION_KEYS,
     ))
     defender = _agent(paper, defender_dim, 'defender', 1, args.device)
-    defender.restore(checkpoint.algorithm2_defender)
+    defender.restore(
+        checkpoint.algorithm1_defender
+        if args.method == 'meta-sg'
+        else checkpoint.algorithm2_defender
+    )
     attackers = {}
     for index, (label, snapshot) in enumerate(
         sorted(checkpoint.algorithm1_attackers.items()),
@@ -146,6 +154,7 @@ def main(argv: list[str] | None = None) -> int:
         horizon=args.H,
     )
     summary['training_configuration'] = dict(checkpoint.config_signature)
+    summary['method'] = args.method
     summary['data_provenance'] = {
         key: getattr(datasets.provenance, key)
         for key in datasets.provenance.__dataclass_fields__
@@ -162,10 +171,14 @@ def _validate_checkpoint(checkpoint, args) -> None:
     observed = dict(checkpoint.config_signature)
     if any(observed.get(key) != value for key, value in expected.items()):
         raise ValueError('training checkpoint T/K/H does not match evaluation')
-    if checkpoint.algorithm1_completed != observed.get('N_D'):
-        raise ValueError('training checkpoint Algorithm 1 is incomplete')
-    if checkpoint.algorithm2_completed != args.T:
-        raise ValueError('training checkpoint Algorithm 2 is incomplete')
+    recorded_method = observed.get('training_method')
+    if recorded_method not in {None, args.method, 'both'}:
+        raise ValueError('training checkpoint method does not match evaluation')
+    if args.method == 'meta-sg':
+        if checkpoint.algorithm1_completed != observed.get('N_D'):
+            raise ValueError('Meta-SG checkpoint Algorithm 1 is incomplete')
+    elif checkpoint.algorithm2_completed != args.T:
+        raise ValueError('Meta-RL checkpoint Algorithm 2 is incomplete')
 
 
 def _agent(paper, obs_dim, role, seed, device):

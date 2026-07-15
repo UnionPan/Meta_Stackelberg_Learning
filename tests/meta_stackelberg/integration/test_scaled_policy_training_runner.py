@@ -248,3 +248,56 @@ def test_scaled_runner_checkpoint_is_complete_resumable_and_lightweight(
             checkpoint_path=checkpoint_path,
             resume=True,
         )
+
+
+def test_scaled_runner_trains_meta_sg_without_running_algorithm2(tmp_path) -> None:
+    config = PaperMetaSGConfig().scaled(
+        T=2, K=1, H=2, l=1, N_A=1, N_D=1,
+        workers=4, untargeted_attackers=2, sample_size=4,
+        td3_batch_size=2, learning_starts=2, hidden_sizes=(8,),
+        replay_capacity=128,
+    )
+    probe = _make_env(seed=1)
+    defender_dim = len(flatten_observation(
+        probe.defender_observation(), DEFENDER_OBSERVATION_KEYS,
+    ))
+    attacker_dim = len(flatten_observation(
+        _make_env(seed=1).begin_round(
+            __import__('numpy').zeros(3, dtype='float32'),
+        ).attacker_observation,
+        ATTACKER_OBSERVATION_KEYS,
+    ))
+    defender = _agent(defender_dim, 'defender', 70)
+    attacker = _agent(attacker_dim, 'attacker', 71)
+
+    def env_factory(task, seed, horizon):
+        del task
+        env = _make_env(seed=seed)
+        env.horizon = horizon
+        return env
+
+    checkpoint_path = tmp_path / 'meta-sg.pt'
+    result = ScaledPaperMetaSGTrainingRunner(
+        config=config,
+        env_factory=env_factory,
+        defender_obs_dim=defender_dim,
+        attacker_obs_dim=attacker_dim,
+        support_seed=4000,
+    ).run(
+        initial_defender=defender,
+        initial_attackers={'rl': attacker},
+        sample_tasks=lambda iteration, count: ('rl',),
+        training_method='meta-sg',
+        checkpoint_path=checkpoint_path,
+    )
+
+    checkpoint = load_scaled_training_checkpoint(checkpoint_path)
+    assert checkpoint.phase == 'complete'
+    assert checkpoint.config_signature['training_method'] == 'meta-sg'
+    assert checkpoint.algorithm1_completed == 1
+    assert checkpoint.algorithm2_completed == 0
+    assert len(result.algorithm1.iterations) == 1
+    assert result.algorithm2.iterations == ()
+    assert result.algorithm1_defender.fingerprint() != defender.fingerprint()
+    assert result.algorithm2_defender.fingerprint() == defender.fingerprint()
+    assert result.trajectory_count == 3

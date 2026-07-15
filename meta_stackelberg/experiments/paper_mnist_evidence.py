@@ -44,6 +44,7 @@ def run_paper_mnist_scaled_evidence(
     training_checkpoint_path: str | None = None,
     resume_training: bool = False,
     training_checkpoint_interval: int = 1,
+    training_method: str = 'both',
 ) -> ScaledEvidenceResult:
     paper = config.paper_reference
     factory = PaperMNISTEnvironmentFactory(
@@ -98,6 +99,7 @@ def run_paper_mnist_scaled_evidence(
         training_checkpoint_path=training_checkpoint_path,
         resume_training=resume_training,
         training_checkpoint_interval=training_checkpoint_interval,
+        training_method=training_method,
         training_protocol_signature={
             'dataset': 'MNIST',
             'partition_seed': partition_seed,

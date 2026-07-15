@@ -61,6 +61,7 @@ def run_deterministic_scaled_evidence(
     resume_training: bool = False,
     training_checkpoint_interval: int = 1,
     training_protocol_signature: Mapping[str, object] | None = None,
+    training_method: str = 'both',
 ) -> ScaledEvidenceResult:
     """Run Algorithm 1/2 then all held-out comparisons without test helpers."""
     if not isinstance(config, ScaledMetaSGConfig):
@@ -99,6 +100,7 @@ def run_deterministic_scaled_evidence(
         resume_training=resume_training,
         training_checkpoint_interval=training_checkpoint_interval,
         training_protocol_signature=training_protocol_signature,
+        training_method=training_method,
     )
 
 
@@ -119,6 +121,7 @@ def run_scaled_evidence(
     resume_training: bool = False,
     training_checkpoint_interval: int = 1,
     training_protocol_signature: Mapping[str, object] | None = None,
+    training_method: str = 'both',
 ) -> ScaledEvidenceResult:
     """Shared Algorithm 1/2 + frozen-query protocol for any paper environment."""
     if not isinstance(config, ScaledMetaSGConfig):
@@ -169,6 +172,7 @@ def run_scaled_evidence(
         initial_defender=initial_defender,
         initial_attackers=initial_attackers,
         sample_tasks=task_sampler,
+        training_method=training_method,
         checkpoint_path=training_checkpoint_path,
         resume=resume_training,
         checkpoint_interval=training_checkpoint_interval,
@@ -185,7 +189,11 @@ def run_scaled_evidence(
         thresholds=thresholds,
     ).run(
         task=tasks[0],
-        learned_defender=training.algorithm1_defender,
+        learned_defender=(
+            training.algorithm2_defender
+            if training_method == 'meta-rl'
+            else training.algorithm1_defender
+        ),
         random_defender=random_defender,
         initial_attacker=first_attacker,
         specialized_defenders={
@@ -226,6 +234,7 @@ def run_scaled_evidence(
         'attack_sampling_seed': attack_sampling_seed,
         'attack_type_origins': attack_origins,
         'device': str(device),
+        'training_method': training_method,
     })
     return ScaledEvidenceResult(
         training, scientific, parameters, query_seeds,

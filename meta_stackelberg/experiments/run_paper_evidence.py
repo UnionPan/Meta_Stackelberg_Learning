@@ -62,6 +62,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--training-checkpoint')
     parser.add_argument('--training-checkpoint-interval', type=int, default=1)
     parser.add_argument('--resume-training', action='store_true')
+    parser.add_argument(
+        '--training-method',
+        choices=('meta-sg', 'meta-rl', 'both'),
+        default='both',
+        help='train Meta-SG (Algorithm 1), Meta-RL (Algorithm 2), or both independently',
+    )
     return parser
 
 
@@ -159,6 +165,7 @@ def main(argv: list[str] | None = None) -> int:
             training_checkpoint_path=args.training_checkpoint,
             resume_training=args.resume_training,
             training_checkpoint_interval=args.training_checkpoint_interval,
+            training_method=args.training_method,
         )
     else:
         datasets = load_paper_cifar_datasets(
@@ -183,6 +190,7 @@ def main(argv: list[str] | None = None) -> int:
             training_checkpoint_path=args.training_checkpoint,
             resume_training=args.resume_training,
             training_checkpoint_interval=args.training_checkpoint_interval,
+            training_method=args.training_method,
         )
     artifact = save_scaled_evidence_artifact(Path(args.output), result)
     summary = {
