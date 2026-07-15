@@ -26,6 +26,7 @@ class TorchLocalTrainer:
         learning_rate: float,
         local_epochs: int,
         batch_size: int,
+        device: str | torch.device = 'cpu',
     ) -> None:
         if not math.isfinite(float(learning_rate)) or learning_rate < 0.0:
             raise ValueError('learning_rate must be finite and non-negative')
@@ -39,6 +40,9 @@ class TorchLocalTrainer:
         self.learning_rate = float(learning_rate)
         self.local_epochs = int(local_epochs)
         self.batch_size = int(batch_size)
+        self.device = torch.device(device)
+        if self.device.type == 'cuda' and not torch.cuda.is_available():
+            raise RuntimeError(f'CUDA device {self.device} is not available')
 
     def train(self, client_id: int, state: RoundState, rng: RandomSource) -> ClientUpdate:
         if client_id not in self.client_datasets:
@@ -47,7 +51,7 @@ class TorchLocalTrainer:
         if len(dataset) <= 0:
             raise ValueError(f'client {client_id} dataset must not be empty')
 
-        model = self.model_factory().to('cpu')
+        model = self.model_factory().to(self.device)
         self.codec.load(model, state.global_model)
         optimizer = torch.optim.SGD(model.parameters(), lr=self.learning_rate)
         criterion = torch.nn.CrossEntropyLoss()
@@ -65,6 +69,8 @@ class TorchLocalTrainer:
         model.train()
         for _ in range(self.local_epochs):
             for inputs, labels in loader:
+                inputs = inputs.to(self.device, non_blocking=True)
+                labels = labels.to(self.device, non_blocking=True)
                 optimizer.zero_grad(set_to_none=True)
                 logits = model(inputs)
                 loss = criterion(logits, labels)

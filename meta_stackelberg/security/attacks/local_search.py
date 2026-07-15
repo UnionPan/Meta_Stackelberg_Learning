@@ -35,6 +35,7 @@ class RLLocalSearchAttack:
         learning_rate: float,
         batch_size: int,
         trajectories: int,
+        gradient_norm_cap: float | None = None,
     ) -> None:
         if not isinstance(action, RLAttackAction):
             raise TypeError('action must be RLAttackAction')
@@ -47,6 +48,12 @@ class RLLocalSearchAttack:
         for value, name in ((batch_size, 'batch_size'), (trajectories, 'trajectories')):
             if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
                 raise ValueError(f'{name} must be a positive integer')
+        if gradient_norm_cap is not None and (
+            isinstance(gradient_norm_cap, bool)
+            or not math.isfinite(float(gradient_norm_cap))
+            or gradient_norm_cap <= 0
+        ):
+            raise ValueError('gradient_norm_cap must be finite and positive')
         counts = dict(num_examples_by_client)
         if not counts or any(
             isinstance(client_id, bool) or not isinstance(client_id, int) or client_id < 0
@@ -62,6 +69,9 @@ class RLLocalSearchAttack:
         self.learning_rate = float(learning_rate)
         self.batch_size = batch_size
         self.trajectories = trajectories
+        self.gradient_norm_cap = (
+            None if gradient_norm_cap is None else float(gradient_norm_cap)
+        )
 
     def craft_round(
         self,
@@ -95,6 +105,8 @@ class RLLocalSearchAttack:
             'trajectory_count': self.trajectories,
             'paper_gradient_sign_converted_to_model_delta': True,
         }
+        if self.gradient_norm_cap is not None:
+            metadata['local_search_gradient_norm_cap'] = self.gradient_norm_cap
         return tuple(
             ClientUpdate(
                 client_id=client_id,
@@ -154,9 +166,18 @@ class RLLocalSearchAttack:
                 + self.action.stealth_lambda * cosine
             )
             gradients = torch.autograd.grad(objective, parameters)
+            gradient_norm = torch.linalg.vector_norm(torch.cat([
+                gradient.detach().reshape(-1).float() for gradient in gradients
+            ]))
+            if not bool(torch.isfinite(gradient_norm)):
+                raise ValueError('local-search objective produced a non-finite gradient')
+            scale = 1.0 if self.gradient_norm_cap is None else min(
+                1.0,
+                self.gradient_norm_cap / max(float(gradient_norm), 1e-12),
+            )
             with torch.no_grad():
                 for parameter, gradient in zip(parameters, gradients):
-                    parameter.add_(self.learning_rate * gradient)
+                    parameter.add_(self.learning_rate * scale * gradient)
         return self.codec.capture(model)
 
     def _sample_batch(self, rng: RandomSource, device: torch.device):

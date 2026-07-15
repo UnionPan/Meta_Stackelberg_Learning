@@ -16,7 +16,7 @@ class PolicyAlgorithm2TaskTrace:
     response_fingerprint: str
     adapted_defender_fingerprint: str
     update_stats: tuple[TD3UpdateStats, ...]
-    adapted_snapshot: TD3Snapshot
+    adapted_snapshot: TD3Snapshot | None
 
 
 @dataclass(frozen=True)
@@ -114,7 +114,7 @@ class PolicyMetaSGAlgorithm2:
                     response_guard.fingerprint,
                     adapted.fingerprint(),
                     tuple(stats),
-                    snapshot,
+                    None,
                 ))
             reptile_update_td3(
                 defender, tuple(snapshots), meta_step=self.meta_update_step,

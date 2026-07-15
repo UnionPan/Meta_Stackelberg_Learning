@@ -64,6 +64,38 @@ def test_scaled_collector_executes_both_3d_policies_each_fl_round() -> None:
     assert attacker_replay.sample(2).generations.tolist() == [[7], [7]]
 
 
+def test_training_collector_can_discard_model_sized_round_traces() -> None:
+    env = _make_env(seed=23)
+    defender_dim = len(flatten_observation(
+        env.defender_observation(), DEFENDER_OBSERVATION_KEYS,
+    ))
+    pending_probe = _make_env(seed=23).begin_round(
+        np.zeros(3, dtype=np.float32),
+    )
+    attacker_dim = len(flatten_observation(
+        pending_probe.attacker_observation, ATTACKER_OBSERVATION_KEYS,
+    ))
+    trajectory = PaperTD3TrajectoryCollector().collect(
+        env=env,
+        defender=_agent(defender_dim, 'defender', 31),
+        attacker=_agent(attacker_dim, 'attacker', 32),
+        defender_replay=TD3ReplayBuffer(
+            8, obs_dim=defender_dim, action_dim=3, role='defender', seed=33,
+        ),
+        attacker_replay=TD3ReplayBuffer(
+            8, obs_dim=attacker_dim, action_dim=3, role='attacker', seed=34,
+        ),
+        generation=0,
+        deterministic=True,
+        retain_steps=False,
+    )
+
+    assert trajectory.steps == ()
+    assert trajectory.fl_round_count == env.horizon == 2
+    assert np.isfinite(trajectory.mean_defender_reward)
+    assert np.isfinite(trajectory.mean_attacker_reward)
+
+
 def test_immutable_paper_scaled_configuration_matches_execution_traces() -> None:
     config = PaperMetaSGConfig().scaled(
         T=2, K=2, H=8, l=2, N_A=2, N_D=2,

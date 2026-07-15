@@ -70,3 +70,32 @@ def test_replay_snapshot_restores_contents_cursor_generation_and_rng_exactly() -
     np.testing.assert_array_equal(actual.observations, expected.observations)
     np.testing.assert_array_equal(actual.actions, expected.actions)
     np.testing.assert_array_equal(actual.generations, expected.generations)
+
+
+def test_large_capacity_replay_grows_lazily_and_snapshots_only_valid_rows() -> None:
+    buffer = TD3ReplayBuffer(
+        1_000_000, obs_dim=1290, action_dim=3, role='defender', seed=5,
+    )
+    for index in range(5):
+        observation = np.full(1290, index, dtype=np.float32)
+        buffer.add(
+            observation,
+            np.zeros(3, dtype=np.float32),
+            float(index),
+            observation + 1,
+            False,
+            generation=0,
+            role='defender',
+        )
+    snapshot = buffer.snapshot()
+    assert snapshot.schema_version == 2
+    assert snapshot.capacity == 1_000_000
+    assert snapshot.size == 5
+    assert snapshot.observations.shape == (5, 1290)
+    assert snapshot.next_observations.shape == (5, 1290)
+
+    restored = TD3ReplayBuffer(
+        1_000_000, obs_dim=1290, action_dim=3, role='defender', seed=99,
+    )
+    restored.restore(snapshot)
+    assert restored.fingerprint() == buffer.fingerprint()

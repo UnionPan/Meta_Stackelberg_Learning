@@ -322,6 +322,7 @@ class PaperScientificGateRunner:
                 generation=generation,
                 deterministic=False,
                 explore_role=target_role,
+                retain_steps=False,
             )
             del trajectory
 

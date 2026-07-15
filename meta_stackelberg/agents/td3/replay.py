@@ -55,6 +55,8 @@ def flatten_observation(
 
 
 class TD3ReplayBuffer:
+    _INITIAL_STORAGE = 1024
+
     def __init__(
         self,
         capacity: int,
@@ -74,12 +76,7 @@ class TD3ReplayBuffer:
         self.action_dim = action_dim
         self.role = role
         self._rng = np.random.default_rng(seed)
-        self._observations = np.zeros((capacity, obs_dim), dtype=np.float32)
-        self._actions = np.zeros((capacity, action_dim), dtype=np.float32)
-        self._rewards = np.zeros((capacity, 1), dtype=np.float32)
-        self._next_observations = np.zeros((capacity, obs_dim), dtype=np.float32)
-        self._dones = np.zeros((capacity, 1), dtype=np.float32)
-        self._generations = np.zeros((capacity, 1), dtype=np.int64)
+        self._allocate_storage(min(capacity, self._INITIAL_STORAGE))
         self._position = 0
         self._size = 0
 
@@ -107,6 +104,7 @@ class TD3ReplayBuffer:
         if isinstance(generation, bool) or not isinstance(generation, int) or generation < 0:
             raise ValueError('generation must be a non-negative integer')
         index = self._position
+        self._ensure_storage(index)
         self._observations[index] = obs
         self._actions[index] = act
         self._rewards[index, 0] = float(reward)
@@ -134,50 +132,103 @@ class TD3ReplayBuffer:
         )
 
     def snapshot(self) -> TD3ReplaySnapshot:
+        rows = self._size
         return TD3ReplaySnapshot(
-            1,
+            2,
             self.capacity,
             self.obs_dim,
             self.action_dim,
             self.role,
-            self._observations.copy(),
-            self._actions.copy(),
-            self._rewards.copy(),
-            self._next_observations.copy(),
-            self._dones.copy(),
-            self._generations.copy(),
+            self._observations[:rows].copy(),
+            self._actions[:rows].copy(),
+            self._rewards[:rows].copy(),
+            self._next_observations[:rows].copy(),
+            self._dones[:rows].copy(),
+            self._generations[:rows].copy(),
             self._position,
             self._size,
             copy.deepcopy(self._rng.bit_generator.state),
         )
 
     def restore(self, snapshot: TD3ReplaySnapshot) -> None:
-        if not isinstance(snapshot, TD3ReplaySnapshot) or snapshot.schema_version != 1:
+        if (
+            not isinstance(snapshot, TD3ReplaySnapshot)
+            or snapshot.schema_version not in {1, 2}
+        ):
             raise ValueError('unknown TD3 replay snapshot schema')
         identity = (self.capacity, self.obs_dim, self.action_dim, self.role)
         if identity != (
             snapshot.capacity, snapshot.obs_dim, snapshot.action_dim, snapshot.role,
         ):
             raise ValueError('TD3 replay snapshot structure mismatch')
+        if not 0 <= snapshot.size <= self.capacity:
+            raise ValueError('TD3 replay snapshot size is invalid')
+        if snapshot.schema_version == 1:
+            valid_rows = self.capacity
+        else:
+            valid_rows = snapshot.size
         expected_shapes = (
-            (snapshot.observations, self._observations.shape),
-            (snapshot.actions, self._actions.shape),
-            (snapshot.rewards, self._rewards.shape),
-            (snapshot.next_observations, self._next_observations.shape),
-            (snapshot.dones, self._dones.shape),
-            (snapshot.generations, self._generations.shape),
+            (snapshot.observations, (valid_rows, self.obs_dim)),
+            (snapshot.actions, (valid_rows, self.action_dim)),
+            (snapshot.rewards, (valid_rows, 1)),
+            (snapshot.next_observations, (valid_rows, self.obs_dim)),
+            (snapshot.dones, (valid_rows, 1)),
+            (snapshot.generations, (valid_rows, 1)),
         )
         if any(array.shape != shape for array, shape in expected_shapes):
             raise ValueError('TD3 replay snapshot array shape mismatch')
-        self._observations[:] = snapshot.observations
-        self._actions[:] = snapshot.actions
-        self._rewards[:] = snapshot.rewards
-        self._next_observations[:] = snapshot.next_observations
-        self._dones[:] = snapshot.dones
-        self._generations[:] = snapshot.generations
+        if snapshot.size < self.capacity and snapshot.position != snapshot.size:
+            raise ValueError('non-full replay snapshot cursor must equal its size')
+        if snapshot.size == self.capacity and not 0 <= snapshot.position < self.capacity:
+            raise ValueError('full replay snapshot cursor is invalid')
+        stored_rows = snapshot.size
+        self._allocate_storage(max(
+            min(self.capacity, self._INITIAL_STORAGE), stored_rows,
+        ))
+        self._observations[:stored_rows] = snapshot.observations[:stored_rows]
+        self._actions[:stored_rows] = snapshot.actions[:stored_rows]
+        self._rewards[:stored_rows] = snapshot.rewards[:stored_rows]
+        self._next_observations[:stored_rows] = snapshot.next_observations[:stored_rows]
+        self._dones[:stored_rows] = snapshot.dones[:stored_rows]
+        self._generations[:stored_rows] = snapshot.generations[:stored_rows]
         self._position = snapshot.position
         self._size = snapshot.size
         self._rng.bit_generator.state = copy.deepcopy(snapshot.numpy_rng_state)
+
+    def _allocate_storage(self, rows: int) -> None:
+        self._observations = np.zeros((rows, self.obs_dim), dtype=np.float32)
+        self._actions = np.zeros((rows, self.action_dim), dtype=np.float32)
+        self._rewards = np.zeros((rows, 1), dtype=np.float32)
+        self._next_observations = np.zeros(
+            (rows, self.obs_dim), dtype=np.float32,
+        )
+        self._dones = np.zeros((rows, 1), dtype=np.float32)
+        self._generations = np.zeros((rows, 1), dtype=np.int64)
+
+    def _ensure_storage(self, index: int) -> None:
+        current = len(self._observations)
+        if index < current:
+            return
+        rows = min(self.capacity, max(index + 1, current * 2))
+        old = (
+            self._observations,
+            self._actions,
+            self._rewards,
+            self._next_observations,
+            self._dones,
+            self._generations,
+        )
+        self._allocate_storage(rows)
+        copied = min(self._size, current)
+        for target, source in zip((
+            self._observations,
+            self._actions,
+            self._rewards,
+            self._next_observations,
+            self._dones,
+            self._generations,
+        ), old):
+            target[:copied] = source[:copied]
 
     def fingerprint(self) -> str:
         digest = sha256()

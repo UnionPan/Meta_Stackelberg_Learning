@@ -1,3 +1,5 @@
+import pytest
+
 from meta_stackelberg.agents.td3.agent import TD3Agent
 from meta_stackelberg.agents.td3.config import PaperMetaSGConfig
 from meta_stackelberg.agents.td3.replay import TD3ReplayBuffer, flatten_observation
@@ -6,6 +8,9 @@ from meta_stackelberg.experiments.paper_meta_sg import (
     DEFENDER_OBSERVATION_KEYS,
     ScaledPaperMetaSGTrainingRunner,
     PaperTD3TrajectoryCollector,
+)
+from meta_stackelberg.experiments.scaled_training_checkpoint import (
+    load_scaled_training_checkpoint,
 )
 from meta_stackelberg.experiments.scientific_gate import (
     QueryEvidencePlan,
@@ -157,3 +162,89 @@ def test_declared_2_2_8_2_2_2_training_scale_executes_real_rollouts() -> None:
     )
     assert initial_evidence.query_seeds == learned_evidence.query_seeds == (101, 102)
     assert initial_evidence.attacker_action_trajectories != learned_evidence.attacker_action_trajectories
+
+
+def test_scaled_runner_checkpoint_is_complete_resumable_and_lightweight(
+    tmp_path,
+) -> None:
+    config = PaperMetaSGConfig().scaled(
+        T=1, K=1, H=2, l=1, N_A=1, N_D=1,
+        workers=4, untargeted_attackers=2, sample_size=4,
+        td3_batch_size=2, learning_starts=2, hidden_sizes=(8,),
+        replay_capacity=128,
+    )
+    probe = _make_env(seed=1)
+    defender_dim = len(flatten_observation(
+        probe.defender_observation(), DEFENDER_OBSERVATION_KEYS,
+    ))
+    attacker_dim = len(flatten_observation(
+        _make_env(seed=1).begin_round(
+            __import__('numpy').zeros(3, dtype='float32'),
+        ).attacker_observation,
+        ATTACKER_OBSERVATION_KEYS,
+    ))
+    defender = _agent(defender_dim, 'defender', 50)
+    attacker = _agent(attacker_dim, 'attacker', 51)
+
+    def env_factory(task, seed, horizon):
+        del task
+        env = _make_env(seed=seed)
+        env.horizon = horizon
+        return env
+
+    checkpoint_path = tmp_path / 'training.pt'
+    first = ScaledPaperMetaSGTrainingRunner(
+        config=config,
+        env_factory=env_factory,
+        defender_obs_dim=defender_dim,
+        attacker_obs_dim=attacker_dim,
+        support_seed=3000,
+    ).run(
+        initial_defender=defender,
+        initial_attackers={'rl': attacker},
+        sample_tasks=lambda iteration, count: ('rl',),
+        checkpoint_path=checkpoint_path,
+    )
+    checkpoint = load_scaled_training_checkpoint(checkpoint_path)
+    assert checkpoint.phase == 'complete'
+    assert checkpoint.algorithm1_completed == checkpoint.algorithm2_completed == 1
+    assert checkpoint.algorithm1_iterations[0].tasks[0].adaptation.adapted_defender is None
+    assert checkpoint.algorithm1_iterations[0].tasks[0].response.approximate_best_response is None
+    assert checkpoint.algorithm2_iterations[0].tasks[0].adapted_snapshot is None
+    assert checkpoint.config_signature['workers'] == 4
+    assert checkpoint.config_signature['protocol_signature'] == {}
+
+    resumed = ScaledPaperMetaSGTrainingRunner(
+        config=config,
+        env_factory=env_factory,
+        defender_obs_dim=defender_dim,
+        attacker_obs_dim=attacker_dim,
+        support_seed=3000,
+    ).run(
+        initial_defender=defender,
+        initial_attackers={'rl': attacker},
+        sample_tasks=lambda iteration, count: ('rl',),
+        checkpoint_path=checkpoint_path,
+        resume=True,
+    )
+    assert resumed.support_seeds == first.support_seeds
+    assert resumed.algorithm1_defender.fingerprint() == first.algorithm1_defender.fingerprint()
+    assert resumed.algorithm2_defender.fingerprint() == first.algorithm2_defender.fingerprint()
+    assert resumed.algorithm1_attackers['rl'].fingerprint() == first.algorithm1_attackers['rl'].fingerprint()
+
+    incompatible = ScaledPaperMetaSGTrainingRunner(
+        config=config,
+        env_factory=env_factory,
+        defender_obs_dim=defender_dim,
+        attacker_obs_dim=attacker_dim,
+        support_seed=3000,
+        protocol_signature={'partition_seed': 999},
+    )
+    with pytest.raises(ValueError, match='configuration mismatch'):
+        incompatible.run(
+            initial_defender=defender,
+            initial_attackers={'rl': attacker},
+            sample_tasks=lambda iteration, count: ('rl',),
+            checkpoint_path=checkpoint_path,
+            resume=True,
+        )

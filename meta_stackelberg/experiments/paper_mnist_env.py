@@ -123,6 +123,8 @@ def make_paper_mnist_env(
     local_search_learning_rate: float = 0.01,
     local_search_batch_size: int = 128,
     local_search_trajectories: int = 1,
+    local_search_gradient_norm_cap: float = 1.0,
+    device: str | torch.device = 'cpu',
     task_id: str = 'paper-mnist-meta-sg',
 ) -> PaperBSMGEnv:
     factory = PaperMNISTEnvironmentFactory(
@@ -140,6 +142,8 @@ def make_paper_mnist_env(
         local_search_learning_rate=local_search_learning_rate,
         local_search_batch_size=local_search_batch_size,
         local_search_trajectories=local_search_trajectories,
+        local_search_gradient_norm_cap=local_search_gradient_norm_cap,
+        device=device,
     )
     return factory.make(seed=seed, horizon=horizon, task_id=task_id)
 
@@ -164,6 +168,8 @@ class PaperMNISTEnvironmentFactory:
         local_search_learning_rate: float = 0.01,
         local_search_batch_size: int = 128,
         local_search_trajectories: int = 1,
+        local_search_gradient_norm_cap: float = 1.0,
+        device: str | torch.device = 'cpu',
     ) -> None:
         self.train_dataset = train_dataset
         self.root_dataset = root_dataset
@@ -173,6 +179,10 @@ class PaperMNISTEnvironmentFactory:
         self.local_search_learning_rate = local_search_learning_rate
         self.local_search_batch_size = local_search_batch_size
         self.local_search_trajectories = local_search_trajectories
+        self.local_search_gradient_norm_cap = local_search_gradient_norm_cap
+        self.device = torch.device(device)
+        if self.device.type == 'cuda' and not torch.cuda.is_available():
+            raise RuntimeError(f'CUDA device {self.device} is not available')
         labels = _dataset_labels(train_dataset)
         class_count = len(np.unique(labels))
         if class_count != 10:
@@ -224,10 +234,11 @@ class PaperMNISTEnvironmentFactory:
             learning_rate=client_learning_rate,
             local_epochs=local_iterations,
             batch_size=fl_batch_size,
+            device=self.device,
         )
 
     def model_factory(self):
-        return _model_factory(self.model_seed)
+        return _model_factory(self.model_seed).to(self.device)
 
     def make(
         self,
@@ -235,9 +246,18 @@ class PaperMNISTEnvironmentFactory:
         seed: int,
         horizon: int,
         task_id: str = 'paper-mnist-meta-sg',
+        malicious_ids=None,
+        attack_generator_factory=None,
     ) -> PaperBSMGEnv:
         source = RandomSource(seed)
         state = RoundState(0, self.initial_global_model, source.capture())
+        selected_malicious_ids = (
+            self.malicious_ids
+            if malicious_ids is None
+            else frozenset(malicious_ids)
+        )
+        if not selected_malicious_ids.issubset(self.malicious_ids):
+            raise ValueError('evaluation malicious ids must use the declared population')
         return PaperBSMGEnv(
             task_id=task_id,
             initial_state=state,
@@ -247,7 +267,7 @@ class PaperMNISTEnvironmentFactory:
             initial_observed_max_norm=1.0,
             sampler=UniformClientSampler(self.workers),
             benign_trainer=self.benign_trainer,
-            population=FixedMaliciousPopulation(self.malicious_ids),
+            population=FixedMaliciousPopulation(selected_malicious_ids),
             model_factory=self.model_factory,
             codec=self.codec,
             attacker_dataset=self.attacker_dataset,
@@ -258,6 +278,9 @@ class PaperMNISTEnvironmentFactory:
             local_search_learning_rate=self.local_search_learning_rate,
             local_search_batch_size=self.local_search_batch_size,
             local_search_trajectories=self.local_search_trajectories,
+            local_search_gradient_norm_cap=self.local_search_gradient_norm_cap,
+            device=self.device,
+            attack_generator_factory=attack_generator_factory,
         )
 def _model_factory(seed: int) -> PaperMNISTCNN:
     with torch.random.fork_rng():

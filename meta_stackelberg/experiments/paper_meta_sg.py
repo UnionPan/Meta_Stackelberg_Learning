@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Mapping
 
 import numpy as np
@@ -14,6 +15,11 @@ from meta_stackelberg.agents.td3.config import (
     ScaledOnlineAdaptationConfig,
 )
 from meta_stackelberg.environments.paper_bsmg import PaperBSMGEnv, PaperRoundStep
+from meta_stackelberg.experiments.scaled_training_checkpoint import (
+    ScaledTrainingCheckpoint,
+    load_scaled_training_checkpoint,
+    save_scaled_training_checkpoint,
+)
 from meta_stackelberg.security.attacks.rl_action import RLAttackActionCodec
 from meta_stackelberg.security.defenses.paper_action import PaperDefenderActionCodec
 from meta_stackelberg.stackelberg.algorithm1 import Algorithm1Result
@@ -91,18 +97,27 @@ class PaperTrajectory:
     steps: tuple[PaperRoundStep, ...]
     defender_return: float
     attacker_return: float
+    fl_round_count: int | None = None
+
+    def __post_init__(self) -> None:
+        round_count = len(self.steps) if self.fl_round_count is None else self.fl_round_count
+        if (
+            isinstance(round_count, bool)
+            or not isinstance(round_count, int)
+            or round_count <= 0
+        ):
+            raise ValueError('trajectory FL round count must be positive')
+        if self.steps and len(self.steps) != round_count:
+            raise ValueError('retained trajectory steps must match FL round count')
+        object.__setattr__(self, 'fl_round_count', round_count)
 
     @property
     def mean_defender_reward(self) -> float:
-        if not self.steps:
-            raise ValueError('trajectory has no FL rounds')
-        return self.defender_return / len(self.steps)
+        return self.defender_return / self.fl_round_count
 
     @property
     def mean_attacker_reward(self) -> float:
-        if not self.steps:
-            raise ValueError('trajectory has no FL rounds')
-        return self.attacker_return / len(self.steps)
+        return self.attacker_return / self.fl_round_count
 
 
 @dataclass(frozen=True)
@@ -200,6 +215,7 @@ class PaperTD3TrajectoryCollector:
         generation: int,
         deterministic: bool = False,
         explore_role: str | None = None,
+        retain_steps: bool = True,
     ) -> PaperTrajectory:
         if defender.role != 'defender' or attacker.role != 'attacker':
             raise ValueError('trajectory policy roles do not match protocol')
@@ -210,6 +226,9 @@ class PaperTD3TrajectoryCollector:
         defender_deterministic = deterministic or explore_role == 'attacker'
         attacker_deterministic = deterministic or explore_role == 'defender'
         steps = []
+        defender_return = 0.0
+        attacker_return = 0.0
+        fl_round_count = 0
         pending_attacker = None
         while env.state.round_index < env.horizon:
             defender_obs = flatten_observation(
@@ -243,7 +262,11 @@ class PaperTD3TrajectoryCollector:
             pending_attacker = (
                 attacker_obs, attacker_action, step.attacker_reward.scalar,
             )
-            steps.append(step)
+            defender_return += float(step.defender_reward.scalar)
+            attacker_return += float(step.attacker_reward.scalar)
+            fl_round_count += 1
+            if retain_steps:
+                steps.append(step)
         if pending_attacker is not None:
             obs, action, reward = pending_attacker
             attacker_replay.add(
@@ -253,8 +276,9 @@ class PaperTD3TrajectoryCollector:
         return PaperTrajectory(
             generation,
             tuple(steps),
-            float(sum(step.defender_reward.scalar for step in steps)),
-            float(sum(step.attacker_reward.scalar for step in steps)),
+            defender_return,
+            attacker_return,
+            fl_round_count,
         )
 
 
@@ -270,6 +294,7 @@ class ScaledPaperMetaSGTrainingRunner:
         attacker_obs_dim: int,
         support_seed: int,
         query_seeds: tuple[int, ...] = (),
+        protocol_signature: Mapping[str, object] | None = None,
     ) -> None:
         if not isinstance(config, ScaledMetaSGConfig):
             raise TypeError('config must be ScaledMetaSGConfig')
@@ -280,9 +305,11 @@ class ScaledPaperMetaSGTrainingRunner:
         self.defender_obs_dim = defender_obs_dim
         self.attacker_obs_dim = attacker_obs_dim
         self._next_support_seed = support_seed
+        self._initial_support_seed = support_seed
         self._replay_serial = 0
         self._support_seeds = []
         self._query_seeds = frozenset(query_seeds)
+        self.protocol_signature = dict(protocol_signature or {})
         required = max(config.td3_batch_size, config.learning_starts)
         self.trajectories_per_update = max(1, int(np.ceil(required / config.H)))
 
@@ -292,7 +319,19 @@ class ScaledPaperMetaSGTrainingRunner:
         initial_defender: TD3Agent,
         initial_attackers: Mapping[object, TD3Agent],
         sample_tasks,
+        checkpoint_path: str | Path | None = None,
+        resume: bool = False,
+        checkpoint_interval: int = 1,
     ) -> ScaledPolicyTrainingResult:
+        if resume and checkpoint_path is None:
+            raise ValueError('resume requires checkpoint_path')
+        if (
+            isinstance(checkpoint_interval, bool)
+            or not isinstance(checkpoint_interval, int)
+            or checkpoint_interval <= 0
+        ):
+            raise ValueError('checkpoint_interval must be positive')
+        target = Path(checkpoint_path) if checkpoint_path is not None else None
         algorithm1_defender = initial_defender.clone()
         algorithm2_defender = initial_defender.clone()
         algorithm1_attackers = {
@@ -301,7 +340,69 @@ class ScaledPaperMetaSGTrainingRunner:
         algorithm2_responses = {
             task: attacker.clone() for task, attacker in initial_attackers.items()
         }
-        algorithm1 = PolicyMetaSGAlgorithm1(
+        signature = self._checkpoint_signature(
+            initial_defender, initial_attackers,
+        )
+        algorithm1_history = []
+        algorithm2_history = []
+        algorithm1_start = 0
+        algorithm2_start = 0
+        if resume:
+            checkpoint = load_scaled_training_checkpoint(target)
+            if dict(checkpoint.config_signature) != signature:
+                raise ValueError('scaled training checkpoint configuration mismatch')
+            if set(checkpoint.algorithm1_attackers) != set(algorithm1_attackers):
+                raise ValueError('scaled training checkpoint attack domain mismatch')
+            algorithm1_defender.restore(checkpoint.algorithm1_defender)
+            algorithm2_defender.restore(checkpoint.algorithm2_defender)
+            for task, snapshot in checkpoint.algorithm1_attackers.items():
+                algorithm1_attackers[task].restore(snapshot)
+            algorithm1_history.extend(checkpoint.algorithm1_iterations)
+            algorithm2_history.extend(checkpoint.algorithm2_iterations)
+            algorithm1_start = checkpoint.algorithm1_completed
+            algorithm2_start = checkpoint.algorithm2_completed
+            self._support_seeds = list(checkpoint.support_seeds)
+            self._next_support_seed = checkpoint.next_support_seed
+            self._replay_serial = checkpoint.replay_serial
+
+        def save_checkpoint(phase: str) -> None:
+            if target is None:
+                return
+            save_scaled_training_checkpoint(
+                target,
+                ScaledTrainingCheckpoint(
+                    phase=phase,
+                    config_signature=signature,
+                    algorithm1_completed=len(algorithm1_history),
+                    algorithm2_completed=len(algorithm2_history),
+                    algorithm1_defender=algorithm1_defender.snapshot(),
+                    algorithm2_defender=algorithm2_defender.snapshot(),
+                    algorithm1_attackers={
+                        task: policy.snapshot()
+                        for task, policy in algorithm1_attackers.items()
+                    },
+                    support_seeds=tuple(self._support_seeds),
+                    next_support_seed=self._next_support_seed,
+                    replay_serial=self._replay_serial,
+                    algorithm1_iterations=tuple(algorithm1_history),
+                    algorithm2_iterations=tuple(algorithm2_history),
+                ),
+            )
+
+        def record_algorithm1(trace, defender, attackers) -> None:
+            del defender, attackers
+            algorithm1_history.append(trace)
+            if (
+                len(algorithm1_history) % checkpoint_interval == 0
+                or len(algorithm1_history) == self.config.N_D
+            ):
+                save_checkpoint(
+                    'algorithm2'
+                    if len(algorithm1_history) == self.config.N_D
+                    else 'algorithm1',
+                )
+
+        algorithm1_runner = PolicyMetaSGAlgorithm1(
             N_D=self.config.N_D,
             K=self.config.K,
             N_A=self.config.N_A,
@@ -309,43 +410,69 @@ class ScaledPaperMetaSGTrainingRunner:
             eta=self.config.paper_reference.adaptation_step,
             kappa_A=self.config.paper_reference.kappa_attacker,
             kappa_D=self.config.paper_reference.kappa_defender,
-        ).run(
-            defender=algorithm1_defender,
-            attackers=algorithm1_attackers,
-            sample_tasks=sample_tasks,
-            replay_factory=self._algorithm1_replay,
-            collect_adaptation=lambda task, defender, attacker, replay, iteration: self._collect_updates(
-                task, defender, attacker, replay, 'defender', iteration,
-            ),
-            collect_response=lambda task, step, defender, attacker, replay, iteration: self._collect_updates(
-                task, defender, attacker, replay, 'attacker', iteration,
-            ),
-            collect_leader=lambda task, defender, attacker, replay, iteration: self._collect_updates(
-                task, defender, attacker, replay, 'defender', iteration,
-            ),
-            independent_attacker_objective=lambda task, policy: float(
-                np.mean(policy.act(
-                    np.zeros(self.attacker_obs_dim, dtype=np.float32),
-                    deterministic=True,
-                ))
-            ),
         )
-        algorithm2 = PolicyMetaSGAlgorithm2(
+        if algorithm1_start < self.config.N_D:
+            algorithm1_runner.run(
+                defender=algorithm1_defender,
+                attackers=algorithm1_attackers,
+                sample_tasks=sample_tasks,
+                replay_factory=self._algorithm1_replay,
+                collect_adaptation=lambda task, defender, attacker, replay, iteration: self._collect_updates(
+                    task, defender, attacker, replay, 'defender', iteration,
+                ),
+                collect_response=lambda task, step, defender, attacker, replay, iteration: self._collect_updates(
+                    task, defender, attacker, replay, 'attacker', iteration,
+                ),
+                collect_leader=lambda task, defender, attacker, replay, iteration: self._collect_updates(
+                    task, defender, attacker, replay, 'defender', iteration,
+                ),
+                independent_attacker_objective=lambda task, policy: float(
+                    np.mean(policy.act(
+                        np.zeros(self.attacker_obs_dim, dtype=np.float32),
+                        deterministic=True,
+                    ))
+                ),
+                start_iteration=algorithm1_start,
+                iteration_callback=record_algorithm1,
+            )
+        algorithm1 = PolicyAlgorithm1Result(tuple(algorithm1_history))
+
+        def record_algorithm2(trace, defender, responses) -> None:
+            del defender, responses
+            algorithm2_history.append(trace)
+            if (
+                len(algorithm2_history) % checkpoint_interval == 0
+                or len(algorithm2_history) == self.config.T
+            ):
+                save_checkpoint(
+                    'complete'
+                    if len(algorithm2_history) == self.config.T
+                    else 'algorithm2',
+                )
+
+        algorithm2_runner = PolicyMetaSGAlgorithm2(
             T=self.config.T,
             K=self.config.K,
             l=self.config.l,
             batch_size=self.config.td3_batch_size,
             kappa=self.config.paper_reference.kappa,
             meta_update_step=self.config.paper_reference.meta_update_step,
-        ).run(
-            defender=algorithm2_defender,
-            response_policies=algorithm2_responses,
-            sample_tasks=sample_tasks,
-            replay_factory=lambda task, iteration: self._new_replay('defender'),
-            collect_task=lambda task, step, defender, attacker, replay, iteration: self._collect_updates(
-                task, defender, attacker, replay, 'defender', iteration,
-            ),
         )
+        if algorithm2_start < self.config.T:
+            algorithm2_runner.run(
+                defender=algorithm2_defender,
+                response_policies=algorithm2_responses,
+                sample_tasks=sample_tasks,
+                replay_factory=lambda task, iteration: self._new_replay('defender'),
+                collect_task=lambda task, step, defender, attacker, replay, iteration: self._collect_updates(
+                    task, defender, attacker, replay, 'defender', iteration,
+                ),
+                start_iteration=algorithm2_start,
+                iteration_callback=record_algorithm2,
+            )
+        algorithm2 = PolicyAlgorithm2Result(tuple(algorithm2_history))
+        if target is not None:
+            save_checkpoint('complete')
         return ScaledPolicyTrainingResult(
             algorithm1,
             algorithm2,
@@ -356,6 +483,36 @@ class ScaledPaperMetaSGTrainingRunner:
             len(self._support_seeds),
             self.trajectories_per_update,
         )
+
+    def _checkpoint_signature(
+        self,
+        initial_defender: TD3Agent,
+        initial_attackers: Mapping[object, TD3Agent],
+    ) -> dict[str, object]:
+        return {
+            'T': self.config.T,
+            'K': self.config.K,
+            'H': self.config.H,
+            'l': self.config.l,
+            'N_A': self.config.N_A,
+            'N_D': self.config.N_D,
+            'td3_batch_size': self.config.td3_batch_size,
+            'learning_starts': self.config.learning_starts,
+            'hidden_sizes': tuple(self.config.hidden_sizes),
+            'replay_capacity': self.config.replay_capacity,
+            'workers': self.config.workers,
+            'untargeted_attackers': self.config.untargeted_attackers,
+            'sample_size': self.config.sample_size,
+            'defender_obs_dim': self.defender_obs_dim,
+            'attacker_obs_dim': self.attacker_obs_dim,
+            'initial_support_seed': self._initial_support_seed,
+            'initial_defender': initial_defender.fingerprint(),
+            'initial_attackers': tuple(sorted(
+                (repr(task), policy.fingerprint())
+                for task, policy in initial_attackers.items()
+            )),
+            'protocol_signature': self.protocol_signature,
+        }
 
     def _algorithm1_replay(self, task, role, phase, iteration):
         del task, phase, iteration
@@ -403,6 +560,7 @@ class ScaledPaperMetaSGTrainingRunner:
                 generation=iteration,
                 deterministic=False,
                 explore_role=target_role,
+                retain_steps=False,
             )
 
 
@@ -474,6 +632,7 @@ class PaperOnlineAdaptationTrainingRunner:
                 generation=generation,
                 deterministic=False,
                 explore_role='defender',
+                retain_steps=False,
             )
 
     def _new_replay(self, role):

@@ -20,7 +20,7 @@ class PolicyBestResponseResult:
     initial_independent_objective: float
     adapted_independent_objective: float
     update_stats: tuple[TD3UpdateStats, ...]
-    approximate_best_response: TD3Snapshot
+    approximate_best_response: TD3Snapshot | None
     kappa_A: float
     protocol: str = 'policy-td3-best-response-v1'
 

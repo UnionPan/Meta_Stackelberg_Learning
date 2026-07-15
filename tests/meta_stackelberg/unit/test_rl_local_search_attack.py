@@ -125,6 +125,32 @@ def test_zero_initial_deviation_does_not_create_inverse_epsilon_explosion() -> N
     assert np.linalg.norm(update.delta.vector()) < 10.0
 
 
+def test_local_search_caps_joint_gradient_norm_for_numerical_stability() -> None:
+    dataset = TensorDataset(
+        torch.tensor([[1.0e8], [-1.0e8]]),
+        torch.tensor([0, 1]),
+    )
+    attack = RLLocalSearchAttack(
+        action=RLAttackAction(1.0, 19, 0.05),
+        model_factory=_model_factory,
+        codec=TorchParameterCodec(),
+        local_dataset=dataset,
+        num_examples_by_client={0: 2, 1: 2},
+        learning_rate=0.01,
+        batch_size=2,
+        trajectories=1,
+        gradient_norm_cap=1.0,
+    )
+
+    update = attack.craft_round(
+        _context(), (RandomSource(1), RandomSource(2)),
+    )[0]
+
+    assert np.all(np.isfinite(update.delta.vector()))
+    assert np.linalg.norm(update.delta.vector()) <= 19 * 0.01 + 1e-6
+    assert update.metadata['local_search_gradient_norm_cap'] == 1.0
+
+
 def test_local_search_supports_parameter_plus_batchnorm_buffer_state() -> None:
     def model_factory():
         return torch.nn.Sequential(

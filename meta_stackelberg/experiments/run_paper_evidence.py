@@ -36,6 +36,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--output', required=True)
     parser.add_argument('--download', action='store_true')
     parser.add_argument('--allow-paper-scale', action='store_true')
+    parser.add_argument(
+        '--task-batch-size', '--K', dest='task_batch_size', type=int,
+        help=(
+            'override the number of attack tasks sampled per outer iteration; '
+            'defaults to the selected profile value'
+        ),
+    )
     parser.add_argument('--attack-domain')
     parser.add_argument('--allow-random-attacker-init', action='store_true')
     parser.add_argument('--require-gate-pass', action='store_true')
@@ -51,11 +58,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--action-difference', type=float, default=0.001)
     parser.add_argument('--attacker-plateau-gap', type=float, default=0.001)
     parser.add_argument('--local-search-batch-size', type=int, default=128)
+    parser.add_argument('--device', default='cpu')
+    parser.add_argument('--training-checkpoint')
+    parser.add_argument('--training-checkpoint-interval', type=int, default=1)
+    parser.add_argument('--resume-training', action='store_true')
     return parser
 
 
 def make_profile_config(args) -> ScaledMetaSGConfig:
     paper = PaperMetaSGConfig()
+    if args.task_batch_size is not None and args.task_batch_size <= 0:
+        raise ValueError('--task-batch-size must be positive')
     common = dict(
         workers=paper.workers,
         untargeted_attackers=paper.untargeted_attackers,
@@ -94,11 +107,17 @@ def make_profile_config(args) -> ScaledMetaSGConfig:
             hidden_sizes=paper.hidden_sizes,
             replay_capacity=paper.replay_capacity,
         )
+    if args.task_batch_size is not None:
+        values['K'] = args.task_batch_size
     return paper.scaled(**values, **common)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.resume_training and not args.training_checkpoint:
+        raise ValueError('--resume-training requires --training-checkpoint')
+    if args.training_checkpoint_interval <= 0:
+        raise ValueError('--training-checkpoint-interval must be positive')
     config = make_profile_config(args)
     validate_attack_initialization(args)
     attack_domain = (
@@ -136,6 +155,10 @@ def main(argv: list[str] | None = None) -> int:
             model_seed=args.model_seed,
             local_search_batch_size=args.local_search_batch_size,
             attack_domain=attack_domain,
+            device=args.device,
+            training_checkpoint_path=args.training_checkpoint,
+            resume_training=args.resume_training,
+            training_checkpoint_interval=args.training_checkpoint_interval,
         )
     else:
         datasets = load_paper_cifar_datasets(
@@ -156,6 +179,10 @@ def main(argv: list[str] | None = None) -> int:
             model_seed=args.model_seed,
             local_search_batch_size=args.local_search_batch_size,
             attack_domain=attack_domain,
+            device=args.device,
+            training_checkpoint_path=args.training_checkpoint,
+            resume_training=args.resume_training,
+            training_checkpoint_interval=args.training_checkpoint_interval,
         )
     artifact = save_scaled_evidence_artifact(Path(args.output), result)
     summary = {

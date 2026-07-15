@@ -116,8 +116,11 @@ class PaperBSMGEnv:
         local_search_learning_rate: float,
         local_search_batch_size: int,
         local_search_trajectories: int,
+        local_search_gradient_norm_cap: float | None = None,
+        device: str | torch.device = 'cpu',
         aggregator_factory=None,
         post_defense_factory=None,
+        attack_generator_factory=None,
     ) -> None:
         if not task_id:
             raise ValueError('task_id must not be empty')
@@ -144,6 +147,21 @@ class PaperBSMGEnv:
         self.local_search_learning_rate = float(local_search_learning_rate)
         self.local_search_batch_size = int(local_search_batch_size)
         self.local_search_trajectories = int(local_search_trajectories)
+        self.local_search_gradient_norm_cap = (
+            None
+            if local_search_gradient_norm_cap is None
+            else float(local_search_gradient_norm_cap)
+        )
+        if self.local_search_gradient_norm_cap is not None and (
+            not np.isfinite(self.local_search_gradient_norm_cap)
+            or self.local_search_gradient_norm_cap <= 0
+        ):
+            raise ValueError(
+                'local_search_gradient_norm_cap must be finite and positive',
+            )
+        self.device = torch.device(device)
+        if self.device.type == 'cuda' and not torch.cuda.is_available():
+            raise RuntimeError(f'CUDA device {self.device} is not available')
         self.aggregator_factory = (
             aggregator_factory
             if aggregator_factory is not None
@@ -156,6 +174,11 @@ class PaperBSMGEnv:
         )
         if not callable(self.post_defense_factory):
             raise TypeError('post_defense_factory must be callable')
+        if attack_generator_factory is not None and not callable(
+            attack_generator_factory,
+        ):
+            raise TypeError('attack_generator_factory must be callable')
+        self.attack_generator_factory = attack_generator_factory
         self.defender_codec = PaperDefenderActionCodec()
         self.attacker_codec = RLAttackActionCodec()
         self._pending: _PendingExecution | None = None
@@ -221,16 +244,25 @@ class PaperBSMGEnv:
             if client_id in pending.benign_by_client
         )
         if malicious_ids:
-            generator = RLLocalSearchAttack(
-                action=attacker_action,
-                model_factory=self.model_factory,
-                codec=self.codec,
-                local_dataset=self.attacker_dataset,
-                num_examples_by_client=self.attacker_num_examples,
-                learning_rate=self.local_search_learning_rate,
-                batch_size=self.local_search_batch_size,
-                trajectories=self.local_search_trajectories,
+            generator = (
+                self.attack_generator_factory(attacker_action)
+                if self.attack_generator_factory is not None
+                else RLLocalSearchAttack(
+                    action=attacker_action,
+                    model_factory=self.model_factory,
+                    codec=self.codec,
+                    local_dataset=self.attacker_dataset,
+                    num_examples_by_client=self.attacker_num_examples,
+                    learning_rate=self.local_search_learning_rate,
+                    batch_size=self.local_search_batch_size,
+                    trajectories=self.local_search_trajectories,
+                    gradient_norm_cap=self.local_search_gradient_norm_cap,
+                )
             )
+            if not callable(getattr(generator, 'craft_round', None)):
+                raise TypeError(
+                    'attack_generator_factory must return a round attack generator',
+                )
             malicious_updates = generator.craft_round(
                 RoundAttackContext(
                     self.state.round_index,
@@ -290,12 +322,12 @@ class PaperBSMGEnv:
     def final_delivered_model(self) -> torch.nn.Module | None:
         if self._last_epsilon is None:
             return None
-        model = self.model_factory()
+        model = self.model_factory().to(self.device)
         self.codec.load(model, self.state.global_model)
         return self.post_defense_factory(model, self._last_epsilon)
 
     def _post_defense_loss(self, state: RoundState, epsilon: float) -> float:
-        model = self.model_factory()
+        model = self.model_factory().to(self.device)
         self.codec.load(model, state.global_model)
         defended = self.post_defense_factory(model, epsilon)
         defended.eval()
@@ -307,6 +339,8 @@ class PaperBSMGEnv:
                 batch_size=max(1, min(128, len(self.root_dataset))),
                 shuffle=False,
             ):
+                inputs = inputs.to(self.device, non_blocking=True)
+                labels = labels.to(self.device, non_blocking=True)
                 logits = defended(inputs)
                 total_loss += float(
                     torch.nn.functional.cross_entropy(

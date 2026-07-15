@@ -112,6 +112,8 @@ class PaperCIFAREnvironmentFactory:
         local_search_learning_rate: float = 0.01,
         local_search_batch_size: int = 128,
         local_search_trajectories: int = 1,
+        local_search_gradient_norm_cap: float = 1.0,
+        device: str | torch.device = 'cpu',
     ) -> None:
         labels = _dataset_labels(train_dataset)
         if len(np.unique(labels)) != 10:
@@ -154,6 +156,10 @@ class PaperCIFAREnvironmentFactory:
         self.local_search_learning_rate = local_search_learning_rate
         self.local_search_batch_size = local_search_batch_size
         self.local_search_trajectories = local_search_trajectories
+        self.local_search_gradient_norm_cap = local_search_gradient_norm_cap
+        self.device = torch.device(device)
+        if self.device.type == 'cuda' and not torch.cuda.is_available():
+            raise RuntimeError(f'CUDA device {self.device} is not available')
         self.codec = TorchModelStateCodec()
         self.initial_model = self.model_factory()
         self.initial_global_model = self.codec.capture(self.initial_model)
@@ -167,12 +173,13 @@ class PaperCIFAREnvironmentFactory:
             learning_rate=client_learning_rate,
             local_epochs=local_iterations,
             batch_size=fl_batch_size,
+            device=self.device,
         )
 
     def model_factory(self):
         with torch.random.fork_rng():
             torch.manual_seed(self.model_seed)
-            return PaperCIFARResNet18()
+            return PaperCIFARResNet18().to(self.device)
 
     def make(self, *, seed: int, horizon: int, task_id: str = 'paper-cifar-meta-sg'):
         source = RandomSource(seed)
@@ -198,6 +205,8 @@ class PaperCIFAREnvironmentFactory:
             local_search_learning_rate=self.local_search_learning_rate,
             local_search_batch_size=self.local_search_batch_size,
             local_search_trajectories=self.local_search_trajectories,
+            local_search_gradient_norm_cap=self.local_search_gradient_norm_cap,
+            device=self.device,
         )
 
 

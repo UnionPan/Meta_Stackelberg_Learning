@@ -27,6 +27,7 @@ class ClassificationEvaluator:
         dataset: Dataset,
         codec: TorchParameterCodec,
         batch_size: int,
+        device: str | torch.device = 'cpu',
     ) -> None:
         if batch_size <= 0:
             raise ValueError('batch_size must be positive')
@@ -34,9 +35,12 @@ class ClassificationEvaluator:
         self.dataset = dataset
         self.codec = codec
         self.batch_size = int(batch_size)
+        self.device = torch.device(device)
+        if self.device.type == 'cuda' and not torch.cuda.is_available():
+            raise RuntimeError(f'CUDA device {self.device} is not available')
 
     def evaluate(self, state: ModelState) -> ClassificationMetrics:
-        model = self.model_factory().to('cpu')
+        model = self.model_factory().to(self.device)
         self.codec.load(model, state)
         loader = DataLoader(
             self.dataset,
@@ -51,6 +55,8 @@ class ClassificationEvaluator:
         model.eval()
         with torch.no_grad():
             for inputs, labels in loader:
+                inputs = inputs.to(self.device, non_blocking=True)
+                labels = labels.to(self.device, non_blocking=True)
                 logits = model(inputs)
                 loss = criterion(logits, labels)
                 examples = int(labels.shape[0])

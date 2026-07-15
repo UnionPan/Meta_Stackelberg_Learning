@@ -38,7 +38,12 @@ def run_paper_mnist_scaled_evidence(
     local_search_learning_rate: float = 0.01,
     local_search_batch_size: int = 128,
     local_search_trajectories: int = 1,
+    local_search_gradient_norm_cap: float = 1.0,
     attack_domain: AttackTypeDomainSource | None = None,
+    device: str = 'cpu',
+    training_checkpoint_path: str | None = None,
+    resume_training: bool = False,
+    training_checkpoint_interval: int = 1,
 ) -> ScaledEvidenceResult:
     paper = config.paper_reference
     factory = PaperMNISTEnvironmentFactory(
@@ -56,6 +61,8 @@ def run_paper_mnist_scaled_evidence(
         local_search_learning_rate=local_search_learning_rate,
         local_search_batch_size=local_search_batch_size,
         local_search_trajectories=local_search_trajectories,
+        local_search_gradient_norm_cap=local_search_gradient_norm_cap,
+        device=device,
     )
     probe = factory.make(seed=seed, horizon=config.H, task_id='mnist-probe')
     defender_observation = probe.defender_observation()
@@ -87,6 +94,22 @@ def run_paper_mnist_scaled_evidence(
         defender_obs_dim=defender_obs_dim,
         attacker_obs_dim=attacker_obs_dim,
         attack_domain=attack_domain,
+        device=device,
+        training_checkpoint_path=training_checkpoint_path,
+        resume_training=resume_training,
+        training_checkpoint_interval=training_checkpoint_interval,
+        training_protocol_signature={
+            'dataset': 'MNIST',
+            'partition_seed': partition_seed,
+            'model_seed': model_seed,
+            'device': str(device),
+            'local_search_learning_rate': local_search_learning_rate,
+            'local_search_batch_size': local_search_batch_size,
+            'local_search_trajectories': local_search_trajectories,
+            'local_search_gradient_norm_cap': local_search_gradient_norm_cap,
+            'client_train_samples': len(datasets.client_train),
+            'root_samples': len(datasets.root),
+        },
     )
     parameters = dict(result.parameter_snapshot)
     parameters.update({
@@ -98,6 +121,8 @@ def run_paper_mnist_scaled_evidence(
         'model_seed': model_seed,
         'defender_obs_dim': defender_obs_dim,
         'attacker_obs_dim': attacker_obs_dim,
+        'device': str(device),
+        'local_search_gradient_norm_cap': local_search_gradient_norm_cap,
         'data_provenance': {
             key: getattr(datasets.provenance, key)
             for key in datasets.provenance.__dataclass_fields__

@@ -14,7 +14,7 @@ class PolicyDefenderAdaptationResult:
     initial_defender_fingerprint: str
     adapted_defender_fingerprint: str
     attacker_fingerprint: str
-    adapted_defender: TD3Agent
+    adapted_defender: TD3Agent | None
     update_stats: tuple[TD3UpdateStats, ...]
     eta: float
     protocol: str = 'frozen-attacker-defender-adaptation-v1'

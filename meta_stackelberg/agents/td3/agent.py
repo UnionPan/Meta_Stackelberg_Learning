@@ -73,6 +73,7 @@ class TD3Agent:
         policy_delay: int,
         target_policy_noise: float,
         noise_clip: float,
+        device: str | torch.device = 'cpu',
     ) -> None:
         if role not in {'defender', 'attacker'}:
             raise ValueError('role must be defender or attacker')
@@ -84,11 +85,14 @@ class TD3Agent:
         self.policy_delay = int(policy_delay)
         self.target_policy_noise = float(target_policy_noise)
         self.noise_clip = float(noise_clip)
+        self.device = torch.device(device)
+        if self.device.type == 'cuda' and not torch.cuda.is_available():
+            raise RuntimeError(f'CUDA device {self.device} is not available')
         with torch.random.fork_rng():
             torch.manual_seed(seed)
-            self.actor = TD3Actor(obs_dim, action_dim, hidden_sizes)
-            self.critic1 = TD3Critic(obs_dim, action_dim, hidden_sizes)
-            self.critic2 = TD3Critic(obs_dim, action_dim, hidden_sizes)
+            self.actor = TD3Actor(obs_dim, action_dim, hidden_sizes).to(self.device)
+            self.critic1 = TD3Critic(obs_dim, action_dim, hidden_sizes).to(self.device)
+            self.critic2 = TD3Critic(obs_dim, action_dim, hidden_sizes).to(self.device)
         self.actor_target = copy.deepcopy(self.actor)
         self.critic1_target = copy.deepcopy(self.critic1)
         self.critic2_target = copy.deepcopy(self.critic2)
@@ -98,7 +102,7 @@ class TD3Agent:
             lr=learning_rate,
         )
         self.update_count = 0
-        self._torch_rng = torch.Generator(device='cpu').manual_seed(seed + 1)
+        self._torch_rng = torch.Generator(device=self.device).manual_seed(seed + 1)
         self._numpy_rng = np.random.default_rng(seed + 2)
 
     def act(
@@ -112,7 +116,9 @@ class TD3Agent:
         if obs.shape != (self.obs_dim,) or not np.all(np.isfinite(obs)):
             raise ValueError('observation has invalid shape or values')
         with torch.no_grad():
-            action = self.actor(torch.from_numpy(obs).unsqueeze(0))[0].numpy()
+            action = self.actor(
+                torch.from_numpy(obs).to(self.device).unsqueeze(0),
+            )[0].detach().cpu().numpy()
         if not deterministic:
             action = action + self._numpy_rng.normal(
                 0.0, exploration_noise, size=self.action_dim,
@@ -128,14 +134,17 @@ class TD3Agent:
         return rewards + self.gamma * (1.0 - dones) * target_q
 
     def update(self, batch: TD3Batch) -> TD3UpdateStats:
-        observations = torch.from_numpy(batch.observations).float()
-        actions = torch.from_numpy(batch.actions).float()
-        rewards = torch.from_numpy(batch.rewards).float()
-        next_observations = torch.from_numpy(batch.next_observations).float()
-        dones = torch.from_numpy(batch.dones).float()
+        observations = torch.from_numpy(batch.observations).to(self.device).float()
+        actions = torch.from_numpy(batch.actions).to(self.device).float()
+        rewards = torch.from_numpy(batch.rewards).to(self.device).float()
+        next_observations = torch.from_numpy(
+            batch.next_observations,
+        ).to(self.device).float()
+        dones = torch.from_numpy(batch.dones).to(self.device).float()
         with torch.no_grad():
             noise = torch.randn(
                 (len(observations), self.action_dim), generator=self._torch_rng,
+                device=self.device,
             ) * self.target_policy_noise
             noise = noise.clamp(-self.noise_clip, self.noise_clip)
             next_actions = (self.actor_target(next_observations) + noise).clamp(-1.0, 1.0)
@@ -208,7 +217,7 @@ class TD3Agent:
         self.actor_optimizer.load_state_dict(copy.deepcopy(snapshot.actor_optimizer))
         self.critic_optimizer.load_state_dict(copy.deepcopy(snapshot.critic_optimizer))
         self.update_count = snapshot.update_count
-        self._torch_rng.set_state(snapshot.torch_rng_state.clone())
+        self._torch_rng.set_state(snapshot.torch_rng_state.detach().cpu().clone())
         self._numpy_rng.bit_generator.state = copy.deepcopy(snapshot.numpy_rng_state)
 
     def fingerprint(self) -> str:
@@ -232,7 +241,10 @@ class TD3Agent:
 
 
 def _state(module: torch.nn.Module) -> dict:
-    return {key: value.detach().clone() for key, value in module.state_dict().items()}
+    return {
+        key: value.detach().cpu().clone()
+        for key, value in module.state_dict().items()
+    }
 
 
 def _hash_value(digest, value) -> None:

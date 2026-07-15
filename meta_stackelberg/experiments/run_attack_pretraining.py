@@ -41,6 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--partition-seed', type=int, default=17)
     parser.add_argument('--model-seed', type=int, default=99)
     parser.add_argument('--local-search-batch-size', type=int, default=128)
+    parser.add_argument('--device', default='cpu')
     parser.add_argument('--checkpoint-dir')
     parser.add_argument('--checkpoint-interval', type=int, default=25)
     parser.add_argument('--resume', action='store_true')
@@ -126,6 +127,8 @@ def main(argv: list[str] | None = None) -> int:
             local_iterations=paper.local_iterations,
             client_learning_rate=paper.client_learning_rate,
             local_search_batch_size=args.local_search_batch_size,
+            local_search_gradient_norm_cap=config.local_search_gradient_norm_cap,
+            device=args.device,
         )
     else:
         datasets = load_paper_cifar_datasets(
@@ -147,6 +150,8 @@ def main(argv: list[str] | None = None) -> int:
             local_iterations=paper.local_iterations,
             client_learning_rate=paper.client_learning_rate,
             local_search_batch_size=args.local_search_batch_size,
+            local_search_gradient_norm_cap=config.local_search_gradient_norm_cap,
+            device=args.device,
         )
     result = pretrain_attack_type_domain(
         config=config,
@@ -160,6 +165,7 @@ def main(argv: list[str] | None = None) -> int:
         checkpoint_directory=args.checkpoint_dir,
         checkpoint_interval=args.checkpoint_interval,
         resume_checkpoints=args.resume,
+        device=args.device,
     )
     output = Path(args.output)
     save_attack_type_domain(output, result.domain)
@@ -176,6 +182,11 @@ def main(argv: list[str] | None = None) -> int:
         'total_fl_round_count': result.total_fl_round_count,
         'td3_update_counts': {
             task.label: task.td3_update_count for task in result.tasks
+        },
+        'device': args.device,
+        'numerical_stability': {
+            'local_search_gradient_norm_cap': config.local_search_gradient_norm_cap,
+            'scope': 'joint-gradient-per-local-search-step',
         },
         'checkpointing': {
             'directory': args.checkpoint_dir,
@@ -196,6 +207,9 @@ def main(argv: list[str] | None = None) -> int:
                 'explicit-cli-experiment-parameter'
                 if args.krum_byzantine_count is not None
                 else 'derived-from-sampled-attacker-fraction'
+            ),
+            'local_search_gradient_norm_cap': (
+                'implementation-numerical-stability-guard'
             ),
         },
         'data_provenance': {

@@ -56,6 +56,11 @@ def run_deterministic_scaled_evidence(
     scientific_support_seeds: tuple[int, ...],
     seed: int,
     attack_domain: AttackTypeDomainSource | None = None,
+    device: str = 'cpu',
+    training_checkpoint_path: str | None = None,
+    resume_training: bool = False,
+    training_checkpoint_interval: int = 1,
+    training_protocol_signature: Mapping[str, object] | None = None,
 ) -> ScaledEvidenceResult:
     """Run Algorithm 1/2 then all held-out comparisons without test helpers."""
     if not isinstance(config, ScaledMetaSGConfig):
@@ -89,6 +94,11 @@ def run_deterministic_scaled_evidence(
         defender_obs_dim=defender_obs_dim,
         attacker_obs_dim=attacker_obs_dim,
         attack_domain=attack_domain,
+        device=device,
+        training_checkpoint_path=training_checkpoint_path,
+        resume_training=resume_training,
+        training_checkpoint_interval=training_checkpoint_interval,
+        training_protocol_signature=training_protocol_signature,
     )
 
 
@@ -104,20 +114,28 @@ def run_scaled_evidence(
     defender_obs_dim: int,
     attacker_obs_dim: int,
     attack_domain: AttackTypeDomainSource | None = None,
+    device: str = 'cpu',
+    training_checkpoint_path: str | None = None,
+    resume_training: bool = False,
+    training_checkpoint_interval: int = 1,
+    training_protocol_signature: Mapping[str, object] | None = None,
 ) -> ScaledEvidenceResult:
     """Shared Algorithm 1/2 + frozen-query protocol for any paper environment."""
     if not isinstance(config, ScaledMetaSGConfig):
         raise TypeError('config must be ScaledMetaSGConfig')
     initial_defender = _agent(
-        config, defender_obs_dim, 'defender', seed + 1,
+        config, defender_obs_dim, 'defender', seed + 1, device,
     )
     random_defender = _agent(
-        config, defender_obs_dim, 'defender', seed + 2,
+        config, defender_obs_dim, 'defender', seed + 2, device,
     )
     if attack_domain is None:
         tasks = tuple(f'rl-{index}' for index in range(config.K))
         initial_attackers = {
-            task: _agent(config, attacker_obs_dim, 'attacker', seed + 10 + index)
+            task: _agent(
+                config, attacker_obs_dim, 'attacker', seed + 10 + index,
+                device,
+            )
             for index, task in enumerate(tasks)
         }
         attack_origins = {task: 'random-untrained' for task in tasks}
@@ -126,7 +144,10 @@ def run_scaled_evidence(
         tasks = tuple(attack_domain.snapshots)
         initial_attackers = {}
         for index, task in enumerate(tasks):
-            policy = _agent(config, attacker_obs_dim, 'attacker', seed + 10 + index)
+            policy = _agent(
+                config, attacker_obs_dim, 'attacker', seed + 10 + index,
+                device,
+            )
             policy.restore(attack_domain.snapshots[task])
             initial_attackers[task] = policy
         attack_origins = dict(attack_domain.origins)
@@ -143,10 +164,14 @@ def run_scaled_evidence(
         attacker_obs_dim=attacker_obs_dim,
         support_seed=training_support_seed,
         query_seeds=query_seeds,
+        protocol_signature=training_protocol_signature,
     ).run(
         initial_defender=initial_defender,
         initial_attackers=initial_attackers,
         sample_tasks=task_sampler,
+        checkpoint_path=training_checkpoint_path,
+        resume=resume_training,
+        checkpoint_interval=training_checkpoint_interval,
     )
     first_attacker = initial_attackers[tasks[0]]
     scientific = PaperScientificGateRunner(
@@ -200,13 +225,14 @@ def run_scaled_evidence(
         'attack_sampling_distribution': 'uniform-with-replacement',
         'attack_sampling_seed': attack_sampling_seed,
         'attack_type_origins': attack_origins,
+        'device': str(device),
     })
     return ScaledEvidenceResult(
         training, scientific, parameters, query_seeds,
     )
 
 
-def _agent(config, obs_dim, role, seed):
+def _agent(config, obs_dim, role, seed, device='cpu'):
     paper = config.paper_reference
     return TD3Agent(
         obs_dim=obs_dim,
@@ -220,6 +246,7 @@ def _agent(config, obs_dim, role, seed):
         policy_delay=paper.policy_delay,
         target_policy_noise=paper.target_policy_noise,
         noise_clip=paper.noise_clip,
+        device=device,
     )
 
 

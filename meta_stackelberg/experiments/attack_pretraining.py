@@ -34,6 +34,7 @@ class AttackPolicyPretrainingConfig:
     train_freq: int = 1
     gradient_steps: int = 1
     replay_capacity: int = 1_000_000
+    local_search_gradient_norm_cap: float = 1.0
     fixed_defender_raw_action: tuple[float, float, float] = (0.0, 0.0, 1.0)
 
     @classmethod
@@ -64,6 +65,14 @@ class AttackPolicyPretrainingConfig:
             raise ValueError('batch_size must not exceed replay_capacity')
         if self.learning_starts > self.replay_capacity:
             raise ValueError('learning_starts must not exceed replay_capacity')
+        if (
+            isinstance(self.local_search_gradient_norm_cap, bool)
+            or not np.isfinite(self.local_search_gradient_norm_cap)
+            or self.local_search_gradient_norm_cap <= 0
+        ):
+            raise ValueError(
+                'local_search_gradient_norm_cap must be finite and positive',
+            )
         action = np.asarray(self.fixed_defender_raw_action, dtype=np.float64)
         if action.shape != (3,) or not np.all(np.isfinite(action)) or np.any(
             (action < -1.0) | (action > 1.0)
@@ -189,6 +198,7 @@ def pretrain_attack_type_domain(
     checkpoint_directory: str | Path | None = None,
     checkpoint_interval: int = 25,
     resume_checkpoints: bool = False,
+    device: str = 'cpu',
 ) -> AttackTypeDomainPretrainingResult:
     if not tasks or len({task.label for task in tasks}) != len(tasks):
         raise ValueError('pre-training tasks must have unique non-empty labels')
@@ -208,7 +218,7 @@ def pretrain_attack_type_domain(
         attacker_observation, ATTACKER_OBSERVATION_KEYS,
     ))
     defender = _pretraining_agent(
-        paper, defender_obs_dim, 'defender', seed + 1, hidden_sizes,
+        paper, defender_obs_dim, 'defender', seed + 1, hidden_sizes, device,
     )
     trainer = AttackPolicyPretrainer(config)
     checkpoint_root = (
@@ -226,7 +236,7 @@ def pretrain_attack_type_domain(
     for index, task in enumerate(tasks):
         attacker = _pretraining_agent(
             paper, attacker_obs_dim, 'attacker', seed + 10 + index,
-            hidden_sizes,
+            hidden_sizes, device,
         )
         env = env_factory(
             seed + 100 + index,
@@ -288,6 +298,7 @@ def _pretraining_agent(
     role: str,
     seed: int,
     hidden_sizes: tuple[int, ...],
+    device: str = 'cpu',
 ) -> TD3Agent:
     return TD3Agent(
         obs_dim=obs_dim,
@@ -301,6 +312,7 @@ def _pretraining_agent(
         policy_delay=paper.policy_delay,
         target_policy_noise=paper.target_policy_noise,
         noise_clip=paper.noise_clip,
+        device=device,
     )
 
 

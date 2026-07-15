@@ -32,6 +32,26 @@ def test_paper_profile_requires_explicit_scale_acknowledgement() -> None:
     assert config.hidden_sizes == (256, 256)
 
 
+def test_paper_profile_accepts_explicit_task_batch_override() -> None:
+    args = build_parser().parse_args([
+        '--dataset', 'mnist', '--profile', 'paper', '--allow-paper-scale',
+        '--task-batch-size', '5',
+        '--data-root', '/tmp/data', '--output', '/tmp/output',
+    ])
+    config = make_profile_config(args)
+    assert (config.T, config.K, config.H) == (100, 5, 200)
+
+
+def test_task_batch_override_must_be_positive() -> None:
+    args = build_parser().parse_args([
+        '--dataset', 'mnist', '--profile', 'paper', '--allow-paper-scale',
+        '--K', '0',
+        '--data-root', '/tmp/data', '--output', '/tmp/output',
+    ])
+    with pytest.raises(ValueError, match='task-batch-size'):
+        make_profile_config(args)
+
+
 def test_paper_profile_requires_pretrained_attack_domain_or_explicit_deviation() -> None:
     args = build_parser().parse_args([
         '--dataset', 'mnist', '--profile', 'paper', '--allow-paper-scale',

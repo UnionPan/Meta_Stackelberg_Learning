@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Mapping
 
 from meta_stackelberg.agents.td3.agent import TD3Agent
@@ -135,7 +135,9 @@ class PolicyMetaSGAlgorithm1:
                     ),
                 )
                 task_traces.append(PolicyAlgorithm1TaskTrace(
-                    task, adaptation, response,
+                    task,
+                    replace(adaptation, adapted_defender=None),
+                    replace(response, approximate_best_response=None),
                 ))
                 leader_tasks.append(PolicyLeaderTask(
                     task,
