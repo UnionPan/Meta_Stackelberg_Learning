@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -16,11 +17,14 @@ from meta_stackelberg.agents.td3.replay import flatten_observation
 from meta_stackelberg.experiments.model_poisoning_evaluation import (
     canonical_model_poisoning_scenarios,
     evaluate_model_poisoning_scenario,
+    model_poisoning_attack_factory,
     summarize_model_poisoning_evaluation,
 )
+from meta_stackelberg.experiments.attack_domain import load_attack_type_domain
 from meta_stackelberg.experiments.paper_meta_sg import (
     ATTACKER_OBSERVATION_KEYS,
     DEFENDER_OBSERVATION_KEYS,
+    PaperOnlineAdaptationTrainingRunner,
 )
 from meta_stackelberg.experiments.paper_mnist_env import (
     PaperMNISTEnvironmentFactory,
@@ -45,6 +49,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--ipm-scale', type=float, default=2.0)
     parser.add_argument('--lmp-scale', type=float, default=2.0)
     parser.add_argument('--device', default='cpu')
+    parser.add_argument('--online-support-seed', type=int, default=3_000_000)
+    parser.add_argument(
+        '--attack-domain',
+        help='pretrained RL attack domain required for Meta-RL evaluation',
+    )
     parser.add_argument(
         '--method', choices=('meta-sg', 'meta-rl'), default='meta-sg',
         help='select the independently trained policy to evaluate',
@@ -92,16 +101,21 @@ def main(argv: list[str] | None = None) -> int:
         ).attacker_observation,
         ATTACKER_OBSERVATION_KEYS,
     ))
-    defender = _agent(paper, defender_dim, 'defender', 1, args.device)
-    defender.restore(
+    meta_defender = _agent(paper, defender_dim, 'defender', 1, args.device)
+    meta_defender.restore(
         checkpoint.algorithm1_defender
         if args.method == 'meta-sg'
         else checkpoint.algorithm2_defender
     )
+    if args.method == 'meta-rl' and not args.attack_domain:
+        raise ValueError('Meta-RL evaluation requires --attack-domain')
+    attacker_snapshots = (
+        load_attack_type_domain(args.attack_domain).snapshots
+        if args.method == 'meta-rl'
+        else checkpoint.algorithm1_attackers
+    )
     attackers = {}
-    for index, (label, snapshot) in enumerate(
-        sorted(checkpoint.algorithm1_attackers.items()),
-    ):
+    for index, (label, snapshot) in enumerate(sorted(attacker_snapshots.items())):
         policy = _agent(
             paper, attacker_dim, 'attacker', 10 + index, args.device,
         )
@@ -114,8 +128,99 @@ def main(argv: list[str] | None = None) -> int:
     )
     output = Path(args.output)
     output.mkdir(parents=True, exist_ok=True)
+    online_directory = output / 'online_adaptation'
+    online_directory.mkdir(parents=True, exist_ok=True)
+    training_checkpoint_sha256 = _sha256(Path(args.checkpoint))
+    online_config = paper.scaled_online(
+        online_T=paper.online_T,
+        online_H=paper.online_H_mnist,
+        online_l=paper.online_l,
+        online_steps=paper.online_steps,
+        td3_batch_size=paper.td3_batch_size,
+        learning_starts=paper.learning_starts,
+        replay_capacity=paper.replay_capacity,
+    )
     records = {}
-    for scenario in scenarios:
+    online_records = {}
+    for scenario_index, scenario in enumerate(scenarios):
+        attacker = attackers[scenario.attacker_label]
+        trajectories_per_update = max(
+            1,
+            int(np.ceil(
+                max(online_config.td3_batch_size, online_config.learning_starts)
+                / online_config.online_H
+            )),
+        )
+        support_count = online_config.online_steps * trajectories_per_update
+        support_start = args.online_support_seed + scenario_index * 10_000
+        support_seeds = tuple(range(support_start, support_start + support_count))
+
+        def online_env_factory(task, rollout_seed, horizon, scenario=scenario):
+            del task
+            return factory.make(
+                seed=rollout_seed,
+                horizon=horizon,
+                task_id=f'online-adaptation-{scenario.name}',
+                malicious_ids=(
+                    () if scenario.attack_family == 'clean'
+                    else factory.malicious_ids
+                ),
+                attack_generator_factory=model_poisoning_attack_factory(
+                    scenario, factory,
+                ),
+            )
+
+        online_checkpoint = online_directory / f'{scenario.name}.pt'
+        online = PaperOnlineAdaptationTrainingRunner(
+            config=online_config,
+            env_factory=online_env_factory,
+            defender_obs_dim=defender_dim,
+            attacker_obs_dim=attacker_dim,
+            support_seeds=support_seeds,
+            protocol_signature={
+                'method': args.method,
+                'scenario': scenario.name,
+                'attack_family': scenario.attack_family,
+                'fixed_attack_scale': scenario.scale,
+                'training_checkpoint_sha256': training_checkpoint_sha256,
+                'partition_seed': args.partition_seed,
+                'model_seed': args.model_seed,
+                'device': str(args.device),
+            },
+        ).run(
+            task=scenario.name,
+            meta_defender=meta_defender,
+            attacker=attacker,
+            checkpoint_path=online_checkpoint,
+            resume=online_checkpoint.is_file(),
+            checkpoint_interval=1,
+        )
+        defender = online.adaptation.adapted_defender
+        online_record = {
+            'protocol': 'paper-online-adaptation-scenario-v1',
+            'method': args.method,
+            'scenario': scenario.name,
+            'attack_family': scenario.attack_family,
+            'fixed_attack_scale': scenario.scale,
+            'checkpoint': str(online_checkpoint.resolve()),
+            'training_checkpoint_sha256': training_checkpoint_sha256,
+            'online_T': online_config.online_T,
+            'online_H': online_config.online_H,
+            'online_l': online_config.online_l,
+            'online_steps': online_config.online_steps,
+            'completed_iterations': len(online.adaptation.iterations),
+            'trajectory_count': online.trajectory_count,
+            'fl_round_count': online.fl_round_count,
+            'trajectories_per_update': online.trajectories_per_update,
+            'support_seed_start': support_seeds[0],
+            'support_seed_stop_exclusive': support_seeds[-1] + 1,
+            'support_seed_count': len(support_seeds),
+            'meta_defender_fingerprint': online.adaptation.initial_defender_fingerprint,
+            'adapted_defender_fingerprint': online.adaptation.adapted_defender_fingerprint,
+            'attacker_fingerprint': online.adaptation.attacker_fingerprint,
+        }
+        _atomic_json(online_directory / f'{scenario.name}.json', online_record)
+        online_records[scenario.name] = online_record
         path = output / f'{scenario.name}.json'
         if path.exists():
             record = json.loads(path.read_text(encoding='utf-8'))
@@ -125,7 +230,8 @@ def main(argv: list[str] | None = None) -> int:
                 args.seed,
                 args.H,
                 defender.fingerprint(),
-                attackers[scenario.attacker_label].fingerprint(),
+                attacker.fingerprint(),
+                args.method,
             ):
                 records[scenario.name] = record
                 continue
@@ -134,11 +240,18 @@ def main(argv: list[str] | None = None) -> int:
             factory=factory,
             test_dataset=datasets.test,
             defender=defender,
-            attacker=attackers[scenario.attacker_label],
+            attacker=attacker,
             seed=args.seed,
             horizon=args.H,
             device=args.device,
         )
+        record['method'] = args.method
+        record['pretraining_domain_member'] = (
+            scenario.attack_family == 'rl'
+            if args.method == 'meta-sg'
+            else scenario.attack_family in {'clean', 'ipm', 'lmp'}
+        )
+        record['online_adaptation'] = online_record
         _atomic_json(path, record)
         records[scenario.name] = record
         print(json.dumps({
@@ -155,6 +268,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     summary['training_configuration'] = dict(checkpoint.config_signature)
     summary['method'] = args.method
+    summary['training_checkpoint_sha256'] = training_checkpoint_sha256
+    summary['online_adaptation'] = online_records
     summary['data_provenance'] = {
         key: getattr(datasets.provenance, key)
         for key in datasets.provenance.__dataclass_fields__
@@ -200,6 +315,7 @@ def _agent(paper, obs_dim, role, seed, device):
 
 def _record_matches(
     record, scenario, seed, horizon, defender_fingerprint, attacker_fingerprint,
+    method,
 ):
     return (
         record.get('protocol') == 'canonical-model-poisoning-final-evaluation-v1'
@@ -210,8 +326,20 @@ def _record_matches(
         and record.get('horizon') == horizon
         and record.get('defender_fingerprint') == defender_fingerprint
         and record.get('attacker_fingerprint') == attacker_fingerprint
+        and record.get('method') == method
+        and record.get('online_adaptation', {}).get(
+            'adapted_defender_fingerprint'
+        ) == defender_fingerprint
         and len(record.get('round_metrics', ())) == horizon
     )
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open('rb') as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b''):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def _atomic_json(path: Path, payload) -> None:

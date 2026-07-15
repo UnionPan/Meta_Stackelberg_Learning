@@ -20,6 +20,11 @@ from meta_stackelberg.experiments.scaled_training_checkpoint import (
     load_scaled_training_checkpoint,
     save_scaled_training_checkpoint,
 )
+from meta_stackelberg.experiments.online_adaptation_checkpoint import (
+    OnlineAdaptationCheckpoint,
+    load_online_adaptation_checkpoint,
+    save_online_adaptation_checkpoint,
+)
 from meta_stackelberg.security.attacks.rl_action import RLAttackActionCodec
 from meta_stackelberg.security.defenses.paper_action import PaperDefenderActionCodec
 from meta_stackelberg.stackelberg.algorithm1 import Algorithm1Result
@@ -598,6 +603,7 @@ class PaperOnlineAdaptationTrainingRunner:
         defender_obs_dim: int,
         attacker_obs_dim: int,
         support_seeds: tuple[int, ...],
+        protocol_signature: Mapping[str, object] | None = None,
     ) -> None:
         if not isinstance(config, ScaledOnlineAdaptationConfig):
             raise TypeError('config must be ScaledOnlineAdaptationConfig')
@@ -606,18 +612,103 @@ class PaperOnlineAdaptationTrainingRunner:
         self.defender_obs_dim = defender_obs_dim
         self.attacker_obs_dim = attacker_obs_dim
         self.support_seeds = support_seeds
+        self.protocol_signature = dict(protocol_signature or {})
         required = max(config.td3_batch_size, config.learning_starts)
         self.trajectories_per_update = max(
             1, int(np.ceil(required / config.online_H)),
         )
         required_seeds = config.online_steps * self.trajectories_per_update
-        if len(support_seeds) != required_seeds or len(set(support_seeds)) != required_seeds:
+        if (
+            len(support_seeds) != required_seeds
+            or len(set(support_seeds)) != required_seeds
+            or any(seed < 0 for seed in support_seeds)
+        ):
             raise ValueError('online support seeds must exactly match trajectory budget')
         self._seed_cursor = 0
         self._replay_serial = 0
 
-    def run(self, *, task, meta_defender, attacker) -> PaperOnlineTrainingResult:
+    def run(
+        self,
+        *,
+        task,
+        meta_defender,
+        attacker,
+        checkpoint_path: str | Path | None = None,
+        resume: bool = False,
+        checkpoint_interval: int = 1,
+    ) -> PaperOnlineTrainingResult:
+        if resume and checkpoint_path is None:
+            raise ValueError('online resume requires checkpoint_path')
+        if (
+            isinstance(checkpoint_interval, bool)
+            or not isinstance(checkpoint_interval, int)
+            or checkpoint_interval <= 0
+        ):
+            raise ValueError('online checkpoint_interval must be positive')
+        target = Path(checkpoint_path) if checkpoint_path is not None else None
+        signature = self._checkpoint_signature(task, meta_defender, attacker)
         replay = self._new_replay('defender')
+        start_iteration = 0
+        history = []
+        resumed_defender = None
+        if resume:
+            checkpoint = load_online_adaptation_checkpoint(target)
+            if dict(checkpoint.config_signature) != signature:
+                raise ValueError('online-adaptation checkpoint configuration mismatch')
+            if checkpoint.meta_defender_fingerprint != meta_defender.fingerprint():
+                raise ValueError('online-adaptation meta policy mismatch')
+            if checkpoint.attacker_fingerprint != attacker.fingerprint():
+                raise ValueError('online-adaptation attacker mismatch')
+            if checkpoint.support_seeds != self.support_seeds:
+                raise ValueError('online-adaptation support seed mismatch')
+            start_iteration = checkpoint.completed_iterations
+            if not 0 <= start_iteration <= self.config.online_T:
+                raise ValueError('online-adaptation checkpoint iteration is invalid')
+            expected_cursor = (
+                start_iteration * self.config.online_l
+                * self.trajectories_per_update
+            )
+            if checkpoint.seed_cursor != expected_cursor:
+                raise ValueError('online-adaptation checkpoint seed cursor mismatch')
+            if (checkpoint.phase == 'complete') != (
+                start_iteration == self.config.online_T
+            ):
+                raise ValueError('online-adaptation checkpoint phase mismatch')
+            history.extend(checkpoint.iterations)
+            resumed_defender = meta_defender.clone()
+            resumed_defender.restore(checkpoint.adapted_defender)
+            replay = TD3ReplayBuffer(
+                self.config.replay_capacity,
+                obs_dim=self.defender_obs_dim,
+                action_dim=3,
+                role='defender',
+                seed=30_000_000,
+            )
+            replay.restore(checkpoint.replay)
+            self._seed_cursor = checkpoint.seed_cursor
+            self._replay_serial = checkpoint.replay_serial
+
+        def record_iteration(trace, adapted, current_replay) -> None:
+            history.append(trace)
+            if (
+                len(history) % checkpoint_interval == 0
+                or len(history) == self.config.online_T
+            ):
+                self._save_checkpoint(
+                    target=target,
+                    phase=(
+                        'complete'
+                        if len(history) == self.config.online_T
+                        else 'adapting'
+                    ),
+                    signature=signature,
+                    meta_defender=meta_defender,
+                    adapted_defender=adapted,
+                    attacker=attacker,
+                    replay=current_replay,
+                    history=history,
+                )
+
         result = PolicyOnlineAdaptationRunner(
             online_T=self.config.online_T,
             online_l=self.config.online_l,
@@ -631,6 +722,10 @@ class PaperOnlineAdaptationTrainingRunner:
             collect_fresh=lambda defender, frozen, target, iteration, local, global_step: self._collect(
                 task, defender, frozen, target, iteration,
             ),
+            start_iteration=start_iteration,
+            resumed_defender=resumed_defender,
+            iteration_history=tuple(history),
+            iteration_callback=record_iteration,
         )
         if self._seed_cursor != len(self.support_seeds):
             raise RuntimeError('online trajectory seed budget was not exhausted exactly')
@@ -640,6 +735,55 @@ class PaperOnlineAdaptationTrainingRunner:
             self._seed_cursor,
             self._seed_cursor * self.config.online_H,
             self.trajectories_per_update,
+        )
+
+    def _checkpoint_signature(self, task, meta_defender, attacker):
+        return {
+            'task': repr(task),
+            'online_T': self.config.online_T,
+            'online_H': self.config.online_H,
+            'online_l': self.config.online_l,
+            'online_steps': self.config.online_steps,
+            'td3_batch_size': self.config.td3_batch_size,
+            'learning_starts': self.config.learning_starts,
+            'replay_capacity': self.config.replay_capacity,
+            'defender_obs_dim': self.defender_obs_dim,
+            'attacker_obs_dim': self.attacker_obs_dim,
+            'support_seeds': self.support_seeds,
+            'meta_defender': meta_defender.fingerprint(),
+            'attacker': attacker.fingerprint(),
+            'protocol_signature': self.protocol_signature,
+        }
+
+    def _save_checkpoint(
+        self,
+        *,
+        target,
+        phase,
+        signature,
+        meta_defender,
+        adapted_defender,
+        attacker,
+        replay,
+        history,
+    ) -> None:
+        if target is None:
+            return
+        save_online_adaptation_checkpoint(
+            target,
+            OnlineAdaptationCheckpoint(
+                phase=phase,
+                config_signature=signature,
+                completed_iterations=len(history),
+                meta_defender_fingerprint=meta_defender.fingerprint(),
+                adapted_defender=adapted_defender.snapshot(),
+                attacker_fingerprint=attacker.fingerprint(),
+                replay=replay.snapshot(),
+                support_seeds=self.support_seeds,
+                seed_cursor=self._seed_cursor,
+                replay_serial=self._replay_serial,
+                iterations=tuple(history),
+            ),
         )
 
     def _collect(self, task, defender, attacker, replay, generation):

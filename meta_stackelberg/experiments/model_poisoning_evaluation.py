@@ -79,7 +79,7 @@ def evaluate_model_poisoning_scenario(
     if horizon <= 0:
         raise ValueError('evaluation horizon must be positive')
     malicious_ids = () if scenario.attack_family == 'clean' else factory.malicious_ids
-    generator_factory = _fixed_attack_factory(scenario, factory)
+    generator_factory = model_poisoning_attack_factory(scenario, factory)
     env = factory.make(
         seed=seed,
         horizon=horizon,
@@ -216,7 +216,7 @@ def summarize_model_poisoning_evaluation(
         'horizon': int(horizon),
         'single_seed': True,
         'confidence_interval': None,
-        'in_domain_evaluation': True,
+        'pretraining_domain_evaluation': 'mixed',
         'scenarios': scenarios,
         'worst_rl_scenario': worst_rl['scenario'],
         'worst_rl_final_delivered_clean_accuracy': worst_rl[
@@ -225,7 +225,8 @@ def summarize_model_poisoning_evaluation(
     }
 
 
-def _fixed_attack_factory(scenario, factory):
+def model_poisoning_attack_factory(scenario, factory):
+    """Return the fixed round attack used by one declared scenario."""
     if scenario.attack_family in {'clean', 'rl'}:
         return None
     if scenario.attack_family == 'ipm':

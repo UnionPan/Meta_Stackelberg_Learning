@@ -62,18 +62,41 @@ class PolicyOnlineAdaptationRunner:
         attacker: TD3Agent,
         replay: TD3ReplayBuffer,
         collect_fresh,
+        start_iteration: int = 0,
+        resumed_defender: TD3Agent | None = None,
+        iteration_history: tuple[PolicyOnlineIterationTrace, ...] = (),
+        iteration_callback=None,
     ) -> PolicyOnlineAdaptationResult:
         if meta_defender.role != 'defender' or attacker.role != 'attacker':
             raise ValueError('online adaptation policy roles do not match protocol')
         if replay.role != 'defender':
             raise ValueError('online adaptation replay must have defender role')
+        if (
+            isinstance(start_iteration, bool)
+            or not isinstance(start_iteration, int)
+            or not 0 <= start_iteration <= self.online_T
+        ):
+            raise ValueError('start_iteration must be within [0, online_T]')
+        history = tuple(iteration_history)
+        if len(history) != start_iteration:
+            raise ValueError('iteration_history must end at start_iteration')
+        if start_iteration and resumed_defender is None:
+            raise ValueError('resumed_defender is required after iteration zero')
+        if not start_iteration and resumed_defender is not None:
+            raise ValueError('resumed_defender is invalid at iteration zero')
         initial_fingerprint = meta_defender.fingerprint()
-        adapted = meta_defender.clone()
+        adapted = (
+            resumed_defender.clone()
+            if resumed_defender is not None
+            else meta_defender.clone()
+        )
+        if adapted.role != 'defender':
+            raise ValueError('resumed online policy must have defender role')
         adapted.set_learning_rate(self.adaptation_step)
         attacker_guard = attacker.freeze_guard()
-        iterations = []
-        global_step = 0
-        for online_iteration in range(self.online_T):
+        iterations = list(history)
+        global_step = start_iteration * self.online_l
+        for online_iteration in range(start_iteration, self.online_T):
             stats = []
             for local_step in range(self.online_l):
                 collect_fresh(
@@ -84,11 +107,14 @@ class PolicyOnlineAdaptationRunner:
                 stats.append(adapted.update(replay.sample(self.batch_size)))
                 attacker_guard.verify()
                 global_step += 1
-            iterations.append(PolicyOnlineIterationTrace(
+            trace = PolicyOnlineIterationTrace(
                 online_iteration,
                 tuple(stats),
                 adapted.fingerprint(),
-            ))
+            )
+            iterations.append(trace)
+            if iteration_callback is not None:
+                iteration_callback(trace, adapted, replay)
         if global_step != self.online_steps:
             raise RuntimeError('online adaptation update count drifted')
         return PolicyOnlineAdaptationResult(
