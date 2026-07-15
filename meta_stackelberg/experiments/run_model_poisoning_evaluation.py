@@ -249,7 +249,7 @@ def main(argv: list[str] | None = None) -> int:
         record['pretraining_domain_member'] = (
             scenario.attack_family == 'rl'
             if args.method == 'meta-sg'
-            else scenario.attack_family in {'clean', 'ipm', 'lmp'}
+            else scenario.attack_family in {'clean', 'ipm', 'lmp', 'bfl', 'dba'}
         )
         record['online_adaptation'] = online_record
         _atomic_json(path, record)

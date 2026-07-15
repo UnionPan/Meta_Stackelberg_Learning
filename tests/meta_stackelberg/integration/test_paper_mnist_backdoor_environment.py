@@ -95,6 +95,40 @@ def test_whitebox_factory_runs_one_real_mnist_backdoor_round() -> None:
     assert step.transition.private_diagnostics['target_class'] == 7
 
 
+def test_whitebox_factory_runs_fixed_bfl_and_random_subtrigger_dba() -> None:
+    bundle = make_whitebox_mnist_datasets(
+        train_dataset=_mnist_like(400, 7),
+        held_out_test=_mnist_like(100, 8),
+        reward_samples=40,
+        seed=17,
+    )
+    factory = PaperMNISTBackdoorEnvironmentFactory(
+        datasets=bundle,
+        partition_seed=18,
+        model_seed=99,
+        workers=20,
+        backdoor_attackers=2,
+        sample_size=10,
+        fl_batch_size=16,
+        malicious_batch_size=8,
+    )
+
+    for task, attack_type in (
+        ('bfl', 'bfl_backdoor'),
+        ('dba', 'dba-random-subtrigger'),
+    ):
+        env = factory.make(seed=2, horizon=1, fixed_attack=task)
+        pending = env.begin_round(np.zeros(3, dtype=np.float32))
+        assert pending.attacker_observation['malicious_count'].tolist() == [1.0]
+        step = env.finish_round(np.zeros(3, dtype=np.float32))
+        update, = step.transition.malicious_updates
+        assert update.metadata['attack_type'] == attack_type
+        assert update.metadata['poison_fraction'] == 1.0
+        if task == 'dba':
+            assert update.metadata['sub_trigger_count'] == 3
+            assert update.metadata['sub_trigger_index'] in {0, 1, 2}
+
+
 def test_whitebox_factory_reuses_partition_and_initial_model() -> None:
     bundle = make_whitebox_mnist_datasets(
         train_dataset=_mnist_like(400, 7),

@@ -17,6 +17,10 @@ from meta_stackelberg.experiments.paper_meta_sg import (
     DEFENDER_OBSERVATION_KEYS,
     ScaledPaperMetaSGTrainingRunner,
 )
+from meta_stackelberg.experiments.paper_mnist_backdoor_env import (
+    PaperMNISTBackdoorEnvironmentFactory,
+    load_whitebox_mnist_datasets,
+)
 from meta_stackelberg.experiments.paper_mnist_env import (
     PaperMNISTEnvironmentFactory,
     load_paper_mnist_datasets,
@@ -25,7 +29,7 @@ from meta_stackelberg.security.attacks.ipm import IPMAttack
 from meta_stackelberg.security.attacks.lmp import LMPAttack
 
 
-TASKS = ('na', 'ipm', 'lmp')
+TASKS = ('na', 'ipm', 'lmp', 'bfl', 'dba')
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -43,6 +47,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--support-seed', type=int, default=4_000_000)
     parser.add_argument('--ipm-scale', type=float, default=2.0)
     parser.add_argument('--lmp-scale', type=float, default=2.0)
+    parser.add_argument('--backdoor-poison-fraction', type=float, default=1.0)
     parser.add_argument('--local-search-batch-size', type=int, default=128)
     parser.add_argument('--checkpoint-interval', type=int, default=1)
     parser.add_argument('--device', default='cpu')
@@ -91,6 +96,26 @@ def main(argv: list[str] | None = None) -> int:
         local_search_gradient_norm_cap=1.0,
         device=args.device,
     )
+    backdoor_datasets = load_whitebox_mnist_datasets(
+        args.data_root,
+        seed=args.partition_seed,
+        reward_samples=200,
+        download=False,
+    )
+    backdoor_factory = PaperMNISTBackdoorEnvironmentFactory(
+        datasets=backdoor_datasets,
+        partition_seed=args.partition_seed,
+        model_seed=args.model_seed,
+        workers=config.workers,
+        backdoor_attackers=paper.backdoor_attackers,
+        sample_size=config.sample_size,
+        fl_batch_size=paper.fl_batch_size,
+        local_iterations=paper.local_iterations,
+        client_learning_rate=paper.client_learning_rate,
+        malicious_batch_size=paper.fl_batch_size,
+        fixed_attack_poison_fraction=args.backdoor_poison_fraction,
+        device=args.device,
+    )
     probe = factory.make(seed=args.seed, horizon=args.H, task_id='meta-rl-probe')
     defender_dim = len(flatten_observation(
         probe.defender_observation(), DEFENDER_OBSERVATION_KEYS,
@@ -104,6 +129,13 @@ def main(argv: list[str] | None = None) -> int:
         ).attacker_observation,
         ATTACKER_OBSERVATION_KEYS,
     ))
+    if (
+        backdoor_factory.defender_observation_dim != defender_dim
+        or backdoor_factory.attacker_observation_dim != attacker_dim
+    ):
+        raise RuntimeError(
+            'untargeted and backdoor Meta-RL observation spaces differ',
+        )
     initial_defender = _agent(
         paper, defender_dim, 'defender', args.seed + 2, args.device,
     )
@@ -118,6 +150,13 @@ def main(argv: list[str] | None = None) -> int:
     def env_factory(task, rollout_seed, horizon):
         if task not in TASKS:
             raise ValueError(f'unknown Meta-RL fixed task {task!r}')
+        if task in {'bfl', 'dba'}:
+            return backdoor_factory.make(
+                seed=rollout_seed,
+                horizon=horizon,
+                task_id=f'meta-rl-{task}',
+                fixed_attack=task,
+            )
         malicious_ids = () if task == 'na' else factory.malicious_ids
         if task == 'ipm':
             attack_factory = lambda action: IPMAttack(
@@ -151,9 +190,15 @@ def main(argv: list[str] | None = None) -> int:
             'method': 'meta-rl',
             'algorithm': 'Algorithm 2',
             'fixed_attack_domain': TASKS,
-            'scope': 'untargeted-model-poisoning',
+            'scope': 'table4-mixed-fixed-attacks',
             'ipm_scale': args.ipm_scale,
             'lmp_scale': args.lmp_scale,
+            'backdoor_poison_fraction': args.backdoor_poison_fraction,
+            'backdoor_attackers': paper.backdoor_attackers,
+            'dba_subtrigger_rule': 'per-sampled-attacker-uniform-random',
+            'table4_interpretation': (
+                'Table 4 five-task domain; Appendix C text differs'
+            ),
             'partition_seed': args.partition_seed,
             'model_seed': args.model_seed,
             'device': str(args.device),
@@ -172,7 +217,7 @@ def main(argv: list[str] | None = None) -> int:
         'protocol': 'paper-meta-rl-fixed-attack-training-v1',
         'method': 'meta-rl',
         'algorithm': 'Algorithm 2',
-        'scope': 'untargeted-model-poisoning',
+        'scope': 'table4-mixed-fixed-attacks',
         'fixed_attack_domain': TASKS,
         'T': args.T,
         'K': args.K,

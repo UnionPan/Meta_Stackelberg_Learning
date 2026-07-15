@@ -36,7 +36,7 @@ from meta_stackelberg.security.defenses.paper_action import (
     PaperDefenderActionCodec,
 )
 from meta_stackelberg.security.population import FixedMaliciousPopulation
-from meta_stackelberg.security.types import RoundAttackContext
+from meta_stackelberg.security.types import AttackContext, RoundAttackContext
 
 
 @dataclass(frozen=True)
@@ -120,8 +120,10 @@ class PaperBackdoorBSMGEnv:
         malicious_batch_size: int,
         defender_lambda: float,
         attacker_lambda: float,
+        fixed_attack_generator=None,
         aggregator_factory=None,
         post_defense_factory=None,
+        device: str | torch.device = 'cpu',
     ) -> None:
         if not task_id:
             raise ValueError('task_id must not be empty')
@@ -158,6 +160,14 @@ class PaperBackdoorBSMGEnv:
         self.malicious_batch_size = int(malicious_batch_size)
         self.defender_lambda = _weight(defender_lambda, 'defender_lambda')
         self.attacker_lambda = _weight(attacker_lambda, 'attacker_lambda')
+        self.fixed_attack_generator = fixed_attack_generator
+        self.device = torch.device(device)
+        if self.device.type == 'cuda' and not torch.cuda.is_available():
+            raise RuntimeError(f'CUDA device {self.device} is not available')
+        if fixed_attack_generator is not None and not callable(
+            getattr(fixed_attack_generator, 'craft', None),
+        ):
+            raise TypeError('fixed_attack_generator must provide craft(context, rng)')
         self.aggregator_factory = (
             aggregator_factory
             if aggregator_factory is not None
@@ -236,7 +246,19 @@ class PaperBackdoorBSMGEnv:
             for client_id in pending.sampled_clients
             if client_id in pending.benign_by_client
         )
-        if malicious_ids:
+        if malicious_ids and self.fixed_attack_generator is not None:
+            malicious_updates = tuple(
+                self.fixed_attack_generator.craft(
+                    AttackContext(
+                        client_id=slot.client_id,
+                        round_index=self.state.round_index,
+                        global_model=self.state.global_model,
+                    ),
+                    slot.rng,
+                )
+                for slot in pending.malicious_slots
+            )
+        elif malicious_ids:
             generator = RLBackdoorAttack(
                 action=attacker_action,
                 model_factory=self.model_factory,
@@ -315,7 +337,7 @@ class PaperBackdoorBSMGEnv:
     def final_delivered_model(self) -> torch.nn.Module | None:
         if self._last_epsilon is None:
             return None
-        model = self.model_factory()
+        model = self.model_factory().to(self.device)
         self.codec.load(model, self.state.global_model)
         return self.post_defense_factory(model, self._last_epsilon)
 
@@ -324,7 +346,7 @@ class PaperBackdoorBSMGEnv:
         state: RoundState,
         epsilon: float,
     ) -> tuple[float, float, float]:
-        model = self.model_factory()
+        model = self.model_factory().to(self.device)
         self.codec.load(model, state.global_model)
         defended = self.post_defense_factory(model, epsilon)
         defended.eval()
@@ -341,7 +363,8 @@ class PaperBackdoorBSMGEnv:
         )
         with torch.no_grad():
             for inputs, labels in loader:
-                labels = labels.long()
+                inputs = inputs.to(self.device, non_blocking=True)
+                labels = labels.to(self.device, non_blocking=True).long()
                 logits = defended(inputs)
                 clean_sum += float(torch.nn.functional.cross_entropy(
                     logits, labels, reduction='sum',

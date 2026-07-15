@@ -22,7 +22,12 @@ from meta_stackelberg.federated.models.paper_mnist import PaperMNISTCNN
 from meta_stackelberg.federated.models.parameters import TorchParameterCodec
 from meta_stackelberg.federated.types import RoundState
 from meta_stackelberg.security.data.mnist_global_trigger import mnist_global_trigger
+from meta_stackelberg.security.data.poisoning import SourceTargetPoisonedDataset
+from meta_stackelberg.security.data.trigger import CompositeTrigger, PatchTrigger
+from meta_stackelberg.security.attacks.backdoor import BackdoorLocalUpdateGenerator
+from meta_stackelberg.security.attacks.dba import RandomSubtriggerDBAUpdateGenerator
 from meta_stackelberg.security.population import FixedMaliciousPopulation
+from meta_stackelberg.security.training import ScopedLocalTrainer
 
 
 @dataclass(frozen=True)
@@ -124,6 +129,9 @@ class PaperMNISTBackdoorEnvironmentFactory:
         malicious_batch_size: int = 128,
         defender_lambda: float = 0.5,
         attacker_lambda: float = 0.5,
+        fixed_attack_poison_fraction: float = 1.0,
+        poison_seed: int = 31_000,
+        device: str | torch.device = 'cpu',
     ) -> None:
         if not isinstance(datasets, WhiteBoxMNISTDatasets):
             raise TypeError('datasets must be WhiteBoxMNISTDatasets')
@@ -150,6 +158,11 @@ class PaperMNISTBackdoorEnvironmentFactory:
         self.malicious_batch_size = int(malicious_batch_size)
         self.defender_lambda = float(defender_lambda)
         self.attacker_lambda = float(attacker_lambda)
+        self.fixed_attack_poison_fraction = float(fixed_attack_poison_fraction)
+        self.poison_seed = int(poison_seed)
+        self.device = torch.device(device)
+        if self.device.type == 'cuda' and not torch.cuda.is_available():
+            raise RuntimeError(f'CUDA device {self.device} is not available')
         self.client_datasets = {
             client_id: Subset(datasets.client_train, indices)
             for client_id, indices in enumerate(partitions)
@@ -166,10 +179,73 @@ class PaperMNISTBackdoorEnvironmentFactory:
             learning_rate=self.client_learning_rate,
             local_epochs=self.local_iterations,
             batch_size=self.fl_batch_size,
+            device=self.device,
+        )
+
+        fixture = mnist_global_trigger()
+        self.dba_sub_triggers = _dba_sub_triggers(fixture)
+        self._bfl_generator = None
+        self._dba_generator = None
+
+    def _fixed_attack_generator(self, fixed_attack: str | None):
+        fixture = mnist_global_trigger()
+        if fixed_attack == 'bfl' and self._bfl_generator is None:
+            self._bfl_generator = self._make_bfl_generator(fixture)
+        elif fixed_attack == 'dba' and self._dba_generator is None:
+            self._dba_generator = self._make_dba_generator(fixture)
+        return (
+            self._bfl_generator if fixed_attack == 'bfl'
+            else self._dba_generator if fixed_attack == 'dba'
+            else None
+        )
+
+    def _make_bfl_generator(self, fixture):
+        bfl_datasets = {
+            client_id: SourceTargetPoisonedDataset(
+                dataset=self.client_datasets[client_id],
+                trigger=fixture.trigger,
+                source_class=fixture.source_class,
+                target_class=fixture.target_class,
+                poison_fraction=self.fixed_attack_poison_fraction,
+                rng=RandomSource(self.poison_seed + client_id),
+            )
+            for client_id in self.malicious_ids
+        }
+        return BackdoorLocalUpdateGenerator(
+            trainer=ScopedLocalTrainer(TorchLocalTrainer(
+                model_factory=self.model_factory,
+                client_datasets=bfl_datasets,
+                codec=self.codec,
+                learning_rate=self.client_learning_rate,
+                local_epochs=self.local_iterations,
+                batch_size=self.fl_batch_size,
+                device=self.device,
+            ), self.malicious_ids),
+            source_class=fixture.source_class,
+            target_class=fixture.target_class,
+            poison_fraction=self.fixed_attack_poison_fraction,
+        )
+
+    def _make_dba_generator(self, fixture):
+        return RandomSubtriggerDBAUpdateGenerator(
+            model_factory=self.model_factory,
+            codec=self.codec,
+            client_datasets={
+                client_id: self.client_datasets[client_id]
+                for client_id in self.malicious_ids
+            },
+            sub_triggers=self.dba_sub_triggers,
+            source_class=fixture.source_class,
+            target_class=fixture.target_class,
+            poison_fraction=self.fixed_attack_poison_fraction,
+            learning_rate=self.client_learning_rate,
+            local_epochs=self.local_iterations,
+            batch_size=self.fl_batch_size,
+            device=self.device,
         )
 
     def model_factory(self) -> PaperMNISTCNN:
-        return _model_factory(self.model_seed)
+        return _model_factory(self.model_seed).to(self.device)
 
     @property
     def client_partition_sha256(self) -> str:
@@ -198,7 +274,10 @@ class PaperMNISTBackdoorEnvironmentFactory:
         seed: int,
         horizon: int,
         task_id: str = 'mnist-whitebox-real-data-v1',
+        fixed_attack: str | None = None,
     ) -> PaperBackdoorBSMGEnv:
+        if fixed_attack not in {None, 'bfl', 'dba'}:
+            raise ValueError('fixed_attack must be bfl, dba, or None')
         source = RandomSource(seed)
         state = RoundState(0, self.initial_global_model, source.capture())
         fixture = mnist_global_trigger()
@@ -227,6 +306,8 @@ class PaperMNISTBackdoorEnvironmentFactory:
             malicious_batch_size=self.malicious_batch_size,
             defender_lambda=self.defender_lambda,
             attacker_lambda=self.attacker_lambda,
+            fixed_attack_generator=self._fixed_attack_generator(fixed_attack),
+            device=self.device,
         )
 
 
@@ -234,6 +315,17 @@ def _model_factory(seed: int) -> PaperMNISTCNN:
     with torch.random.fork_rng():
         torch.manual_seed(seed)
         return PaperMNISTCNN()
+
+
+def _dba_sub_triggers(fixture) -> tuple[CompositeTrigger, ...]:
+    """Split the pinned global MNIST mark into the three Fig. 7 components."""
+    columns = sorted({column for _, column, _ in fixture.pixels})
+    groups = (columns[:2], columns[2:4], columns[4:])
+    return tuple(CompositeTrigger(tuple(
+        PatchTrigger(row, column, 1, 1, value)
+        for row, column, value in fixture.pixels
+        if column in group
+    )) for group in groups)
 
 
 def _dataset_labels(dataset: Dataset) -> np.ndarray:

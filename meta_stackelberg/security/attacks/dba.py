@@ -8,6 +8,9 @@ import math
 from numbers import Integral, Real
 from types import MappingProxyType
 
+import torch
+from torch.utils.data import Dataset
+
 from meta_stackelberg.core.random_state import RandomSource
 from meta_stackelberg.federated.clients.trainer import TorchLocalTrainer
 from meta_stackelberg.federated.types import ClientUpdate
@@ -184,6 +187,97 @@ class DistributedBackdoorUpdateGenerator:
             'poison_fraction': self.poison_fraction,
             'sub_trigger_index': self.plan.client_to_sub_trigger[context.client_id],
             'sub_trigger_count': len(self.plan.sub_triggers),
+        })
+        return as_malicious_update(base, metadata=metadata)
+
+
+class RandomSubtriggerDBAUpdateGenerator:
+    """Paper DBA: each sampled attacker independently draws one sub-trigger."""
+
+    capabilities = LOCAL_MODEL_CAPABILITIES
+
+    def __init__(
+        self,
+        *,
+        model_factory,
+        codec,
+        client_datasets: Mapping[int, Dataset],
+        sub_triggers: Sequence[ImageTrigger],
+        source_class: int,
+        target_class: int,
+        poison_fraction: float,
+        learning_rate: float,
+        local_epochs: int,
+        batch_size: int,
+        device: str | torch.device = 'cpu',
+    ) -> None:
+        triggers = tuple(sub_triggers)
+        if len(triggers) < 2 or any(
+            not isinstance(value, ImageTrigger) for value in triggers
+        ):
+            raise ValueError('random-subtrigger DBA requires at least two image triggers')
+        datasets = dict(client_datasets)
+        if not datasets or any(len(dataset) <= 0 for dataset in datasets.values()):
+            raise ValueError('random-subtrigger DBA requires non-empty client datasets')
+        normalized_source = class_id(source_class, name='source_class')
+        normalized_target = class_id(target_class, name='target_class')
+        if normalized_source == normalized_target:
+            raise ValueError('source_class and target_class must differ')
+        if (
+            not math.isfinite(float(poison_fraction))
+            or not 0.0 <= poison_fraction <= 1.0
+        ):
+            raise ValueError('poison_fraction must be finite and in [0, 1]')
+        self.model_factory = model_factory
+        self.codec = codec
+        self.client_datasets = datasets
+        self.sub_triggers = triggers
+        self.source_class = normalized_source
+        self.target_class = normalized_target
+        self.poison_fraction = float(poison_fraction)
+        self.learning_rate = float(learning_rate)
+        self.local_epochs = int(local_epochs)
+        self.batch_size = int(batch_size)
+        self.device = torch.device(device)
+
+    @property
+    def allowed_client_ids(self) -> frozenset[int]:
+        return frozenset(self.client_datasets)
+
+    def craft(self, context: AttackContext, rng: RandomSource) -> ClientUpdate:
+        if context.client_id not in self.client_datasets:
+            raise ValueError(f'client {context.client_id} is outside DBA attacker scope')
+        trigger_index = int(rng.numpy.integers(0, len(self.sub_triggers)))
+        poisoned = SourceTargetPoisonedDataset(
+            dataset=self.client_datasets[context.client_id],
+            trigger=self.sub_triggers[trigger_index],
+            source_class=self.source_class,
+            target_class=self.target_class,
+            poison_fraction=self.poison_fraction,
+            rng=rng,
+        )
+        trainer = TorchLocalTrainer(
+            model_factory=self.model_factory,
+            client_datasets={context.client_id: poisoned},
+            codec=self.codec,
+            learning_rate=self.learning_rate,
+            local_epochs=self.local_epochs,
+            batch_size=self.batch_size,
+            device=self.device,
+        )
+        base = train_base_update(
+            ScopedLocalTrainer(trainer, (context.client_id,)), context, rng,
+        )
+        metadata = dict(base.metadata)
+        metadata.update({
+            'attack_type': 'dba-random-subtrigger',
+            'source_class': self.source_class,
+            'target_class': self.target_class,
+            'poison_fraction': self.poison_fraction,
+            'sub_trigger_index': trigger_index,
+            'sub_trigger_count': len(self.sub_triggers),
+            'poisoned_count': poisoned.poisoned_count,
+            'eligible_source_count': poisoned.eligible_count,
         })
         return as_malicious_update(base, metadata=metadata)
 
