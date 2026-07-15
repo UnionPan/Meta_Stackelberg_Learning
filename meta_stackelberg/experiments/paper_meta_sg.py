@@ -316,6 +316,7 @@ class ScaledPaperMetaSGTrainingRunner:
         self._query_seeds = frozenset(query_seeds)
         self.protocol_signature = dict(protocol_signature or {})
         required = max(config.td3_batch_size, config.learning_starts)
+        self._minimum_replay_size = required
         self.trajectories_per_update = max(1, int(np.ceil(required / config.H)))
 
     def run(
@@ -539,6 +540,7 @@ class ScaledPaperMetaSGTrainingRunner:
                 (repr(task), policy.fingerprint())
                 for task, policy in initial_attackers.items()
             )),
+            'trajectory_collection': 'fresh-plus-replay-warmup-v1',
             'protocol_signature': self.protocol_signature,
         }
 
@@ -566,7 +568,9 @@ class ScaledPaperMetaSGTrainingRunner:
         target_role: str,
         iteration: int,
     ) -> None:
-        for _ in range(self.trajectories_per_update):
+        missing = max(0, self._minimum_replay_size - len(target_replay))
+        trajectory_count = max(1, int(np.ceil(missing / self.config.H)))
+        for _ in range(trajectory_count):
             seed = self._next_support_seed
             self._next_support_seed += 1
             if seed in self._query_seeds:

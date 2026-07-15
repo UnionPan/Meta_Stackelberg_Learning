@@ -191,7 +191,7 @@ def test_declared_scaled_training_flows_into_independent_scientific_gate() -> No
         },
     )
 
-    assert training.trajectory_count == 48
+    assert training.trajectory_count == 40
     assert len(result.gate.checks) == 6
     assert not result.gate.passed
     checks = {check.name: check for check in result.gate.checks}

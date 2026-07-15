@@ -121,7 +121,9 @@ def test_declared_2_2_8_2_2_2_training_scale_executes_real_rollouts() -> None:
     )
 
     assert result.trajectories_per_update == 2
-    assert result.trajectory_count == 48
+    # Reused best-response and Algorithm 2 replay buffers need two trajectories
+    # for warmup, then collect one fresh trajectory for each later update.
+    assert result.trajectory_count == 40
     assert len(result.support_seeds) == len(set(result.support_seeds))
     assert all(len(item.tasks) == 2 for item in result.algorithm1.iterations)
     assert all(len(item.tasks) == 2 for item in result.algorithm2.iterations)
@@ -212,6 +214,9 @@ def test_scaled_runner_checkpoint_is_complete_resumable_and_lightweight(
     assert checkpoint.algorithm1_iterations[0].tasks[0].response.approximate_best_response is None
     assert checkpoint.algorithm2_iterations[0].tasks[0].adapted_snapshot is None
     assert checkpoint.config_signature['workers'] == 4
+    assert checkpoint.config_signature['trajectory_collection'] == (
+        'fresh-plus-replay-warmup-v1'
+    )
     assert checkpoint.config_signature['protocol_signature'] == {}
 
     resumed = ScaledPaperMetaSGTrainingRunner(
