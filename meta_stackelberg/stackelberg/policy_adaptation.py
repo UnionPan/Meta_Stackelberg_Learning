@@ -51,7 +51,10 @@ class PolicyDefenderAdapter:
         for _ in range(self.l):
             collect_fresh(adapted, attacker, replay)
             attacker_guard.verify()
-            stats.append(adapted.update(replay.sample(self.batch_size)))
+            stats.append(adapted.update(replay.sample(
+                self.batch_size,
+                replace=self.batch_size > len(replay),
+            )))
             attacker_guard.verify()
         return PolicyDefenderAdaptationResult(
             initial,

@@ -64,42 +64,56 @@ class LMPAttack:
         if missing:
             raise ValueError(f'LMP has no sample count for clients {sorted(missing)}')
         _validate_references(context)
-        reference_models = tuple(
-            tuple(
-                (global_tensor + update.delta.tensors[layer_index]).astype(
-                    global_tensor.dtype,
-                    copy=False,
-                )
-                for layer_index, global_tensor in enumerate(context.global_model.tensors)
+        # The coordinate statistics depend only on the benign references, not
+        # on the malicious client.  Compute them once per layer and keep the
+        # two interval endpoints needed to sample every crafted local model.
+        intervals = []
+        for layer_index, old_tensor in enumerate(context.global_model.tensors):
+            references = np.stack([
+                old_tensor + update.delta.tensors[layer_index]
+                for update in context.benign_updates
+            ])
+            direction = np.sign(np.median(references, axis=0) - old_tensor)
+            minimum = np.min(references, axis=0)
+            maximum = np.max(references, axis=0)
+            negative = direction < 0.0
+            positive = direction > 0.0
+            first = np.zeros_like(old_tensor)
+            second = np.zeros_like(old_tensor)
+            negative_positive_range = negative & (maximum > 0.0)
+            negative_nonpositive_range = negative & ~negative_positive_range
+            positive_positive_range = positive & (minimum > 0.0)
+            positive_nonpositive_range = positive & ~positive_positive_range
+            first[negative_positive_range] = maximum[negative_positive_range]
+            second[negative_positive_range] = (
+                self.scale * maximum[negative_positive_range]
             )
-            for update in context.benign_updates
-        )
+            first[negative_nonpositive_range] = (
+                maximum[negative_nonpositive_range] / self.scale
+            )
+            second[negative_nonpositive_range] = maximum[
+                negative_nonpositive_range
+            ]
+            first[positive_positive_range] = (
+                minimum[positive_positive_range] / self.scale
+            )
+            second[positive_positive_range] = minimum[positive_positive_range]
+            first[positive_nonpositive_range] = (
+                self.scale * minimum[positive_nonpositive_range]
+            )
+            second[positive_nonpositive_range] = minimum[
+                positive_nonpositive_range
+            ]
+            intervals.append((old_tensor, first, second, direction != 0.0))
         updates = []
         for client_id, rng in zip(context.malicious_client_ids, rngs):
             crafted_delta = []
-            for layer_index, old_tensor in enumerate(context.global_model.tensors):
-                references = np.stack([
-                    model[layer_index] for model in reference_models
-                ])
-                direction = np.sign(np.median(references, axis=0) - old_tensor)
-                minimum = np.min(references, axis=0)
-                maximum = np.max(references, axis=0)
-                crafted_model = np.empty_like(old_tensor)
-                for index in np.ndindex(old_tensor.shape):
-                    sign = float(direction[index])
-                    low = float(minimum[index])
-                    high = float(maximum[index])
-                    if sign < 0.0 and high > 0.0:
-                        value = rng.python.uniform(high, self.scale * high)
-                    elif sign < 0.0:
-                        value = rng.python.uniform(high / self.scale, high)
-                    elif sign > 0.0 and low > 0.0:
-                        value = rng.python.uniform(low / self.scale, low)
-                    elif sign > 0.0:
-                        value = rng.python.uniform(self.scale * low, low)
-                    else:
-                        value = 0.0
-                    crafted_model[index] = value
+            for old_tensor, first, second, active in intervals:
+                draws = rng.numpy.random(old_tensor.shape)
+                crafted_model = (
+                    first + (second - first) * draws
+                ).astype(old_tensor.dtype, copy=False)
+                crafted_model[~active] = 0.0
                 crafted_delta.append(
                     (crafted_model - old_tensor).astype(old_tensor.dtype, copy=False)
                 )

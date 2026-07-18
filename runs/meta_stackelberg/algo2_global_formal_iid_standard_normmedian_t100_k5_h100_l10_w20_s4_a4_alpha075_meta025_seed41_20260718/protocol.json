@@ -1,0 +1,41 @@
+{
+  "alpha_floor_ratio": 0.75,
+  "checkpoint_interval_outer_iterations": 1,
+  "created_at": "2026-07-18T00:32:15+0800",
+  "data_split": "iid",
+  "defender_norm_reference": "median",
+  "evaluation": {
+    "frozen_H": 100,
+    "online_H": 100,
+    "online_T": 10,
+    "online_adaptation_step": 0.01,
+    "online_l": 10,
+    "online_steps": 100
+  },
+  "fresh_formal_training": true,
+  "local_training": "one-minibatch-step-per-local-iteration",
+  "meta_update_step": 0.25,
+  "method": "Algorithm 2 Meta-RL",
+  "mnist_normalization": "standard",
+  "monitor_interval_seconds": 600,
+  "post_defense_mode": "identity",
+  "protocol": "algo2-formal-pipeline-v1",
+  "scale": {
+    "H": 100,
+    "K": 5,
+    "T": 100,
+    "l": 10
+  },
+  "tasks": [
+    "na",
+    "ipm",
+    "lmp",
+    "rl-krum",
+    "rl-clipmed"
+  ],
+  "topology": {
+    "attackers": 4,
+    "sample_size": 4,
+    "workers": 20
+  }
+}

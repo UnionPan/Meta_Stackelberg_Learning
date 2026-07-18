@@ -171,8 +171,8 @@ class PaperCIFAREnvironmentFactory:
             client_datasets=self.client_datasets,
             codec=self.codec,
             learning_rate=client_learning_rate,
-            local_epochs=local_iterations,
             batch_size=fl_batch_size,
+            local_steps=local_iterations,
             device=self.device,
         )
 

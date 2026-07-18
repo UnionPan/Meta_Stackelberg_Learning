@@ -38,6 +38,8 @@ class PolicyOnlineAdaptationRunner:
         online_steps: int,
         batch_size: int,
         adaptation_step: float,
+        actor_logit_l2: float = 0.0,
+        actor_logit_l2_mask: tuple[float, ...] | None = None,
     ) -> None:
         for value, name in (
             (online_T, 'online_T'), (online_l, 'online_l'),
@@ -49,11 +51,20 @@ class PolicyOnlineAdaptationRunner:
             raise ValueError('online_steps must equal online_T * online_l')
         if not math.isfinite(adaptation_step) or adaptation_step <= 0:
             raise ValueError('adaptation_step must be positive and finite')
+        if not math.isfinite(actor_logit_l2) or actor_logit_l2 < 0:
+            raise ValueError('actor_logit_l2 must be non-negative and finite')
+        if actor_logit_l2_mask is not None and any(
+            not math.isfinite(value) or value < 0
+            for value in actor_logit_l2_mask
+        ):
+            raise ValueError('actor_logit_l2_mask weights must be non-negative')
         self.online_T = online_T
         self.online_l = online_l
         self.online_steps = online_steps
         self.batch_size = batch_size
         self.adaptation_step = float(adaptation_step)
+        self.actor_logit_l2 = float(actor_logit_l2)
+        self.actor_logit_l2_mask = actor_logit_l2_mask
 
     def run(
         self,
@@ -69,6 +80,11 @@ class PolicyOnlineAdaptationRunner:
     ) -> PolicyOnlineAdaptationResult:
         if meta_defender.role != 'defender' or attacker.role != 'attacker':
             raise ValueError('online adaptation policy roles do not match protocol')
+        if (
+            self.actor_logit_l2_mask is not None
+            and len(self.actor_logit_l2_mask) != meta_defender.action_dim
+        ):
+            raise ValueError('actor_logit_l2_mask must match action dimension')
         if replay.role != 'defender':
             raise ValueError('online adaptation replay must have defender role')
         if (
@@ -104,7 +120,14 @@ class PolicyOnlineAdaptationRunner:
                     online_iteration, local_step, global_step,
                 )
                 attacker_guard.verify()
-                stats.append(adapted.update(replay.sample(self.batch_size)))
+                stats.append(adapted.update(
+                    replay.sample(
+                        self.batch_size,
+                        replace=self.batch_size > len(replay),
+                    ),
+                    actor_logit_l2=self.actor_logit_l2,
+                    actor_logit_l2_mask=self.actor_logit_l2_mask,
+                ))
                 attacker_guard.verify()
                 global_step += 1
             trace = PolicyOnlineIterationTrace(

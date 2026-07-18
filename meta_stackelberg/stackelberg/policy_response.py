@@ -57,7 +57,10 @@ class PolicyBestResponseTrainer:
         for step in range(self.N_A):
             collect_fresh(step)
             defender_guard.verify()
-            stats.append(attacker.update(replay.sample(self.batch_size)))
+            stats.append(attacker.update(replay.sample(
+                self.batch_size,
+                replace=self.batch_size > len(replay),
+            )))
             defender_guard.verify()
         adapted_objective = float(independent_objective(attacker))
         return PolicyBestResponseResult(

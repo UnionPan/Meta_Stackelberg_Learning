@@ -1,0 +1,2124 @@
+{
+  "attack_family": "rl",
+  "attacker_fingerprint": "c9cb99523e071501ab3949c0cb5370e00a1b6835ec05cddd3ee9b30aacd78a3c",
+  "attacker_label": "rl-krum",
+  "defender_fingerprint": "0f7a48993ad3fad590600e3b7640c8e02a57a4739b67c77f9498e269a001b822",
+  "final_delivered_clean_accuracy": 0.8996,
+  "final_delivered_clean_loss": 0.3560591938495636,
+  "final_raw_clean_accuracy": 0.8996,
+  "final_raw_clean_loss": 0.3560591938495636,
+  "fixed_attack_scale": null,
+  "horizon": 100,
+  "mean_attacker_reward": -0.01835579261779785,
+  "mean_defender_reward": -1.0507221797943116,
+  "method": "meta-rl",
+  "online_adaptation": null,
+  "pretraining_domain_member": true,
+  "protocol": "canonical-model-poisoning-final-evaluation-v1",
+  "round_metrics": [
+    {
+      "alpha": 0.75,
+      "attacker_raw_action": [
+        0.9999980330467224,
+        0.9999333620071411,
+        0.9999952912330627
+      ],
+      "attacker_reward": -0.01340545654296843,
+      "beta": 0.45,
+      "clean_accuracy": 0.1167,
+      "clean_loss": 2.2961291301727296,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -2.3110357666015626,
+      "epsilon": 1.0,
+      "round": 1,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.037283932516573304,
+      "attacker_raw_action": [
+        0.999996542930603,
+        0.9998998641967773,
+        0.9999921321868896
+      ],
+      "attacker_reward": -0.01906768798828118,
+      "beta": 0.45,
+      "clean_accuracy": 0.1527,
+      "clean_loss": 2.2771064441680906,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -2.2919680786132814,
+      "epsilon": 1.0,
+      "round": 2,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.03400358584011067,
+      "attacker_raw_action": [
+        0.9999966025352478,
+        0.9999001622200012,
+        0.9999921917915344
+      ],
+      "attacker_reward": -0.015368347167969088,
+      "beta": 0.45,
+      "clean_accuracy": 0.183,
+      "clean_loss": 2.2602962310791015,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -2.2765997314453124,
+      "epsilon": 1.0,
+      "round": 3,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.034624439579563064,
+      "attacker_raw_action": [
+        0.9999966025352478,
+        0.9999005198478699,
+        0.9999921917915344
+      ],
+      "attacker_reward": -0.016177978515624858,
+      "beta": 0.45,
+      "clean_accuracy": 0.2133,
+      "clean_loss": 2.2425090759277344,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -2.2604217529296875,
+      "epsilon": 1.0,
+      "round": 4,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.03430699938399751,
+      "attacker_raw_action": [
+        0.9999966025352478,
+        0.9999008774757385,
+        0.9999922513961792
+      ],
+      "attacker_reward": -0.017857971191406197,
+      "beta": 0.45,
+      "clean_accuracy": 0.2465,
+      "clean_loss": 2.2225554397583007,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -2.2425637817382813,
+      "epsilon": 1.0,
+      "round": 5,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.03681327288154257,
+      "attacker_raw_action": [
+        0.9999980330467224,
+        0.9999344348907471,
+        0.9999954104423523
+      ],
+      "attacker_reward": -0.009753875732422035,
+      "beta": 0.45,
+      "clean_accuracy": 0.2909,
+      "clean_loss": 2.2079430603027346,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -2.2328099060058593,
+      "epsilon": 1.0,
+      "round": 6,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.04226829872373855,
+      "attacker_raw_action": [
+        0.9999966621398926,
+        0.9999014735221863,
+        0.999992311000824
+      ],
+      "attacker_reward": -0.02168411254882807,
+      "beta": 0.45,
+      "clean_accuracy": 0.3644,
+      "clean_loss": 2.181498264312744,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -2.211125793457031,
+      "epsilon": 1.0,
+      "round": 7,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.04271368475308353,
+      "attacker_raw_action": [
+        0.9999966621398926,
+        0.9999017715454102,
+        0.999992311000824
+      ],
+      "attacker_reward": -0.024576721191406303,
+      "beta": 0.45,
+      "clean_accuracy": 0.4253,
+      "clean_loss": 2.1528493789672853,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -2.186549072265625,
+      "epsilon": 1.0,
+      "round": 8,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.042799205383442854,
+      "attacker_raw_action": [
+        0.9999966621398926,
+        0.999902069568634,
+        0.9999923706054688
+      ],
+      "attacker_reward": -0.029855041503906055,
+      "beta": 0.45,
+      "clean_accuracy": 0.4527,
+      "clean_loss": 2.1218272525787354,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -2.156694030761719,
+      "epsilon": 1.0,
+      "round": 9,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.04569336989480785,
+      "attacker_raw_action": [
+        0.9999980926513672,
+        0.9999352693557739,
+        0.9999954700469971
+      ],
+      "attacker_reward": -0.025411071777343697,
+      "beta": 0.45,
+      "clean_accuracy": 0.4706,
+      "clean_loss": 2.094347956085205,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -2.131282958984375,
+      "epsilon": 1.0,
+      "round": 10,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.04992772250349849,
+      "attacker_raw_action": [
+        0.9999967217445374,
+        0.9999027252197266,
+        0.9999924302101135
+      ],
+      "attacker_reward": -0.04207687377929714,
+      "beta": 0.45,
+      "clean_accuracy": 0.534,
+      "clean_loss": 2.051547444152832,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -2.089206085205078,
+      "epsilon": 1.0,
+      "round": 11,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.05382416682309081,
+      "attacker_raw_action": [
+        0.9999980926513672,
+        0.9999356865882874,
+        0.9999954700469971
+      ],
+      "attacker_reward": -0.035384521484374876,
+      "beta": 0.45,
+      "clean_accuracy": 0.5902,
+      "clean_loss": 2.011195129776001,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -2.053821563720703,
+      "epsilon": 1.0,
+      "round": 12,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.05517105545129829,
+      "attacker_raw_action": [
+        0.9999980926513672,
+        0.9999358654022217,
+        0.9999955296516418
+      ],
+      "attacker_reward": -0.03455383300781234,
+      "beta": 0.45,
+      "clean_accuracy": 0.6152,
+      "clean_loss": 1.9674238641738893,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -2.019267730712891,
+      "epsilon": 1.0,
+      "round": 13,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.06279671238434949,
+      "attacker_raw_action": [
+        0.9999967217445374,
+        0.9999036192893982,
+        0.9999924898147583
+      ],
+      "attacker_reward": -0.06758560180664075,
+      "beta": 0.45,
+      "clean_accuracy": 0.6197,
+      "clean_loss": 1.8952541618347167,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -1.95168212890625,
+      "epsilon": 1.0,
+      "round": 14,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.06347548775196604,
+      "attacker_raw_action": [
+        0.999998927116394,
+        0.9999576807022095,
+        0.9999973773956299
+      ],
+      "attacker_reward": 0.013449401855468723,
+      "beta": 0.45,
+      "clean_accuracy": 0.6078,
+      "clean_loss": 1.909126178741455,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -1.9651315307617188,
+      "epsilon": 1.0,
+      "round": 15,
+      "sampled_malicious_clients": 2
+    },
+    {
+      "alpha": 0.08304880968814306,
+      "attacker_raw_action": [
+        0.9999967813491821,
+        0.999904215335846,
+        0.9999925494194031
+      ],
+      "attacker_reward": -0.06911529541015615,
+      "beta": 0.45,
+      "clean_accuracy": 0.6258,
+      "clean_loss": 1.8178833639144898,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -1.8960162353515626,
+      "epsilon": 1.0,
+      "round": 16,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.07357729161481351,
+      "attacker_raw_action": [
+        0.999998927116394,
+        0.9999579787254333,
+        0.9999973773956299
+      ],
+      "attacker_reward": 0.015083770751953107,
+      "beta": 0.45,
+      "clean_accuracy": 0.6038,
+      "clean_loss": 1.836763636779785,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -1.9111000061035157,
+      "epsilon": 1.0,
+      "round": 17,
+      "sampled_malicious_clients": 2
+    },
+    {
+      "alpha": 0.09058753726145727,
+      "attacker_raw_action": [
+        0.999998152256012,
+        0.9999368786811829,
+        0.9999955892562866
+      ],
+      "attacker_reward": -0.06699172973632828,
+      "beta": 0.45,
+      "clean_accuracy": 0.6337,
+      "clean_loss": 1.7462631999969482,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -1.8441082763671874,
+      "epsilon": 1.0,
+      "round": 18,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.07785451276779866,
+      "attacker_raw_action": [
+        0.9999967813491821,
+        0.9999051094055176,
+        0.9999926686286926
+      ],
+      "attacker_reward": -0.12405609130859374,
+      "beta": 0.45,
+      "clean_accuracy": 0.7074,
+      "clean_loss": 1.6488765758514405,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -1.7200521850585937,
+      "epsilon": 1.0,
+      "round": 19,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.08443664550901325,
+      "attacker_raw_action": [
+        0.9999968409538269,
+        0.9999054074287415,
+        0.9999926686286926
+      ],
+      "attacker_reward": -0.07522369384765626,
+      "beta": 0.45,
+      "clean_accuracy": 0.6851,
+      "clean_loss": 1.5386902530670166,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -1.6448284912109374,
+      "epsilon": 1.0,
+      "round": 20,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.0834400739861044,
+      "attacker_raw_action": [
+        0.999998152256012,
+        0.9999374151229858,
+        0.9999956488609314
+      ],
+      "attacker_reward": -0.07768341064453121,
+      "beta": 0.45,
+      "clean_accuracy": 0.6758,
+      "clean_loss": 1.4586975172042846,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -1.5671450805664062,
+      "epsilon": 1.0,
+      "round": 21,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.09077538074618667,
+      "attacker_raw_action": [
+        0.9999989867210388,
+        0.9999586343765259,
+        0.9999974370002747
+      ],
+      "attacker_reward": 0.030179138183593857,
+      "beta": 0.45,
+      "clean_accuracy": 0.6186,
+      "clean_loss": 1.4962858661651612,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -1.59732421875,
+      "epsilon": 1.0,
+      "round": 22,
+      "sampled_malicious_clients": 2
+    },
+    {
+      "alpha": 0.1005738109225898,
+      "attacker_raw_action": [
+        0.9999968409538269,
+        0.9999063014984131,
+        0.9999927878379822
+      ],
+      "attacker_reward": -0.08973541259765638,
+      "beta": 0.45,
+      "clean_accuracy": 0.7361,
+      "clean_loss": 1.396966315460205,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -1.5075888061523437,
+      "epsilon": 1.0,
+      "round": 23,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.12575530414775596,
+      "attacker_raw_action": [
+        0.9999968409538269,
+        0.999906599521637,
+        0.9999927878379822
+      ],
+      "attacker_reward": -0.11404586791992188,
+      "beta": 0.45,
+      "clean_accuracy": 0.6694,
+      "clean_loss": 1.3011385078430175,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -1.3935429382324218,
+      "epsilon": 1.0,
+      "round": 24,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.10907957233850646,
+      "attacker_raw_action": [
+        0.9999982118606567,
+        0.9999382495880127,
+        0.9999957084655762
+      ],
+      "attacker_reward": -0.06091415405273426,
+      "beta": 0.45,
+      "clean_accuracy": 0.7083,
+      "clean_loss": 1.202902628326416,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -1.3326287841796876,
+      "epsilon": 1.0,
+      "round": 25,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.13896274809814405,
+      "attacker_raw_action": [
+        0.9999969005584717,
+        0.9999071955680847,
+        0.999992847442627
+      ],
+      "attacker_reward": 0.035137481689452965,
+      "beta": 0.45,
+      "clean_accuracy": 0.6408,
+      "clean_loss": 1.2718540603637696,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -1.3677662658691405,
+      "epsilon": 1.0,
+      "round": 26,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.13592568068301975,
+      "attacker_raw_action": [
+        0.9999969005584717,
+        0.9999075531959534,
+        0.9999929070472717
+      ],
+      "attacker_reward": -0.10274742126464842,
+      "beta": 0.45,
+      "clean_accuracy": 0.7101,
+      "clean_loss": 1.1056210402488709,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -1.265018844604492,
+      "epsilon": 1.0,
+      "round": 27,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.24658808230910906,
+      "attacker_raw_action": [
+        0.9999982118606567,
+        0.9999388456344604,
+        0.999995768070221
+      ],
+      "attacker_reward": -0.10606399536132805,
+      "beta": 0.45,
+      "clean_accuracy": 0.6799,
+      "clean_loss": 1.1347471572875976,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -1.158954849243164,
+      "epsilon": 1.0,
+      "round": 28,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.14203765980388344,
+      "attacker_raw_action": [
+        0.9999982118606567,
+        0.9999390244483948,
+        0.999995768070221
+      ],
+      "attacker_reward": -0.04220390319824219,
+      "beta": 0.45,
+      "clean_accuracy": 0.7757,
+      "clean_loss": 0.989712142944336,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -1.1167509460449219,
+      "epsilon": 1.0,
+      "round": 29,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.2211578326427156,
+      "attacker_raw_action": [
+        0.9999989867210388,
+        0.9999596476554871,
+        0.9999974966049194
+      ],
+      "attacker_reward": 0.12265220642089836,
+      "beta": 0.45,
+      "clean_accuracy": 0.6415,
+      "clean_loss": 1.1371644674301147,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -1.2394031524658202,
+      "epsilon": 1.0,
+      "round": 30,
+      "sampled_malicious_clients": 2
+    },
+    {
+      "alpha": 0.13880085186603686,
+      "attacker_raw_action": [
+        0.9999982714653015,
+        0.9999393820762634,
+        0.9999958276748657
+      ],
+      "attacker_reward": -0.0698731994628905,
+      "beta": 0.45,
+      "clean_accuracy": 0.7645,
+      "clean_loss": 0.9729105531692505,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -1.1695299530029297,
+      "epsilon": 1.0,
+      "round": 31,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.26560947293991466,
+      "attacker_raw_action": [
+        0.9999969601631165,
+        0.999908983707428,
+        0.9999930262565613
+      ],
+      "attacker_reward": -0.029596328735351562,
+      "beta": 0.45,
+      "clean_accuracy": 0.5802,
+      "clean_loss": 1.180038000869751,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -1.1399336242675782,
+      "epsilon": 1.0,
+      "round": 32,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.13387334485480468,
+      "attacker_raw_action": [
+        0.9999969601631165,
+        0.9999092817306519,
+        0.9999930262565613
+      ],
+      "attacker_reward": -0.14235206604003914,
+      "beta": 0.45,
+      "clean_accuracy": 0.7851,
+      "clean_loss": 0.8463014838218689,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.997581558227539,
+      "epsilon": 1.0,
+      "round": 33,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.29026377672667336,
+      "attacker_raw_action": [
+        0.9999970197677612,
+        0.9999094605445862,
+        0.999993085861206
+      ],
+      "attacker_reward": 0.3959346771240234,
+      "beta": 0.45,
+      "clean_accuracy": 0.5608,
+      "clean_loss": 1.2280271034240722,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -1.3935162353515624,
+      "epsilon": 1.0,
+      "round": 34,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.14927247073932254,
+      "attacker_raw_action": [
+        0.9999970197677612,
+        0.9999098777770996,
+        0.999993085861206
+      ],
+      "attacker_reward": -0.36564872741699217,
+      "beta": 0.45,
+      "clean_accuracy": 0.7918,
+      "clean_loss": 0.8350972043991088,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -1.0278675079345703,
+      "epsilon": 1.0,
+      "round": 35,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.3915474864098593,
+      "attacker_raw_action": [
+        0.9999970197677612,
+        0.9999101161956787,
+        0.9999931454658508
+      ],
+      "attacker_reward": 0.0856969451904297,
+      "beta": 0.45,
+      "clean_accuracy": 0.6449,
+      "clean_loss": 1.1024355052947998,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -1.113564453125,
+      "epsilon": 1.0,
+      "round": 36,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.14734171805099874,
+      "attacker_raw_action": [
+        0.9999970197677612,
+        0.999910295009613,
+        0.9999931454658508
+      ],
+      "attacker_reward": -0.2111174011230469,
+      "beta": 0.45,
+      "clean_accuracy": 0.7833,
+      "clean_loss": 0.7671709235191345,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.9024470520019531,
+      "epsilon": 1.0,
+      "round": 37,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.2991981054719942,
+      "attacker_raw_action": [
+        0.9999990463256836,
+        0.9999606609344482,
+        0.9999975562095642
+      ],
+      "attacker_reward": 0.08919601440429692,
+      "beta": 0.45,
+      "clean_accuracy": 0.7545,
+      "clean_loss": 0.8434485467910766,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.99164306640625,
+      "epsilon": 1.0,
+      "round": 38,
+      "sampled_malicious_clients": 2
+    },
+    {
+      "alpha": 0.1141740532613848,
+      "attacker_raw_action": [
+        0.9999983310699463,
+        0.9999408721923828,
+        0.9999959468841553
+      ],
+      "attacker_reward": -0.21129257202148433,
+      "beta": 0.45,
+      "clean_accuracy": 0.8481,
+      "clean_loss": 0.6679905023574829,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.7803504943847657,
+      "epsilon": 1.0,
+      "round": 39,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.14493665912975856,
+      "attacker_raw_action": [
+        0.9999983310699463,
+        0.9999410510063171,
+        0.9999959468841553
+      ],
+      "attacker_reward": 0.0333229064941406,
+      "beta": 0.45,
+      "clean_accuracy": 0.8228,
+      "clean_loss": 0.6790903988838196,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.8136734008789063,
+      "epsilon": 1.0,
+      "round": 40,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.093843963207373,
+      "attacker_raw_action": [
+        0.9999983310699463,
+        0.9999412894248962,
+        0.9999960064888
+      ],
+      "attacker_reward": -0.05539520263671882,
+      "beta": 0.45,
+      "clean_accuracy": 0.8305,
+      "clean_loss": 0.6317233304977417,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.7582781982421875,
+      "epsilon": 1.0,
+      "round": 41,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.1332512191099301,
+      "attacker_raw_action": [
+        0.9999983310699463,
+        0.9999414682388306,
+        0.9999960064888
+      ],
+      "attacker_reward": -0.005703353881835849,
+      "beta": 0.45,
+      "clean_accuracy": 0.8075,
+      "clean_loss": 0.6591167491912842,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.7525748443603516,
+      "epsilon": 1.0,
+      "round": 42,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.1086840596756012,
+      "attacker_raw_action": [
+        0.9999983310699463,
+        0.9999417066574097,
+        0.9999960064888
+      ],
+      "attacker_reward": 0.07907371520996087,
+      "beta": 0.45,
+      "clean_accuracy": 0.7975,
+      "clean_loss": 0.6486723197937012,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.8316485595703125,
+      "epsilon": 1.0,
+      "round": 43,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.15213571781202667,
+      "attacker_raw_action": [
+        0.9999990463256836,
+        0.9999613761901855,
+        0.999997615814209
+      ],
+      "attacker_reward": 0.0563990783691406,
+      "beta": 0.45,
+      "clean_accuracy": 0.7851,
+      "clean_loss": 0.6977509655952454,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.8880476379394531,
+      "epsilon": 1.0,
+      "round": 44,
+      "sampled_malicious_clients": 2
+    },
+    {
+      "alpha": 0.11278696851218593,
+      "attacker_raw_action": [
+        0.9999983310699463,
+        0.9999420046806335,
+        0.9999960660934448
+      ],
+      "attacker_reward": -0.14233612060546874,
+      "beta": 0.45,
+      "clean_accuracy": 0.8248,
+      "clean_loss": 0.620544568824768,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.7457115173339843,
+      "epsilon": 1.0,
+      "round": 45,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.17248348647587874,
+      "attacker_raw_action": [
+        0.9999971389770508,
+        0.9999129772186279,
+        0.9999933838844299
+      ],
+      "attacker_reward": 0.3140798950195314,
+      "beta": 0.45,
+      "clean_accuracy": 0.7392,
+      "clean_loss": 0.8289414552688599,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -1.0597914123535157,
+      "epsilon": 1.0,
+      "round": 46,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.12554426544963157,
+      "attacker_raw_action": [
+        0.9999983906745911,
+        0.9999423623085022,
+        0.9999960660934448
+      ],
+      "attacker_reward": -0.3751551818847657,
+      "beta": 0.45,
+      "clean_accuracy": 0.8458,
+      "clean_loss": 0.5764994010925293,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.68463623046875,
+      "epsilon": 1.0,
+      "round": 47,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.263741613937836,
+      "attacker_raw_action": [
+        0.9999983906745911,
+        0.9999426007270813,
+        0.9999960660934448
+      ],
+      "attacker_reward": 0.047128448486328134,
+      "beta": 0.45,
+      "clean_accuracy": 0.8438,
+      "clean_loss": 0.5581266924858094,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.7317646789550781,
+      "epsilon": 1.0,
+      "round": 48,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.10206622069344497,
+      "attacker_raw_action": [
+        0.9999971985816956,
+        0.9999136924743652,
+        0.9999934434890747
+      ],
+      "attacker_reward": -0.03820457458496096,
+      "beta": 0.45,
+      "clean_accuracy": 0.8056,
+      "clean_loss": 0.6258430368423462,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.6935601043701172,
+      "epsilon": 1.0,
+      "round": 49,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.12497347298936962,
+      "attacker_raw_action": [
+        0.9999983906745911,
+        0.99994295835495,
+        0.9999961256980896
+      ],
+      "attacker_reward": 0.07006156921386719,
+      "beta": 0.45,
+      "clean_accuracy": 0.8328,
+      "clean_loss": 0.5664673106193543,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.7636216735839844,
+      "epsilon": 1.0,
+      "round": 50,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.14016665749555762,
+      "attacker_raw_action": [
+        0.9999983906745911,
+        0.9999430775642395,
+        0.9999961256980896
+      ],
+      "attacker_reward": -0.11066307067871095,
+      "beta": 0.45,
+      "clean_accuracy": 0.8278,
+      "clean_loss": 0.5849214879989624,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.6529586029052734,
+      "epsilon": 1.0,
+      "round": 51,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.1438918093256102,
+      "attacker_raw_action": [
+        0.9999983906745911,
+        0.9999433159828186,
+        0.9999961853027344
+      ],
+      "attacker_reward": 0.0715494537353516,
+      "beta": 0.45,
+      "clean_accuracy": 0.8248,
+      "clean_loss": 0.5743024338722229,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.724508056640625,
+      "epsilon": 1.0,
+      "round": 52,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.1430379189708331,
+      "attacker_raw_action": [
+        0.9999983906745911,
+        0.9999434351921082,
+        0.9999961853027344
+      ],
+      "attacker_reward": -0.0451036834716797,
+      "beta": 0.45,
+      "clean_accuracy": 0.8278,
+      "clean_loss": 0.5764083638191223,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.6794043731689453,
+      "epsilon": 1.0,
+      "round": 53,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.1977418752741707,
+      "attacker_raw_action": [
+        0.9999972581863403,
+        0.9999151229858398,
+        0.999993622303009
+      ],
+      "attacker_reward": 0.5087244415283204,
+      "beta": 0.45,
+      "clean_accuracy": 0.7396,
+      "clean_loss": 0.9501349974632263,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -1.1881288146972657,
+      "epsilon": 1.0,
+      "round": 54,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.17814344714849917,
+      "attacker_raw_action": [
+        0.9999991059303284,
+        0.9999626874923706,
+        0.9999977350234985
+      ],
+      "attacker_reward": 0.20114044189453106,
+      "beta": 0.45,
+      "clean_accuracy": 0.6972,
+      "clean_loss": 1.1130500268936157,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -1.3892692565917968,
+      "epsilon": 1.0,
+      "round": 55,
+      "sampled_malicious_clients": 2
+    },
+    {
+      "alpha": 0.1828519997471816,
+      "attacker_raw_action": [
+        0.9999972581863403,
+        0.9999154210090637,
+        0.999993622303009
+      ],
+      "attacker_reward": -0.7562136077880859,
+      "beta": 0.45,
+      "clean_accuracy": 0.8387,
+      "clean_loss": 0.5664518886089325,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.6330556488037109,
+      "epsilon": 1.0,
+      "round": 56,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.32383578316150774,
+      "attacker_raw_action": [
+        0.9999991059303284,
+        0.9999629855155945,
+        0.9999977350234985
+      ],
+      "attacker_reward": 0.08788055419921881,
+      "beta": 0.45,
+      "clean_accuracy": 0.7851,
+      "clean_loss": 0.6720530168533325,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.7209362030029297,
+      "epsilon": 1.0,
+      "round": 57,
+      "sampled_malicious_clients": 2
+    },
+    {
+      "alpha": 0.10591159279632781,
+      "attacker_raw_action": [
+        0.9999973177909851,
+        0.9999161958694458,
+        0.9999936819076538
+      ],
+      "attacker_reward": -0.10099868774414067,
+      "beta": 0.45,
+      "clean_accuracy": 0.8689,
+      "clean_loss": 0.49720929713249207,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.619937515258789,
+      "epsilon": 1.0,
+      "round": 58,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.16505758426003533,
+      "attacker_raw_action": [
+        0.9999984502792358,
+        0.9999445080757141,
+        0.9999962449073792
+      ],
+      "attacker_reward": -0.025351638793945308,
+      "beta": 0.45,
+      "clean_accuracy": 0.8798,
+      "clean_loss": 0.4723622962474823,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.5945858764648437,
+      "epsilon": 1.0,
+      "round": 59,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.08989350930848929,
+      "attacker_raw_action": [
+        0.9999984502792358,
+        0.9999446868896484,
+        0.9999962449073792
+      ],
+      "attacker_reward": 0.0311123657226563,
+      "beta": 0.45,
+      "clean_accuracy": 0.8763,
+      "clean_loss": 0.4700616446018219,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.6256982421875,
+      "epsilon": 1.0,
+      "round": 60,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.0788330913179438,
+      "attacker_raw_action": [
+        0.9999984502792358,
+        0.9999448657035828,
+        0.9999963045120239
+      ],
+      "attacker_reward": -0.041020507812499996,
+      "beta": 0.45,
+      "clean_accuracy": 0.8802,
+      "clean_loss": 0.45374438247680665,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.584677734375,
+      "epsilon": 1.0,
+      "round": 61,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.08113663898102418,
+      "attacker_raw_action": [
+        0.9999984502792358,
+        0.9999450445175171,
+        0.9999963045120239
+      ],
+      "attacker_reward": -0.0037263488769531117,
+      "beta": 0.45,
+      "clean_accuracy": 0.883,
+      "clean_loss": 0.4448166696548462,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.5809513854980469,
+      "epsilon": 1.0,
+      "round": 62,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.07645973765184153,
+      "attacker_raw_action": [
+        0.9999995231628418,
+        0.9999759197235107,
+        0.9999986886978149
+      ],
+      "attacker_reward": 0.14073196411132805,
+      "beta": 0.45,
+      "clean_accuracy": 0.8316,
+      "clean_loss": 0.5565082538604736,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.721683349609375,
+      "epsilon": 1.0,
+      "round": 63,
+      "sampled_malicious_clients": 3
+    },
+    {
+      "alpha": 0.09735000589682408,
+      "attacker_raw_action": [
+        0.9999973773956299,
+        0.99991774559021,
+        0.9999938607215881
+      ],
+      "attacker_reward": -0.14576271057128898,
+      "beta": 0.45,
+      "clean_accuracy": 0.8741,
+      "clean_loss": 0.4735389464378357,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.575920639038086,
+      "epsilon": 1.0,
+      "round": 64,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.15571272658404806,
+      "attacker_raw_action": [
+        0.9999985098838806,
+        0.9999455809593201,
+        0.9999963641166687
+      ],
+      "attacker_reward": 0.13969696044921864,
+      "beta": 0.45,
+      "clean_accuracy": 0.8407,
+      "clean_loss": 0.5328512775421143,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.7156175994873046,
+      "epsilon": 1.0,
+      "round": 65,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.10685862842849259,
+      "attacker_raw_action": [
+        0.9999985098838806,
+        0.9999457597732544,
+        0.9999963641166687
+      ],
+      "attacker_reward": -0.11547801971435545,
+      "beta": 0.45,
+      "clean_accuracy": 0.8719,
+      "clean_loss": 0.47500998501777647,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.6001395797729492,
+      "epsilon": 1.0,
+      "round": 66,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.15836219573360547,
+      "attacker_raw_action": [
+        0.9999985098838806,
+        0.9999459385871887,
+        0.9999963641166687
+      ],
+      "attacker_reward": 0.18941280364990243,
+      "beta": 0.45,
+      "clean_accuracy": 0.7964,
+      "clean_loss": 0.6051346334457397,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.7895523834228516,
+      "epsilon": 1.0,
+      "round": 67,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.11824256209642313,
+      "attacker_raw_action": [
+        0.9999985098838806,
+        0.999946117401123,
+        0.9999964237213135
+      ],
+      "attacker_reward": -0.18256443023681646,
+      "beta": 0.45,
+      "clean_accuracy": 0.8506,
+      "clean_loss": 0.48501847901344297,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.6069879531860352,
+      "epsilon": 1.0,
+      "round": 68,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.18253297440655422,
+      "attacker_raw_action": [
+        0.9999974370002747,
+        0.999919056892395,
+        0.9999939799308777
+      ],
+      "attacker_reward": 0.36504688262939455,
+      "beta": 0.45,
+      "clean_accuracy": 0.7319,
+      "clean_loss": 0.9380300895690918,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.9720348358154297,
+      "epsilon": 1.0,
+      "round": 69,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.143381081388704,
+      "attacker_raw_action": [
+        0.9999991655349731,
+        0.9999645352363586,
+        0.9999978542327881
+      ],
+      "attacker_reward": 0.09262168884277344,
+      "beta": 0.45,
+      "clean_accuracy": 0.7018,
+      "clean_loss": 1.063746646308899,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -1.0646565246582032,
+      "epsilon": 1.0,
+      "round": 70,
+      "sampled_malicious_clients": 2
+    },
+    {
+      "alpha": 0.19394528941673905,
+      "attacker_raw_action": [
+        0.9999974370002747,
+        0.9999197125434875,
+        0.9999940395355225
+      ],
+      "attacker_reward": -0.3630101013183594,
+      "beta": 0.45,
+      "clean_accuracy": 0.8472,
+      "clean_loss": 0.5214711652755737,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.7016464233398437,
+      "epsilon": 1.0,
+      "round": 71,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.37021138248596785,
+      "attacker_raw_action": [
+        0.9999985098838806,
+        0.9999467134475708,
+        0.9999964237213135
+      ],
+      "attacker_reward": -0.08866836547851564,
+      "beta": 0.45,
+      "clean_accuracy": 0.8514,
+      "clean_loss": 0.5000204498291015,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.6129780578613281,
+      "epsilon": 1.0,
+      "round": 72,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.12784645235534664,
+      "attacker_raw_action": [
+        0.9999985098838806,
+        0.9999470114707947,
+        0.9999964833259583
+      ],
+      "attacker_reward": -0.036670913696289054,
+      "beta": 0.45,
+      "clean_accuracy": 0.8799,
+      "clean_loss": 0.4460440381526947,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.576307144165039,
+      "epsilon": 1.0,
+      "round": 73,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.11617873459149412,
+      "attacker_raw_action": [
+        0.9999985694885254,
+        0.9999471306800842,
+        0.9999964833259583
+      ],
+      "attacker_reward": -0.008878631591796804,
+      "beta": 0.45,
+      "clean_accuracy": 0.8827,
+      "clean_loss": 0.434025612449646,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.5674285125732422,
+      "epsilon": 1.0,
+      "round": 74,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.10196836165230677,
+      "attacker_raw_action": [
+        0.9999985694885254,
+        0.9999473094940186,
+        0.9999964833259583
+      ],
+      "attacker_reward": -0.0070076751708985086,
+      "beta": 0.45,
+      "clean_accuracy": 0.885,
+      "clean_loss": 0.4266562861442566,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.5604208374023437,
+      "epsilon": 1.0,
+      "round": 75,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.09594107382718453,
+      "attacker_raw_action": [
+        0.9999974966049194,
+        0.9999209046363831,
+        0.999994158744812
+      ],
+      "attacker_reward": 0.042044410705566415,
+      "beta": 0.45,
+      "clean_accuracy": 0.8755,
+      "clean_loss": 0.4415555791854858,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.6024652481079101,
+      "epsilon": 1.0,
+      "round": 76,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.0825010678198858,
+      "attacker_raw_action": [
+        0.9999974966049194,
+        0.9999212026596069,
+        0.999994158744812
+      ],
+      "attacker_reward": -0.07952762603759767,
+      "beta": 0.45,
+      "clean_accuracy": 0.8827,
+      "clean_loss": 0.41641610069274904,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.5229376220703125,
+      "epsilon": 1.0,
+      "round": 77,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.10937322739885566,
+      "attacker_raw_action": [
+        0.9999974966049194,
+        0.9999213814735413,
+        0.9999942183494568
+      ],
+      "attacker_reward": 0.07402050018310546,
+      "beta": 0.45,
+      "clean_accuracy": 0.8702,
+      "clean_loss": 0.44789877777099607,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.5969581222534179,
+      "epsilon": 1.0,
+      "round": 78,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.09086046909187086,
+      "attacker_raw_action": [
+        0.9999995231628418,
+        0.9999771118164062,
+        0.9999988079071045
+      ],
+      "attacker_reward": 0.33964427947998055,
+      "beta": 0.45,
+      "clean_accuracy": 0.722,
+      "clean_loss": 0.8539639932632447,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.9366024017333985,
+      "epsilon": 1.0,
+      "round": 79,
+      "sampled_malicious_clients": 3
+    },
+    {
+      "alpha": 0.10787287856609386,
+      "attacker_raw_action": [
+        0.9999975562095642,
+        0.9999220371246338,
+        0.9999942779541016
+      ],
+      "attacker_reward": -0.38113609313964847,
+      "beta": 0.45,
+      "clean_accuracy": 0.877,
+      "clean_loss": 0.4354402949333191,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.55546630859375,
+      "epsilon": 1.0,
+      "round": 80,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.29049256411976415,
+      "attacker_raw_action": [
+        0.9999975562095642,
+        0.9999222159385681,
+        0.9999942779541016
+      ],
+      "attacker_reward": 0.21126129150390627,
+      "beta": 0.45,
+      "clean_accuracy": 0.8006,
+      "clean_loss": 0.5788362447738647,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.7667276000976563,
+      "epsilon": 1.0,
+      "round": 81,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.10811747255113506,
+      "attacker_raw_action": [
+        0.9999985694885254,
+        0.9999484419822693,
+        0.9999966025352478
+      ],
+      "attacker_reward": -0.22475395202636717,
+      "beta": 0.45,
+      "clean_accuracy": 0.8848,
+      "clean_loss": 0.40612494482994077,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.5419736480712891,
+      "epsilon": 1.0,
+      "round": 82,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.1757877781496038,
+      "attacker_raw_action": [
+        0.9999986290931702,
+        0.9999486207962036,
+        0.9999966025352478
+      ],
+      "attacker_reward": -0.011349143981933651,
+      "beta": 0.45,
+      "clean_accuracy": 0.8872,
+      "clean_loss": 0.4054396744728088,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.5306245040893555,
+      "epsilon": 1.0,
+      "round": 83,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.08351422561030866,
+      "attacker_raw_action": [
+        0.9999986290931702,
+        0.9999487996101379,
+        0.9999966025352478
+      ],
+      "attacker_reward": -0.01486495971679691,
+      "beta": 0.45,
+      "clean_accuracy": 0.8957,
+      "clean_loss": 0.38303199672698973,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.5157595443725586,
+      "epsilon": 1.0,
+      "round": 84,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.09586106223503654,
+      "attacker_raw_action": [
+        0.9999986290931702,
+        0.9999489784240723,
+        0.9999966621398926
+      ],
+      "attacker_reward": 0.008128509521484362,
+      "beta": 0.45,
+      "clean_accuracy": 0.8919,
+      "clean_loss": 0.386786630153656,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.5238880538940429,
+      "epsilon": 1.0,
+      "round": 85,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.07530114663599957,
+      "attacker_raw_action": [
+        0.999997615814209,
+        0.9999234676361084,
+        0.9999943971633911
+      ],
+      "attacker_reward": 0.02308280944824226,
+      "beta": 0.45,
+      "clean_accuracy": 0.8882,
+      "clean_loss": 0.40008318057060244,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.5469708633422852,
+      "epsilon": 1.0,
+      "round": 86,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.09194494545974731,
+      "attacker_raw_action": [
+        0.999997615814209,
+        0.9999237060546875,
+        0.9999943971633911
+      ],
+      "attacker_reward": 0.024216651916503906,
+      "beta": 0.45,
+      "clean_accuracy": 0.8797,
+      "clean_loss": 0.4155503684043884,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.5711875152587891,
+      "epsilon": 1.0,
+      "round": 87,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.11981835836546836,
+      "attacker_raw_action": [
+        0.9999986290931702,
+        0.9999494552612305,
+        0.9999966621398926
+      ],
+      "attacker_reward": -0.07993606567382816,
+      "beta": 0.45,
+      "clean_accuracy": 0.8854,
+      "clean_loss": 0.4020384823322296,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.4912514495849609,
+      "epsilon": 1.0,
+      "round": 88,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.10111283269457275,
+      "attacker_raw_action": [
+        0.9999986290931702,
+        0.9999496340751648,
+        0.9999966621398926
+      ],
+      "attacker_reward": -0.004166526794433578,
+      "beta": 0.45,
+      "clean_accuracy": 0.8946,
+      "clean_loss": 0.37157602038383486,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.48708492279052734,
+      "epsilon": 1.0,
+      "round": 89,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.09183927465730678,
+      "attacker_raw_action": [
+        0.9999986290931702,
+        0.9999498128890991,
+        0.9999967217445374
+      ],
+      "attacker_reward": 0.007445259094238266,
+      "beta": 0.45,
+      "clean_accuracy": 0.8992,
+      "clean_loss": 0.3624430874824524,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.4945301818847656,
+      "epsilon": 1.0,
+      "round": 90,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.06514582000315529,
+      "attacker_raw_action": [
+        0.9999986290931702,
+        0.9999499917030334,
+        0.9999967217445374
+      ],
+      "attacker_reward": -0.013078460693359384,
+      "beta": 0.45,
+      "clean_accuracy": 0.9015,
+      "clean_loss": 0.3589094576358795,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.4814517211914062,
+      "epsilon": 1.0,
+      "round": 91,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.07348940695738886,
+      "attacker_raw_action": [
+        0.9999976754188538,
+        0.999924898147583,
+        0.9999945163726807
+      ],
+      "attacker_reward": 0.015906677246093792,
+      "beta": 0.45,
+      "clean_accuracy": 0.8931,
+      "clean_loss": 0.37928295154571534,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.4973583984375,
+      "epsilon": 1.0,
+      "round": 92,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.09063644159292775,
+      "attacker_raw_action": [
+        0.9999986886978149,
+        0.9999502897262573,
+        0.9999967217445374
+      ],
+      "attacker_reward": -0.023885803222656266,
+      "beta": 0.45,
+      "clean_accuracy": 0.8959,
+      "clean_loss": 0.36670734980106356,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.47347259521484375,
+      "epsilon": 1.0,
+      "round": 93,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.11682639060844918,
+      "attacker_raw_action": [
+        0.9999992251396179,
+        0.9999671578407288,
+        0.9999980926513672
+      ],
+      "attacker_reward": 0.03583045959472653,
+      "beta": 0.45,
+      "clean_accuracy": 0.8701,
+      "clean_loss": 0.4314085693359375,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.5093030548095703,
+      "epsilon": 1.0,
+      "round": 94,
+      "sampled_malicious_clients": 2
+    },
+    {
+      "alpha": 0.09939296647461363,
+      "attacker_raw_action": [
+        0.9999976754188538,
+        0.9999256730079651,
+        0.9999945759773254
+      ],
+      "attacker_reward": 0.03591026306152345,
+      "beta": 0.45,
+      "clean_accuracy": 0.8974,
+      "clean_loss": 0.37189694476127627,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.5452133178710937,
+      "epsilon": 1.0,
+      "round": 95,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.12857841134177908,
+      "attacker_raw_action": [
+        0.9999986886978149,
+        0.9999507665634155,
+        0.9999967813491821
+      ],
+      "attacker_reward": 0.009962005615234415,
+      "beta": 0.45,
+      "clean_accuracy": 0.8892,
+      "clean_loss": 0.39772529611587526,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.5551753234863281,
+      "epsilon": 1.0,
+      "round": 96,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.088316753229257,
+      "attacker_raw_action": [
+        0.9999977350234985,
+        0.9999261498451233,
+        0.9999946355819702
+      ],
+      "attacker_reward": -0.09266502380371094,
+      "beta": 0.45,
+      "clean_accuracy": 0.8923,
+      "clean_loss": 0.3709455214500427,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.4625102996826172,
+      "epsilon": 1.0,
+      "round": 97,
+      "sampled_malicious_clients": 0
+    },
+    {
+      "alpha": 0.11227261380927112,
+      "attacker_raw_action": [
+        0.9999986886978149,
+        0.9999511241912842,
+        0.9999967813491821
+      ],
+      "attacker_reward": 0.07076923370361327,
+      "beta": 0.45,
+      "clean_accuracy": 0.9027,
+      "clean_loss": 0.3593098953723907,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.5332795333862305,
+      "epsilon": 1.0,
+      "round": 98,
+      "sampled_malicious_clients": 1
+    },
+    {
+      "alpha": 0.10359435714100089,
+      "attacker_raw_action": [
+        0.9999992251396179,
+        0.9999676942825317,
+        0.9999980926513672
+      ],
+      "attacker_reward": 0.06626750946044924,
+      "beta": 0.45,
+      "clean_accuracy": 0.8861,
+      "clean_loss": 0.4011643968582153,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.5995470428466797,
+      "epsilon": 1.0,
+      "round": 99,
+      "sampled_malicious_clients": 2
+    },
+    {
+      "alpha": 0.09902338783349474,
+      "attacker_raw_action": [
+        0.9999986886978149,
+        0.9999514222145081,
+        0.9999968409538269
+      ],
+      "attacker_reward": -0.11068508148193362,
+      "beta": 0.45,
+      "clean_accuracy": 0.8996,
+      "clean_loss": 0.3560591938495636,
+      "defender_raw_action": [
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "defender_reward": -0.4888619613647461,
+      "epsilon": 1.0,
+      "round": 100,
+      "sampled_malicious_clients": 1
+    }
+  ],
+  "scenario": "rl-krum",
+  "seed": 101,
+  "single_seed": true,
+  "test_examples": 10000
+}

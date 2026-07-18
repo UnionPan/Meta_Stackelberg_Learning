@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from pathlib import Path
+import threading
 from typing import Mapping
 
 import numpy as np
@@ -75,8 +77,9 @@ def action_parameter_ledger() -> tuple[ActionParameterRecord, ...]:
         ),
         ActionParameterRecord(
             'defender', 'epsilon', defender.epsilon_min, defender.epsilon_max,
-            'implementation-declared',
-            'paper names NeuroClip epsilon but does not publish decoder bounds',
+            'paper-evidence-bounded-implementation',
+            'paper does not publish decoder bounds; Appendix D evaluates '
+            'epsilon in [1,10] and Appendix C uses the original value 7',
         ),
         ActionParameterRecord(
             'attacker', 'gamma', attacker.gamma_min, attacker.gamma_max,
@@ -220,6 +223,7 @@ class PaperTD3TrajectoryCollector:
         generation: int,
         deterministic: bool = False,
         explore_role: str | None = None,
+        random_exploration_steps: int = 0,
         retain_steps: bool = True,
     ) -> PaperTrajectory:
         if defender.role != 'defender' or attacker.role != 'attacker':
@@ -228,6 +232,12 @@ class PaperTD3TrajectoryCollector:
             raise ValueError('trajectory replay roles do not match protocol')
         if explore_role not in {None, 'defender', 'attacker'}:
             raise ValueError('explore_role must be defender, attacker or None')
+        if (
+            isinstance(random_exploration_steps, bool)
+            or not isinstance(random_exploration_steps, int)
+            or random_exploration_steps < 0
+        ):
+            raise ValueError('random_exploration_steps must be non-negative')
         defender_deterministic = deterministic or explore_role == 'attacker'
         attacker_deterministic = deterministic or explore_role == 'defender'
         steps = []
@@ -239,9 +249,15 @@ class PaperTD3TrajectoryCollector:
             defender_obs = flatten_observation(
                 env.defender_observation(), DEFENDER_OBSERVATION_KEYS,
             )
-            defender_action = defender.act(
-                defender_obs, deterministic=defender_deterministic,
-            )
+            if (
+                explore_role == 'defender'
+                and len(defender_replay) < random_exploration_steps
+            ):
+                defender_action = defender.sample_uniform_action()
+            else:
+                defender_action = defender.act(
+                    defender_obs, deterministic=defender_deterministic,
+                )
             pending = env.begin_round(defender_action)
             attacker_obs = flatten_observation(
                 pending.attacker_observation, ATTACKER_OBSERVATION_KEYS,
@@ -252,9 +268,15 @@ class PaperTD3TrajectoryCollector:
                     old_obs, old_action, old_reward, attacker_obs, False,
                     generation=generation, role='attacker',
                 )
-            attacker_action = attacker.act(
-                attacker_obs, deterministic=attacker_deterministic,
-            )
+            if (
+                explore_role == 'attacker'
+                and len(attacker_replay) < random_exploration_steps
+            ):
+                attacker_action = attacker.sample_uniform_action()
+            else:
+                attacker_action = attacker.act(
+                    attacker_obs, deterministic=attacker_deterministic,
+                )
             step = env.finish_round(attacker_action)
             next_defender_obs = flatten_observation(
                 env.defender_observation(), DEFENDER_OBSERVATION_KEYS,
@@ -300,6 +322,7 @@ class ScaledPaperMetaSGTrainingRunner:
         support_seed: int,
         query_seeds: tuple[int, ...] = (),
         protocol_signature: Mapping[str, object] | None = None,
+        parallel_tasks: int = 1,
     ) -> None:
         if not isinstance(config, ScaledMetaSGConfig):
             raise TypeError('config must be ScaledMetaSGConfig')
@@ -315,9 +338,22 @@ class ScaledPaperMetaSGTrainingRunner:
         self._support_seeds = []
         self._query_seeds = frozenset(query_seeds)
         self.protocol_signature = dict(protocol_signature or {})
-        required = max(config.td3_batch_size, config.learning_starts)
-        self._minimum_replay_size = required
-        self.trajectories_per_update = max(1, int(np.ceil(required / config.H)))
+        if (
+            isinstance(parallel_tasks, bool)
+            or not isinstance(parallel_tasks, int)
+            or parallel_tasks <= 0
+        ):
+            raise ValueError('parallel_tasks must be a positive integer')
+        self.parallel_tasks = min(parallel_tasks, config.K)
+        self._env_factory_lock = threading.Lock()
+        # SB3 starts training once ``learning_starts`` transitions exist and
+        # samples replay indices with replacement when the requested batch is
+        # larger than the current replay.  Batch size must therefore not add
+        # extra H-round trajectories to one Algorithm 1/2 update.
+        self._minimum_replay_size = config.learning_starts
+        self.trajectories_per_update = max(
+            1, int(np.ceil(config.learning_starts / config.H)),
+        )
 
     def run(
         self,
@@ -483,6 +519,7 @@ class ScaledPaperMetaSGTrainingRunner:
             batch_size=self.config.td3_batch_size,
             kappa=self.config.paper_reference.kappa,
             meta_update_step=self.config.paper_reference.meta_update_step,
+            parallel_tasks=self.parallel_tasks,
         )
         if (
             training_method in {'meta-rl', 'both'}
@@ -496,6 +533,10 @@ class ScaledPaperMetaSGTrainingRunner:
                 collect_task=lambda task, step, defender, attacker, replay, iteration: self._collect_updates(
                     task, defender, attacker, replay, 'defender', iteration,
                 ),
+                # Use one deterministic preallocation path in serial and
+                # parallel modes so task workers receive identical support
+                # seeds and replay RNG streams.
+                prepare_task=self._prepare_algorithm2_task,
                 start_iteration=algorithm2_start,
                 iteration_callback=record_algorithm2,
             )
@@ -532,15 +573,31 @@ class ScaledPaperMetaSGTrainingRunner:
             'workers': self.config.workers,
             'untargeted_attackers': self.config.untargeted_attackers,
             'sample_size': self.config.sample_size,
+            'policy_learning_rate': self.config.paper_reference.policy_learning_rate,
+            'kappa': self.config.paper_reference.kappa,
+            'kappa_attacker': self.config.paper_reference.kappa_attacker,
+            'kappa_defender': self.config.paper_reference.kappa_defender,
+            'meta_update_step': self.config.paper_reference.meta_update_step,
+            'adaptation_step': self.config.paper_reference.adaptation_step,
+            'gamma': self.config.paper_reference.gamma,
+            'tau': self.config.paper_reference.tau,
+            'policy_delay': self.config.paper_reference.policy_delay,
+            'target_policy_noise': self.config.paper_reference.target_policy_noise,
+            'noise_clip': self.config.paper_reference.noise_clip,
             'defender_obs_dim': self.defender_obs_dim,
             'attacker_obs_dim': self.attacker_obs_dim,
             'initial_support_seed': self._initial_support_seed,
+            'algorithm2_parallel_tasks': self.parallel_tasks,
             'initial_defender': initial_defender.fingerprint(),
             'initial_attackers': tuple(sorted(
                 (repr(task), policy.fingerprint())
                 for task, policy in initial_attackers.items()
             )),
-            'trajectory_collection': 'fresh-plus-replay-warmup-v1',
+            'trajectory_collection': (
+                'algorithm1-fresh-trajectory-per-update;'
+                'algorithm2-fresh-trajectory-per-inner-step;'
+                'sb3-uniform-random-learning-starts-replacement-v4'
+            ),
             'protocol_signature': self.protocol_signature,
         }
 
@@ -559,6 +616,48 @@ class ScaledPaperMetaSGTrainingRunner:
             seed=10_000_000 + self._replay_serial,
         )
 
+    def _reserve_support_seed(self) -> int:
+        seed = self._next_support_seed
+        self._next_support_seed += 1
+        if seed in self._query_seeds:
+            raise RuntimeError(
+                'support trajectory seed overlaps held-out query seed'
+            )
+        self._support_seeds.append(seed)
+        return seed
+
+    def _prepare_algorithm2_task(self, task, iteration, task_index):
+        del task_index
+        target_replay = self._new_replay('defender')
+        counts = (self.trajectories_per_update,) + (1,) * (self.config.l - 1)
+        resources = []
+        for count in counts:
+            resources.append(tuple(
+                (self._reserve_support_seed(), self._new_replay('attacker'))
+                for _ in range(count)
+            ))
+
+        def collect(step, defender, attacker, replay):
+            if replay is not target_replay:
+                raise RuntimeError('parallel task replay context was replaced')
+            for seed, attacker_replay in resources[step]:
+                with self._env_factory_lock:
+                    env = self.env_factory(task, seed, self.config.H)
+                PaperTD3TrajectoryCollector().collect(
+                    env=env,
+                    defender=defender,
+                    attacker=attacker,
+                    defender_replay=target_replay,
+                    attacker_replay=attacker_replay,
+                    generation=iteration,
+                    deterministic=False,
+                    explore_role='defender',
+                    random_exploration_steps=self.config.learning_starts,
+                    retain_steps=False,
+                )
+
+        return target_replay, collect
+
     def _collect_updates(
         self,
         task,
@@ -567,15 +666,15 @@ class ScaledPaperMetaSGTrainingRunner:
         target_replay: TD3ReplayBuffer,
         target_role: str,
         iteration: int,
+        *,
+        fresh_after_warmup: bool = True,
     ) -> None:
         missing = max(0, self._minimum_replay_size - len(target_replay))
-        trajectory_count = max(1, int(np.ceil(missing / self.config.H)))
+        trajectory_count = int(np.ceil(missing / self.config.H))
+        if trajectory_count == 0 and fresh_after_warmup:
+            trajectory_count = 1
         for _ in range(trajectory_count):
-            seed = self._next_support_seed
-            self._next_support_seed += 1
-            if seed in self._query_seeds:
-                raise RuntimeError('support trajectory seed overlaps held-out query seed')
-            self._support_seeds.append(seed)
+            seed = self._reserve_support_seed()
             env = self.env_factory(task, seed, self.config.H)
             defender_replay = (
                 target_replay if target_role == 'defender' else self._new_replay('defender')
@@ -592,6 +691,7 @@ class ScaledPaperMetaSGTrainingRunner:
                 generation=iteration,
                 deterministic=False,
                 explore_role=target_role,
+                random_exploration_steps=self.config.learning_starts,
                 retain_steps=False,
             )
 
@@ -608,6 +708,8 @@ class PaperOnlineAdaptationTrainingRunner:
         attacker_obs_dim: int,
         support_seeds: tuple[int, ...],
         protocol_signature: Mapping[str, object] | None = None,
+        actor_logit_l2: float = 0.0,
+        actor_logit_l2_mask: tuple[float, ...] | None = None,
     ) -> None:
         if not isinstance(config, ScaledOnlineAdaptationConfig):
             raise TypeError('config must be ScaledOnlineAdaptationConfig')
@@ -617,11 +719,28 @@ class PaperOnlineAdaptationTrainingRunner:
         self.attacker_obs_dim = attacker_obs_dim
         self.support_seeds = support_seeds
         self.protocol_signature = dict(protocol_signature or {})
-        required = max(config.td3_batch_size, config.learning_starts)
+        if not math.isfinite(actor_logit_l2) or actor_logit_l2 < 0:
+            raise ValueError('actor_logit_l2 must be non-negative and finite')
+        self.actor_logit_l2 = float(actor_logit_l2)
+        if actor_logit_l2_mask is not None and (
+            len(actor_logit_l2_mask) != 3
+            or any(
+                not math.isfinite(value) or value < 0
+                for value in actor_logit_l2_mask
+            )
+        ):
+            raise ValueError('actor_logit_l2_mask must have three valid weights')
+        self.actor_logit_l2_mask = actor_logit_l2_mask
+        self._minimum_replay_size = config.learning_starts
         self.trajectories_per_update = max(
-            1, int(np.ceil(required / config.online_H)),
+            1, int(np.ceil(config.learning_starts / config.online_H)),
         )
-        required_seeds = config.online_steps * self.trajectories_per_update
+        # Algorithm 2-style adaptation collects one H-round trajectory per
+        # outer iteration and performs l TD3 updates on that replay.  The first
+        # iteration may need more than one trajectory to satisfy learning_starts.
+        # Collecting H rounds before every local gradient step incorrectly
+        # multiplies the online FL budget by l.
+        required_seeds = self.trajectories_per_update + config.online_T - 1
         if (
             len(support_seeds) != required_seeds
             or len(set(support_seeds)) != required_seeds
@@ -668,9 +787,8 @@ class PaperOnlineAdaptationTrainingRunner:
             start_iteration = checkpoint.completed_iterations
             if not 0 <= start_iteration <= self.config.online_T:
                 raise ValueError('online-adaptation checkpoint iteration is invalid')
-            expected_cursor = (
-                start_iteration * self.config.online_l
-                * self.trajectories_per_update
+            expected_cursor = self._trajectory_count_for_updates(
+                start_iteration,
             )
             if checkpoint.seed_cursor != expected_cursor:
                 raise ValueError('online-adaptation checkpoint seed cursor mismatch')
@@ -718,13 +836,15 @@ class PaperOnlineAdaptationTrainingRunner:
             online_l=self.config.online_l,
             online_steps=self.config.online_steps,
             batch_size=self.config.td3_batch_size,
-            adaptation_step=self.config.paper_reference.adaptation_step,
+            adaptation_step=self.config.adaptation_step,
+            actor_logit_l2=self.actor_logit_l2,
+            actor_logit_l2_mask=self.actor_logit_l2_mask,
         ).run(
             meta_defender=meta_defender,
             attacker=attacker,
             replay=replay,
             collect_fresh=lambda defender, frozen, target, iteration, local, global_step: self._collect(
-                task, defender, frozen, target, iteration,
+                task, defender, frozen, target, iteration, local,
             ),
             start_iteration=start_iteration,
             resumed_defender=resumed_defender,
@@ -751,9 +871,18 @@ class PaperOnlineAdaptationTrainingRunner:
             'td3_batch_size': self.config.td3_batch_size,
             'learning_starts': self.config.learning_starts,
             'replay_capacity': self.config.replay_capacity,
+            'adaptation_step': self.config.adaptation_step,
+            'actor_logit_l2': self.actor_logit_l2,
+            'actor_logit_l2_mask': self.actor_logit_l2_mask,
             'defender_obs_dim': self.defender_obs_dim,
             'attacker_obs_dim': self.attacker_obs_dim,
             'support_seeds': self.support_seeds,
+            'trajectory_collection': (
+                'one-fresh-trajectory-per-outer-iteration;'
+                'sb3-uniform-random-learning-starts-replacement-v3'
+            ),
+            'warmup_trajectories': self.trajectories_per_update,
+            'fresh_trajectories_per_later_outer_iteration': 1,
             'meta_defender': meta_defender.fingerprint(),
             'attacker': attacker.fingerprint(),
             'protocol_signature': self.protocol_signature,
@@ -790,8 +919,16 @@ class PaperOnlineAdaptationTrainingRunner:
             ),
         )
 
-    def _collect(self, task, defender, attacker, replay, generation):
-        for _ in range(self.trajectories_per_update):
+    def _collect(
+        self, task, defender, attacker, replay, generation, local_step,
+    ):
+        if local_step != 0:
+            return
+        missing = max(0, self._minimum_replay_size - len(replay))
+        trajectory_count = max(
+            1, int(np.ceil(missing / self.config.online_H)),
+        )
+        for _ in range(trajectory_count):
             seed = self.support_seeds[self._seed_cursor]
             self._seed_cursor += 1
             PaperTD3TrajectoryCollector().collect(
@@ -803,8 +940,14 @@ class PaperOnlineAdaptationTrainingRunner:
                 generation=generation,
                 deterministic=False,
                 explore_role='defender',
+                random_exploration_steps=self.config.learning_starts,
                 retain_steps=False,
             )
+
+    def _trajectory_count_for_updates(self, completed_iterations):
+        if completed_iterations == 0:
+            return 0
+        return self.trajectories_per_update + completed_iterations - 1
 
     def _new_replay(self, role):
         self._replay_serial += 1

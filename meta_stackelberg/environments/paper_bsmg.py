@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor
 from typing import Mapping
 
 import numpy as np
@@ -120,6 +121,10 @@ class PaperBSMGEnv:
         device: str | torch.device = 'cpu',
         aggregator_factory=None,
         post_defense_factory=None,
+        defender_alpha_floor_ratio: float = 0.0,
+        defender_norm_reference: str = 'max',
+        reuse_post_defense_loss: bool = False,
+        parallel_clients: int = 1,
         attack_generator_factory=None,
     ) -> None:
         if not task_id:
@@ -174,12 +179,39 @@ class PaperBSMGEnv:
         )
         if not callable(self.post_defense_factory):
             raise TypeError('post_defense_factory must be callable')
+        if not isinstance(reuse_post_defense_loss, bool):
+            raise TypeError('reuse_post_defense_loss must be a bool')
+        self.reuse_post_defense_loss = reuse_post_defense_loss
+        self._cached_post_defense_loss: float | None = None
+        self._post_defense_model: torch.nn.Module | None = None
+        if (
+            isinstance(parallel_clients, bool)
+            or not isinstance(parallel_clients, int)
+            or parallel_clients <= 0
+        ):
+            raise ValueError('parallel_clients must be a positive integer')
+        self.parallel_clients = min(parallel_clients, self.sample_size)
+        self._client_executor = (
+            ThreadPoolExecutor(
+                max_workers=self.parallel_clients,
+                thread_name_prefix='fl-client',
+            )
+            if self.parallel_clients > 1
+            else None
+        )
         if attack_generator_factory is not None and not callable(
             attack_generator_factory,
         ):
             raise TypeError('attack_generator_factory must be callable')
         self.attack_generator_factory = attack_generator_factory
-        self.defender_codec = PaperDefenderActionCodec()
+        self.defender_codec = PaperDefenderActionCodec(
+            alpha_floor_ratio=defender_alpha_floor_ratio,
+        )
+        if defender_norm_reference not in {'max', 'median'}:
+            raise ValueError(
+                'defender_norm_reference must be max or median',
+            )
+        self.defender_norm_reference = defender_norm_reference
         self.attacker_codec = RLAttackActionCodec()
         self._pending: _PendingExecution | None = None
         self._last_epsilon: float | None = None
@@ -202,18 +234,36 @@ class PaperBSMGEnv:
         slots = prepare_client_slots(request, self.rng, self.sampler)
         benign_by_client = {}
         malicious_slots = []
+        benign_slots = []
         for slot in slots:
             if self.population.contains(slot.client_id):
                 malicious_slots.append(slot)
             else:
-                update = self.benign_trainer.train(
+                benign_slots.append(slot)
+        if self._client_executor is None:
+            updates = tuple(
+                self.benign_trainer.train(
                     slot.client_id,
                     make_client_state(self.state, slot.rng),
                     slot.rng,
                 )
-                if update.is_malicious:
-                    raise ValueError('benign trainer returned malicious update')
-                benign_by_client[slot.client_id] = update
+                for slot in benign_slots
+            )
+        else:
+            futures = tuple(
+                self._client_executor.submit(
+                    self.benign_trainer.train,
+                    slot.client_id,
+                    make_client_state(self.state, slot.rng),
+                    slot.rng,
+                )
+                for slot in benign_slots
+            )
+            updates = tuple(future.result() for future in futures)
+        for slot, update in zip(benign_slots, updates):
+            if update.is_malicious:
+                raise ValueError('benign trainer returned malicious update')
+            benign_by_client[slot.client_id] = update
         if not benign_by_client:
             raise ValueError('paper RL round requires at least one sampled benign client')
         attacker_observation = self.observation_encoder.attacker_observation(
@@ -284,7 +334,12 @@ class PaperBSMGEnv:
             for client_id in pending.sampled_clients
         )
         action = pending.public.defender_action
-        post_before = self._post_defense_loss(self.state, action.epsilon)
+        post_before = (
+            self._cached_post_defense_loss
+            if self.reuse_post_defense_loss
+            and self._cached_post_defense_loss is not None
+            else self._post_defense_loss(self.state, action.epsilon)
+        )
         transition = finalize_round(
             request=RoundRequest(self.task_id, self.state, self.sample_size, 1.0),
             parent_rng=self.rng,
@@ -298,14 +353,27 @@ class PaperBSMGEnv:
             },
         )
         post_after = self._post_defense_loss(transition.state_after, action.epsilon)
+        if self.reuse_post_defense_loss:
+            # This mode is only enabled when the post-defense transform is
+            # independent of epsilon.  The next round starts from exactly this
+            # state, so its before-loss equals the current after-loss.
+            self._cached_post_defense_loss = post_after
         defender_reward, attacker_reward = evaluate_paper_untargeted_rewards(
             post_loss_before=post_before,
             post_loss_after=post_after,
         )
         self.state = transition.state_after
-        self.observed_max_norm = max(state_l2_norm(update.delta) for update in ordered)
+        update_norms = tuple(
+            state_l2_norm(update.delta) for update in ordered
+        )
+        self.observed_max_norm = _defender_norm_reference(
+            update_norms, self.defender_norm_reference,
+        )
         self._last_epsilon = action.epsilon
         self._pending = None
+        if self.state.round_index >= self.horizon and self._client_executor is not None:
+            self._client_executor.shutdown(wait=True)
+            self._client_executor = None
         return PaperRoundStep(
             transition=transition,
             defender_raw_action=pending.defender_raw,
@@ -327,7 +395,12 @@ class PaperBSMGEnv:
         return self.post_defense_factory(model, self._last_epsilon)
 
     def _post_defense_loss(self, state: RoundState, epsilon: float) -> float:
-        model = self.model_factory().to(self.device)
+        if self.reuse_post_defense_loss:
+            if self._post_defense_model is None:
+                self._post_defense_model = self.model_factory().to(self.device)
+            model = self._post_defense_model
+        else:
+            model = self.model_factory().to(self.device)
         self.codec.load(model, state.global_model)
         defended = self.post_defense_factory(model, epsilon)
         defended.eval()
@@ -351,6 +424,21 @@ class PaperBSMGEnv:
         if total <= 0:
             raise ValueError('root_dataset must not be empty')
         return total_loss / total
+
+
+def _defender_norm_reference(
+    update_norms: tuple[float, ...],
+    mode: str,
+) -> float:
+    if not update_norms or any(
+        not np.isfinite(value) or value <= 0.0 for value in update_norms
+    ):
+        raise ValueError('update norms must be finite and positive')
+    if mode == 'max':
+        return max(update_norms)
+    if mode == 'median':
+        return float(np.median(update_norms))
+    raise ValueError('defender norm reference must be max or median')
 
 
 def _raw_action(value: np.ndarray, role: str) -> np.ndarray:

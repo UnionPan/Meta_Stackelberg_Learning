@@ -170,10 +170,12 @@ class PaperMetaSGConfig:
         td3_batch_size: int,
         learning_starts: int,
         replay_capacity: int,
+        adaptation_step: float | None = None,
     ) -> ScaledOnlineAdaptationConfig:
         return ScaledOnlineAdaptationConfig(
             self, online_T, online_H, online_l, online_steps,
             td3_batch_size, learning_starts, replay_capacity,
+            self.adaptation_step if adaptation_step is None else adaptation_step,
         )
 
 
@@ -234,6 +236,7 @@ class ScaledOnlineAdaptationConfig:
     td3_batch_size: int
     learning_starts: int
     replay_capacity: int
+    adaptation_step: float
     scale_provenance: str = 'scaled-online-conformance-only-v1'
 
     def __post_init__(self) -> None:
@@ -246,6 +249,7 @@ class ScaledOnlineAdaptationConfig:
             _positive_integer(getattr(self, name), name)
         if self.online_T * self.online_l != self.online_steps:
             raise ValueError('online_steps must equal online_T * online_l')
+        _positive_finite(self.adaptation_step, 'adaptation_step')
 
 
 def _positive_integer(value: int, name: str) -> int:

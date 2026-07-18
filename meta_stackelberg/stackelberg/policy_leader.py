@@ -93,7 +93,10 @@ class PolicyLeaderTrainer:
             stats = []
             for _ in range(self.defender_updates):
                 stats.append(task_defender.update(
-                    task.defender_replay.sample(self.batch_size),
+                    task.defender_replay.sample(
+                        self.batch_size,
+                        replace=self.batch_size > len(task.defender_replay),
+                    ),
                 ))
                 response_guard.verify()
             snapshot = task_defender.snapshot()

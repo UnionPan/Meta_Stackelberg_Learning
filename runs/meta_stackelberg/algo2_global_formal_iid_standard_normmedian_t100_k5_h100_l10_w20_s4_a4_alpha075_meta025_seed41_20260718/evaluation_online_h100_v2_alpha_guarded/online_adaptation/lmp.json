@@ -1,0 +1,58 @@
+{
+  "actor_logit_l2": 1.0,
+  "actor_logit_l2_mask": [
+    1.0,
+    0.0,
+    0.0
+  ],
+  "adaptation_step": 0.001,
+  "adapted_defender_fingerprint": "07edb1959a07084b61dc49c2b62570663f7c4dbfdbf6972593d4829697ae29bb",
+  "attack_family": "lmp",
+  "attacker_fingerprint": "fedbe1311eabd7c12852ebf8f7f5adb518c038410f69993f06ee335495f35ad6",
+  "checkpoint": "/home/antik/rl/Meta_Stackelberg_Learning/runs/meta_stackelberg/algo2_global_formal_iid_standard_normmedian_t100_k5_h100_l10_w20_s4_a4_alpha075_meta025_seed41_20260718/evaluation_online_h100_v2_alpha_guarded/online_adaptation/lmp.pt",
+  "completed_iterations": 10,
+  "fixed_attack_scale": 2.0,
+  "fl_round_count": 1000,
+  "fresh_trajectories_per_later_outer_iteration": 1,
+  "meta_defender_fingerprint": "0f7a48993ad3fad590600e3b7640c8e02a57a4739b67c77f9498e269a001b822",
+  "method": "meta-rl",
+  "online_H": 100,
+  "online_T": 10,
+  "online_l": 10,
+  "online_steps": 100,
+  "protocol": "paper-online-adaptation-scenario-v1",
+  "scenario": "lmp",
+  "selected_defender_fingerprint": "07edb1959a07084b61dc49c2b62570663f7c4dbfdbf6972593d4829697ae29bb",
+  "selection": {
+    "accepted": true,
+    "adapted_score": -1.2474157638549808,
+    "adapted_scores": [
+      -1.0810949314117433,
+      -1.4137365962982182
+    ],
+    "base_score": -1.2558050682067872,
+    "base_scores": [
+      -1.0455641635894777,
+      -1.4660459728240967
+    ],
+    "margin": 0.0,
+    "metric": "mean_defender_reward",
+    "mode": "reward-guarded",
+    "score_gain": 0.008389304351806404,
+    "selected": "adapted",
+    "uses_test_dataset": false,
+    "validation_horizon": 100,
+    "validation_seeds": [
+      6020000,
+      6020001
+    ]
+  },
+  "support_seed_count": 10,
+  "support_seed_start": 3020000,
+  "support_seed_stop_exclusive": 3020010,
+  "training_checkpoint_sha256": "8daa81ede3ff1cf42163610a17c488a20b26a98279d6f15bff768c1b133526ac",
+  "trajectories_per_update": 1,
+  "trajectory_collection": "one-fresh-trajectory-per-outer-iteration;sb3-uniform-random-learning-starts-replacement-v3",
+  "trajectory_count": 10,
+  "warmup_trajectories": 1
+}

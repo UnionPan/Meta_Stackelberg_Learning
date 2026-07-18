@@ -125,6 +125,12 @@ class TD3Agent:
             )
         return np.clip(action, -1.0, 1.0).astype(np.float32)
 
+    def sample_uniform_action(self) -> np.ndarray:
+        """Sample the SB3-style pre-learning action over the full action box."""
+        return self._numpy_rng.uniform(
+            -1.0, 1.0, size=self.action_dim,
+        ).astype(np.float32)
+
     def compute_td_target(
         self,
         rewards: torch.Tensor,
@@ -133,7 +139,26 @@ class TD3Agent:
     ) -> torch.Tensor:
         return rewards + self.gamma * (1.0 - dones) * target_q
 
-    def update(self, batch: TD3Batch) -> TD3UpdateStats:
+    def update(
+        self,
+        batch: TD3Batch,
+        *,
+        actor_logit_l2: float = 0.0,
+        actor_logit_l2_mask: tuple[float, ...] | None = None,
+    ) -> TD3UpdateStats:
+        if not math.isfinite(actor_logit_l2) or actor_logit_l2 < 0:
+            raise ValueError('actor_logit_l2 must be non-negative and finite')
+        if actor_logit_l2_mask is not None and (
+            len(actor_logit_l2_mask) != self.action_dim
+            or any(
+                not math.isfinite(value) or value < 0
+                for value in actor_logit_l2_mask
+            )
+        ):
+            raise ValueError(
+                'actor_logit_l2_mask must contain one non-negative finite '
+                'weight per action dimension'
+            )
         observations = torch.from_numpy(batch.observations).to(self.device).float()
         actions = torch.from_numpy(batch.actions).to(self.device).float()
         rewards = torch.from_numpy(batch.rewards).to(self.device).float()
@@ -164,6 +189,20 @@ class TD3Agent:
         actor_updated = self.update_count % self.policy_delay == 0
         if actor_updated:
             actor_loss = -self.critic1(observations, self.actor(observations)).mean()
+            if actor_logit_l2:
+                # A tanh actor initialized at |logit| >> 1 receives virtually
+                # no policy gradient.  This optional online-only penalty moves
+                # it back into a trainable region without changing the default
+                # TD3 objective or any existing checkpoint.
+                squared_logits = self.actor.logits(observations).square()
+                if actor_logit_l2_mask is not None:
+                    mask = torch.tensor(
+                        actor_logit_l2_mask,
+                        dtype=squared_logits.dtype,
+                        device=self.device,
+                    )
+                    squared_logits = squared_logits * mask
+                actor_loss = actor_loss + float(actor_logit_l2) * squared_logits.mean()
             self.actor_optimizer.zero_grad()
             actor_loss.backward()
             self.actor_optimizer.step()

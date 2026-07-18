@@ -54,3 +54,37 @@ def test_seeded_agents_update_exactly() -> None:
     stats_b = second.update(_batch())
     assert stats_a == stats_b
     assert first.fingerprint() == second.fingerprint()
+
+
+def test_online_logit_penalty_is_optional_and_rejects_invalid_values() -> None:
+    baseline = _agent(23)
+    regularized = _agent(23)
+    baseline.update(_batch())
+    regularized.update(_batch(), actor_logit_l2=0.1)
+    baseline.update(_batch())
+    regularized.update(_batch(), actor_logit_l2=0.1)
+    assert baseline.fingerprint() != regularized.fingerprint()
+
+    with np.testing.assert_raises(ValueError):
+        regularized.update(_batch(), actor_logit_l2=-1.0)
+    with np.testing.assert_raises(ValueError):
+        regularized.update(
+            _batch(), actor_logit_l2=0.1, actor_logit_l2_mask=(1.0,),
+        )
+
+
+def test_uniform_learning_start_actions_cover_box_and_resume_exactly() -> None:
+    first = _agent(17)
+    second = _agent(17)
+    actions = np.stack([first.sample_uniform_action() for _ in range(64)])
+    assert actions.shape == (64, 3)
+    assert np.all(actions >= -1.0) and np.all(actions <= 1.0)
+    assert np.ptp(actions, axis=0).min() > 1.5
+    for _ in range(64):
+        second.sample_uniform_action()
+    assert first.fingerprint() == second.fingerprint()
+
+    snapshot = first.snapshot()
+    expected = first.sample_uniform_action()
+    first.restore(snapshot)
+    np.testing.assert_array_equal(first.sample_uniform_action(), expected)

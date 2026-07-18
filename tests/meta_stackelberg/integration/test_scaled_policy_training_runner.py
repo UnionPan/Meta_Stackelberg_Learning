@@ -9,6 +9,7 @@ from meta_stackelberg.experiments.paper_meta_sg import (
     ScaledPaperMetaSGTrainingRunner,
     PaperTD3TrajectoryCollector,
 )
+from meta_stackelberg.experiments.attack_domain import UniformAttackTypeSampler
 from meta_stackelberg.experiments.scaled_training_checkpoint import (
     load_scaled_training_checkpoint,
 )
@@ -81,6 +82,110 @@ def test_scaled_runner_drives_real_algorithm1_and_algorithm2_trajectories() -> N
     assert set(result.support_seeds).isdisjoint({101, 102})
 
 
+def test_scaled_runner_uses_sb3_replacement_without_extra_trajectories() -> None:
+    config = PaperMetaSGConfig().scaled(
+        T=1, K=1, H=2, l=2, N_A=1, N_D=1,
+        workers=4, untargeted_attackers=2, sample_size=4,
+        td3_batch_size=8, learning_starts=2, hidden_sizes=(8,),
+        replay_capacity=128,
+    )
+    probe = _make_env(seed=1)
+    defender_dim = len(flatten_observation(
+        probe.defender_observation(), DEFENDER_OBSERVATION_KEYS,
+    ))
+    attacker_dim = len(flatten_observation(
+        _make_env(seed=1).begin_round(
+            __import__('numpy').zeros(3, dtype='float32'),
+        ).attacker_observation,
+        ATTACKER_OBSERVATION_KEYS,
+    ))
+
+    def env_factory(task, seed, horizon):
+        del task
+        env = _make_env(seed=seed)
+        env.horizon = horizon
+        return env
+
+    result = ScaledPaperMetaSGTrainingRunner(
+        config=config,
+        env_factory=env_factory,
+        defender_obs_dim=defender_dim,
+        attacker_obs_dim=attacker_dim,
+        support_seed=1500,
+    ).run(
+        initial_defender=_agent(defender_dim, 'defender', 12),
+        initial_attackers={'rl': _agent(attacker_dim, 'attacker', 13)},
+        sample_tasks=lambda iteration, count: ('rl',),
+    )
+
+    # Algorithm 1: adaptation + response + leader; Algorithm 2: l=2.
+    # Every update consumes exactly one H trajectory even though batch 8 is
+    # sampled from only 2, then 4, replay rows with replacement.
+    assert result.trajectories_per_update == 1
+    assert result.trajectory_count == 5
+
+
+def test_parallel_algorithm2_tasks_match_serial_result_and_ledger(tmp_path) -> None:
+    config = PaperMetaSGConfig().scaled(
+        T=2, K=2, H=2, l=2, N_A=1, N_D=1,
+        workers=4, untargeted_attackers=2, sample_size=4,
+        td3_batch_size=4, learning_starts=2, hidden_sizes=(8,),
+        replay_capacity=128,
+    )
+    probe = _make_env(seed=1)
+    defender_dim = len(flatten_observation(
+        probe.defender_observation(), DEFENDER_OBSERVATION_KEYS,
+    ))
+    attacker_dim = len(flatten_observation(
+        _make_env(seed=1).begin_round(
+            __import__('numpy').zeros(3, dtype='float32'),
+        ).attacker_observation,
+        ATTACKER_OBSERVATION_KEYS,
+    ))
+
+    def env_factory(task, seed, horizon):
+        del task
+        env = _make_env(seed=seed)
+        env.horizon = horizon
+        return env
+
+    defender = _agent(defender_dim, 'defender', 32)
+    attackers = {
+        'a': _agent(attacker_dim, 'attacker', 33),
+        'b': _agent(attacker_dim, 'attacker', 34),
+    }
+    paths = (tmp_path / 'serial.pt', tmp_path / 'parallel.pt')
+    results = []
+    for workers, checkpoint in zip((1, 2), paths):
+        results.append(ScaledPaperMetaSGTrainingRunner(
+            config=config,
+            env_factory=env_factory,
+            defender_obs_dim=defender_dim,
+            attacker_obs_dim=attacker_dim,
+            support_seed=1700,
+            parallel_tasks=workers,
+        ).run(
+            initial_defender=defender,
+            initial_attackers=attackers,
+            sample_tasks=lambda iteration, count: ('a', 'b'),
+            training_method='meta-rl',
+            checkpoint_path=checkpoint,
+        ))
+
+    serial, parallel = results
+    assert parallel.support_seeds == serial.support_seeds
+    assert parallel.algorithm2.iterations == serial.algorithm2.iterations
+    assert parallel.algorithm2_defender.fingerprint() == (
+        serial.algorithm2_defender.fingerprint()
+    )
+    serial_checkpoint = load_scaled_training_checkpoint(paths[0])
+    parallel_checkpoint = load_scaled_training_checkpoint(paths[1])
+    assert parallel_checkpoint.replay_serial == serial_checkpoint.replay_serial
+    assert parallel_checkpoint.next_support_seed == (
+        serial_checkpoint.next_support_seed
+    )
+
+
 def test_declared_2_2_8_2_2_2_training_scale_executes_real_rollouts() -> None:
     config = PaperMetaSGConfig().scaled(
         T=2, K=2, H=8, l=2, N_A=2, N_D=2,
@@ -121,8 +226,8 @@ def test_declared_2_2_8_2_2_2_training_scale_executes_real_rollouts() -> None:
     )
 
     assert result.trajectories_per_update == 2
-    # Reused best-response and Algorithm 2 replay buffers need two trajectories
-    # for warmup, then collect one fresh trajectory for each later update.
+    # Both paper algorithms collect a fresh trajectory before every inner
+    # update after satisfying the initial replay/batch requirement.
     assert result.trajectory_count == 40
     assert len(result.support_seeds) == len(set(result.support_seeds))
     assert all(len(item.tasks) == 2 for item in result.algorithm1.iterations)
@@ -215,7 +320,9 @@ def test_scaled_runner_checkpoint_is_complete_resumable_and_lightweight(
     assert checkpoint.algorithm2_iterations[0].tasks[0].adapted_snapshot is None
     assert checkpoint.config_signature['workers'] == 4
     assert checkpoint.config_signature['trajectory_collection'] == (
-        'fresh-plus-replay-warmup-v1'
+        'algorithm1-fresh-trajectory-per-update;'
+        'algorithm2-fresh-trajectory-per-inner-step;'
+        'sb3-uniform-random-learning-starts-replacement-v4'
     )
     assert checkpoint.config_signature['protocol_signature'] == {}
 
@@ -358,3 +465,100 @@ def test_scaled_runner_trains_meta_rl_without_running_algorithm1(tmp_path) -> No
     assert result.algorithm1_defender.fingerprint() == defender.fingerprint()
     assert result.algorithm2_defender.fingerprint() != defender.fingerprint()
     assert result.trajectory_count == 2
+
+
+def test_meta_rl_partial_checkpoint_resume_matches_uninterrupted_run(
+    tmp_path,
+) -> None:
+    config = PaperMetaSGConfig().scaled(
+        T=3, K=2, H=2, l=2, N_A=1, N_D=1,
+        workers=4, untargeted_attackers=2, sample_size=4,
+        td3_batch_size=2, learning_starts=2, hidden_sizes=(8,),
+        replay_capacity=128,
+    )
+    defender_dim = len(flatten_observation(
+        _make_env(seed=1).defender_observation(), DEFENDER_OBSERVATION_KEYS,
+    ))
+    attacker_dim = len(flatten_observation(
+        _make_env(seed=1).begin_round(
+            __import__('numpy').zeros(3, dtype='float32'),
+        ).attacker_observation,
+        ATTACKER_OBSERVATION_KEYS,
+    ))
+    defender = _agent(defender_dim, 'defender', 90)
+    attackers = {
+        'fixed-a': _agent(attacker_dim, 'attacker', 91),
+        'fixed-b': _agent(attacker_dim, 'attacker', 92),
+    }
+
+    def env_factory(task, seed, horizon):
+        del task
+        env = _make_env(seed=seed)
+        env.horizon = horizon
+        return env
+
+    def run(runner, *, checkpoint_path=None, resume=False, factory=env_factory):
+        runner.env_factory = factory
+        return runner.run(
+            initial_defender=defender,
+            initial_attackers=attackers,
+            sample_tasks=UniformAttackTypeSampler(
+                tuple(attackers), seed=1041,
+            ),
+            training_method='meta-rl',
+            checkpoint_path=checkpoint_path,
+            checkpoint_interval=1,
+            resume=resume,
+        )
+
+    uninterrupted = run(ScaledPaperMetaSGTrainingRunner(
+        config=config,
+        env_factory=env_factory,
+        defender_obs_dim=defender_dim,
+        attacker_obs_dim=attacker_dim,
+        support_seed=6000,
+        parallel_tasks=2,
+    ))
+
+    def crash_after_first_outer(task, seed, horizon):
+        if seed == 6004:
+            raise RuntimeError('simulated interruption after first outer iteration')
+        return env_factory(task, seed, horizon)
+
+    checkpoint_path = tmp_path / 'partial-meta-rl.pt'
+    interrupted_runner = ScaledPaperMetaSGTrainingRunner(
+        config=config,
+        env_factory=crash_after_first_outer,
+        defender_obs_dim=defender_dim,
+        attacker_obs_dim=attacker_dim,
+        support_seed=6000,
+        parallel_tasks=2,
+    )
+    with pytest.raises(RuntimeError, match='simulated interruption'):
+        run(
+            interrupted_runner,
+            checkpoint_path=checkpoint_path,
+            factory=crash_after_first_outer,
+        )
+    partial = load_scaled_training_checkpoint(checkpoint_path)
+    assert partial.phase == 'algorithm2'
+    assert partial.algorithm2_completed == 1
+    assert partial.support_seeds == (6000, 6001, 6002, 6003)
+
+    resumed = run(
+        ScaledPaperMetaSGTrainingRunner(
+            config=config,
+            env_factory=env_factory,
+            defender_obs_dim=defender_dim,
+            attacker_obs_dim=attacker_dim,
+            support_seed=6000,
+            parallel_tasks=2,
+        ),
+        checkpoint_path=checkpoint_path,
+        resume=True,
+    )
+    assert resumed.support_seeds == uninterrupted.support_seeds
+    assert resumed.algorithm2.iterations == uninterrupted.algorithm2.iterations
+    assert resumed.algorithm2_defender.fingerprint() == (
+        uninterrupted.algorithm2_defender.fingerprint()
+    )

@@ -1,0 +1,134 @@
+{
+  "abandoned_max_norm_gate_checkpoint": {
+    "algorithm1_completed": 0,
+    "algorithm2_completed": 4,
+    "bytes": 86166791,
+    "defender_actor_parameters_finite": true,
+    "estimated_fl_rounds": 20000,
+    "exists": true,
+    "latest_iteration_tasks": [
+      {
+        "actor_loss_last": 1.0127339363098145,
+        "all_update_metrics_finite": true,
+        "critic_loss_max": 1.234789490699768,
+        "critic_loss_min": 0.7939178943634033,
+        "task": "ipm"
+      },
+      {
+        "actor_loss_last": 1.0344244241714478,
+        "all_update_metrics_finite": true,
+        "critic_loss_max": 1.0297489166259766,
+        "critic_loss_min": 0.7749506235122681,
+        "task": "rl-krum"
+      },
+      {
+        "actor_loss_last": 2.463709592819214,
+        "all_update_metrics_finite": true,
+        "critic_loss_max": 5.01072883605957,
+        "critic_loss_min": 0.6884742975234985,
+        "task": "rl-clipmed"
+      },
+      {
+        "actor_loss_last": 2.860077381134033,
+        "all_update_metrics_finite": true,
+        "critic_loss_max": 71212.421875,
+        "critic_loss_min": 291.1348571777344,
+        "task": "lmp"
+      },
+      {
+        "actor_loss_last": 0.9906103610992432,
+        "all_update_metrics_finite": true,
+        "critic_loss_max": 0.7671875953674316,
+        "critic_loss_min": 0.5851611495018005,
+        "task": "na"
+      }
+    ],
+    "mtime": 1784292590.8562458,
+    "phase": "algorithm2",
+    "replay_serial": 220,
+    "support_seed_count": 200,
+    "target_T": 10
+  },
+  "active_pids": [],
+  "complete": true,
+  "formal_checkpoint": {
+    "algorithm1_completed": 0,
+    "algorithm2_completed": 100,
+    "bytes": 86619783,
+    "defender_actor_parameters_finite": true,
+    "estimated_fl_rounds": 500000,
+    "exists": true,
+    "latest_iteration_tasks": [
+      {
+        "actor_loss_last": 1.489063024520874,
+        "all_update_metrics_finite": true,
+        "critic_loss_max": 0.3401826024055481,
+        "critic_loss_min": 0.07610128819942474,
+        "task": "ipm"
+      },
+      {
+        "actor_loss_last": 1.678842306137085,
+        "all_update_metrics_finite": true,
+        "critic_loss_max": 1.0374542474746704,
+        "critic_loss_min": 0.0817384421825409,
+        "task": "rl-clipmed"
+      },
+      {
+        "actor_loss_last": 1.2921651601791382,
+        "all_update_metrics_finite": true,
+        "critic_loss_max": 0.19342930614948273,
+        "critic_loss_min": 0.06776363402605057,
+        "task": "na"
+      },
+      {
+        "actor_loss_last": 1.8325005769729614,
+        "all_update_metrics_finite": true,
+        "critic_loss_max": 1.2943613529205322,
+        "critic_loss_min": 0.33491989970207214,
+        "task": "lmp"
+      },
+      {
+        "actor_loss_last": 1.4678899049758911,
+        "all_update_metrics_finite": true,
+        "critic_loss_max": 0.24161341786384583,
+        "critic_loss_min": 0.08056311309337616,
+        "task": "rl-krum"
+      }
+    ],
+    "mtime": 1784340628.0050104,
+    "phase": "complete",
+    "replay_serial": 5500,
+    "support_seed_count": 5000,
+    "target_T": 100
+  },
+  "gpu_processes": [],
+  "next_check_seconds": null,
+  "protocol": "algo2-formal-pipeline-status-v1",
+  "stability_gate": {
+    "H": 100,
+    "elapsed_s": 26.0,
+    "protocol": "median-norm-fixed-action-gate-v1",
+    "results": {
+      "clean": {
+        "accuracy": 0.9248,
+        "final_norm_reference": 0.0793032801477101,
+        "final_root_loss": 0.347052001953125,
+        "state_finite": true
+      },
+      "ipm": {
+        "accuracy": 0.8977,
+        "final_norm_reference": 0.12415468048149765,
+        "final_root_loss": 0.5190924072265625,
+        "state_finite": true
+      },
+      "lmp": {
+        "accuracy": 0.7974,
+        "final_norm_reference": 0.10873487394650186,
+        "final_root_loss": 1.0092417907714843,
+        "state_finite": true
+      }
+    }
+  },
+  "stage": "complete",
+  "timestamp": "2026-07-18T11:42:41+0800"
+}

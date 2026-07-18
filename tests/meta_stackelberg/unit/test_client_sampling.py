@@ -3,7 +3,10 @@ import pytest
 
 from meta_stackelberg.core.model_state import ModelState
 from meta_stackelberg.core.random_state import RandomSource
-from meta_stackelberg.federated.clients.sampling import UniformClientSampler
+from meta_stackelberg.federated.clients.sampling import (
+    BenignReferenceClientSampler,
+    UniformClientSampler,
+)
 from meta_stackelberg.federated.protocols import ClientSampler
 from meta_stackelberg.federated.types import RoundRequest, RoundState
 
@@ -41,3 +44,20 @@ def test_uniform_sampler_rejects_invalid_population_or_request() -> None:
         UniformClientSampler(num_clients=0)
     with pytest.raises(ValueError, match='sample_size'):
         UniformClientSampler(num_clients=2).sample(_request(3), RandomSource(1))
+
+
+def test_reference_sampler_never_returns_an_all_malicious_subset() -> None:
+    malicious = frozenset({0, 1, 2, 3})
+    sampler = BenignReferenceClientSampler(20, malicious)
+    source = RandomSource(31)
+
+    samples = tuple(sampler.sample(_request(4), source) for _ in range(10_000))
+
+    assert all(len(sample) == len(set(sample)) == 4 for sample in samples)
+    assert all(set(sample) - malicious for sample in samples)
+    assert isinstance(sampler, ClientSampler)
+
+
+def test_reference_sampler_rejects_population_without_benign_client() -> None:
+    with pytest.raises(ValueError, match='benign client'):
+        BenignReferenceClientSampler(2, frozenset({0, 1}))

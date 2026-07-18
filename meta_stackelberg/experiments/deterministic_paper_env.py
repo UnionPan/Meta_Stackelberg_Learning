@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import copy
 
 import numpy as np
 import torch
@@ -68,7 +69,7 @@ def make_deterministic_paper_env(
         sampler=DeterministicFourClientSampler(),
         benign_trainer=DeterministicBenignTrainer(state.global_model),
         population=FixedMaliciousPopulation({0, 1}),
-        model_factory=TinyImageCNN,
+        model_factory=lambda: copy.deepcopy(initial_model),
         codec=codec,
         attacker_dataset=dataset,
         attacker_num_examples={0: 4, 1: 4},

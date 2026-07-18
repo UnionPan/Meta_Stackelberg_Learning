@@ -123,6 +123,27 @@ def test_environment_can_disable_post_defense_for_fixed_aggregator_pretraining()
     assert low_step.post_loss_after == high_step.post_loss_after
 
 
+def test_identity_post_defense_reuses_previous_round_after_loss() -> None:
+    env = _make_env()
+    env.post_defense_factory = lambda model, epsilon: model
+    env.reuse_post_defense_loss = True
+    calls = 0
+    original = env._post_defense_loss
+
+    def counted(state, epsilon):
+        nonlocal calls
+        calls += 1
+        return original(state, epsilon)
+
+    env._post_defense_loss = counted
+    action = np.array([0.0, -1.0, 0.0], dtype=np.float32)
+    for _ in range(2):
+        env.begin_round(np.zeros(3, dtype=np.float32))
+        env.finish_round(action)
+
+    assert calls == 3
+
+
 def test_environment_rejects_overlapping_round_phases() -> None:
     env = _make_env()
     try:

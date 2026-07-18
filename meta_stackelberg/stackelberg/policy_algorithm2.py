@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor
 import math
 from typing import Mapping
 
@@ -45,6 +46,7 @@ class PolicyMetaSGAlgorithm2:
         batch_size: int,
         kappa: float,
         meta_update_step: float,
+        parallel_tasks: int = 1,
     ) -> None:
         for value, name in ((T, 'T'), (K, 'K'), (l, 'l'), (batch_size, 'batch_size')):
             if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
@@ -58,6 +60,13 @@ class PolicyMetaSGAlgorithm2:
         self.batch_size = batch_size
         self.kappa = float(kappa)
         self.meta_update_step = float(meta_update_step)
+        if (
+            isinstance(parallel_tasks, bool)
+            or not isinstance(parallel_tasks, int)
+            or parallel_tasks <= 0
+        ):
+            raise ValueError('parallel_tasks must be a positive integer')
+        self.parallel_tasks = min(parallel_tasks, K)
 
     def run(
         self,
@@ -67,6 +76,7 @@ class PolicyMetaSGAlgorithm2:
         sample_tasks,
         replay_factory,
         collect_task,
+        prepare_task=None,
         start_iteration: int = 0,
         iteration_callback=None,
     ) -> PolicyAlgorithm2Result:
@@ -85,37 +95,38 @@ class PolicyMetaSGAlgorithm2:
             if len(tasks) != self.K:
                 raise ValueError(f'task sampler must return exactly K={self.K} tasks')
             meta_before = defender.fingerprint()
-            traces = []
-            snapshots = []
-            for task in tasks:
+            jobs = []
+            for task_index, task in enumerate(tasks):
                 if task not in response_policies:
                     raise KeyError(f'missing response policy for task {task!r}')
-                response = response_policies[task]
+                response = (
+                    response_policies[task].clone()
+                    if self.parallel_tasks > 1
+                    else response_policies[task]
+                )
                 if response.role != 'attacker':
                     raise ValueError('task response must have attacker role')
-                response_guard = response.freeze_guard()
                 adapted = defender.clone()
                 adapted.set_learning_rate(self.kappa)
-                replay = replay_factory(task, meta_iteration)
+                if prepare_task is None:
+                    replay = replay_factory(task, meta_iteration)
+                    collector = (
+                        lambda step, current, frozen, target, *,
+                        _task=task, _iteration=meta_iteration: collect_task(
+                            _task, step, current, frozen, target, _iteration,
+                        )
+                    )
+                else:
+                    replay, collector = prepare_task(
+                        task, meta_iteration, task_index,
+                    )
                 if replay.role != 'defender':
                     raise ValueError('Algorithm 2 replay must have defender role')
-                stats = []
-                for step in range(self.l):
-                    collect_task(
-                        task, step, adapted, response, replay, meta_iteration,
-                    )
-                    response_guard.verify()
-                    stats.append(adapted.update(replay.sample(self.batch_size)))
-                    response_guard.verify()
-                snapshot = adapted.snapshot()
-                snapshots.append(snapshot)
-                traces.append(PolicyAlgorithm2TaskTrace(
-                    task,
-                    response_guard.fingerprint,
-                    adapted.fingerprint(),
-                    tuple(stats),
-                    None,
-                ))
+                jobs.append((task, response, adapted, replay, collector))
+
+            results = self._adapt_jobs(tuple(jobs))
+            traces = [result[0] for result in results]
+            snapshots = [result[1] for result in results]
             reptile_update_td3(
                 defender, tuple(snapshots), meta_step=self.meta_update_step,
             )
@@ -129,3 +140,56 @@ class PolicyMetaSGAlgorithm2:
             if iteration_callback is not None:
                 iteration_callback(trace, defender, response_policies)
         return PolicyAlgorithm2Result(tuple(iterations))
+
+    def _adapt_jobs(self, jobs):
+        guards = tuple(job[1].freeze_guard() for job in jobs)
+        stats = [[] for _ in jobs]
+        executor = (
+            ThreadPoolExecutor(
+                max_workers=self.parallel_tasks,
+                thread_name_prefix='algorithm2-task',
+            )
+            if self.parallel_tasks > 1
+            else None
+        )
+        try:
+            for step in range(self.l):
+                if executor is None:
+                    for _, response, adapted, replay, collector in jobs:
+                        collector(step, adapted, response, replay)
+                else:
+                    futures = tuple(
+                        executor.submit(
+                            collector, step, adapted, response, replay,
+                        )
+                        for _, response, adapted, replay, collector in jobs
+                    )
+                    for future in futures:
+                        future.result()
+                for guard in guards:
+                    guard.verify()
+                # Keep TD3 optimizer updates in task order.  The expensive FL
+                # trajectories run concurrently, while single-GPU optimizer
+                # kernels retain serial numerical semantics.
+                for index, (_, _, adapted, replay, _) in enumerate(jobs):
+                    stats[index].append(adapted.update(replay.sample(
+                        self.batch_size,
+                        replace=self.batch_size > len(replay),
+                    )))
+                for guard in guards:
+                    guard.verify()
+        finally:
+            if executor is not None:
+                executor.shutdown(wait=True)
+
+        results = []
+        for index, (task, _, adapted, _, _) in enumerate(jobs):
+            snapshot = adapted.snapshot()
+            results.append((PolicyAlgorithm2TaskTrace(
+                task,
+                guards[index].fingerprint,
+                adapted.fingerprint(),
+                tuple(stats[index]),
+                None,
+            ), snapshot))
+        return tuple(results)

@@ -1,0 +1,25 @@
+{
+  "protocol": "median-norm-fixed-action-gate-v1",
+  "H": 100,
+  "results": {
+    "clean": {
+      "accuracy": 0.9248,
+      "final_root_loss": 0.347052001953125,
+      "final_norm_reference": 0.0793032801477101,
+      "state_finite": true
+    },
+    "ipm": {
+      "accuracy": 0.8977,
+      "final_root_loss": 0.5190924072265625,
+      "final_norm_reference": 0.12415468048149765,
+      "state_finite": true
+    },
+    "lmp": {
+      "accuracy": 0.7974,
+      "final_root_loss": 1.0092417907714843,
+      "final_norm_reference": 0.10873487394650186,
+      "state_finite": true
+    }
+  },
+  "elapsed_s": 26.0
+}

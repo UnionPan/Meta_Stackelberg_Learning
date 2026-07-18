@@ -15,12 +15,25 @@ def test_defender_codec_maps_3d_endpoints_and_round_trips() -> None:
     codec = PaperDefenderActionCodec()
     low = codec.decode(np.array([-1.0, -1.0, -1.0]), observed_max_norm=5.0)
     high = codec.decode(np.array([1.0, 1.0, 1.0]), observed_max_norm=5.0)
-    assert low == PaperDefenderAction(1e-6, 0.0, 0.1)
+    assert low == PaperDefenderAction(1e-6, 0.0, 1.0)
     assert high == PaperDefenderAction(5.0, 0.45, 10.0)
     action = codec.decode(np.array([0.0, 0.0, 0.0]), observed_max_norm=5.0)
     np.testing.assert_allclose(codec.encode(action, observed_max_norm=5.0), np.zeros(3))
     with pytest.raises(dataclasses.FrozenInstanceError):
         action.alpha = 1.0  # type: ignore[misc]
+
+
+def test_defender_codec_can_guard_alpha_against_policy_collapse() -> None:
+    codec = PaperDefenderActionCodec(alpha_floor_ratio=0.1)
+    low = codec.decode(
+        np.array([-1.0, 0.0, 0.0]), observed_max_norm=5.0,
+    )
+    assert low.alpha == pytest.approx(0.5)
+    np.testing.assert_allclose(
+        codec.encode(low, observed_max_norm=5.0)[0], -1.0,
+    )
+    with pytest.raises(ValueError, match='alpha_floor_ratio'):
+        PaperDefenderActionCodec(alpha_floor_ratio=1.0)
 
 
 def test_attacker_codec_maps_gamma_steps_lambda_and_round_trips_integer_steps() -> None:

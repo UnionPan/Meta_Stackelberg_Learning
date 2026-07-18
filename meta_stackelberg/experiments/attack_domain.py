@@ -37,6 +37,32 @@ class UniformAttackTypeSampler:
         return tuple(self.labels[int(index)] for index in indices)
 
 
+class BalancedAttackTypeSampler:
+    """Deterministically cover every task before repeating any task."""
+
+    def __init__(self, labels, *, seed: int) -> None:
+        self.labels = tuple(labels)
+        if not self.labels or len(set(self.labels)) != len(self.labels):
+            raise ValueError('attack type labels must be unique and non-empty')
+        if isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
+            raise ValueError('attack type sampler seed must be non-negative')
+        self.seed = seed
+
+    def __call__(self, iteration: int, count: int) -> tuple[str, ...]:
+        for value, name in ((iteration, 'iteration'), (count, 'count')):
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f'{name} must be a non-negative integer')
+        if count == 0:
+            return ()
+        rng = np.random.default_rng(np.random.SeedSequence([self.seed, iteration]))
+        result = []
+        while len(result) < count:
+            result.extend(self.labels[int(index)] for index in rng.permutation(
+                len(self.labels),
+            ))
+        return tuple(result[:count])
+
+
 @dataclass(frozen=True)
 class AttackTypeDomainSource:
     snapshots: Mapping[str, TD3Snapshot]

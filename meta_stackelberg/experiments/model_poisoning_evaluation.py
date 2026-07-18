@@ -172,12 +172,17 @@ def summarize_model_poisoning_evaluation(
     checkpoint: str,
     seed: int,
     horizon: int,
+    allow_partial: bool = False,
 ) -> dict[str, object]:
     required = {'clean', 'ipm', 'lmp'}
-    if not required.issubset(records):
+    if not allow_partial and not required.issubset(records):
         raise ValueError('evaluation summary requires clean, IPM and LMP')
-    if not any(record['attack_family'] == 'rl' for record in records.values()):
+    if not allow_partial and not any(
+        record['attack_family'] == 'rl' for record in records.values()
+    ):
         raise ValueError('evaluation summary requires at least one RL scenario')
+    if not records:
+        raise ValueError('evaluation summary requires at least one scenario')
     scenarios = {}
     for name, record in records.items():
         rows = record['round_metrics']
@@ -206,23 +211,33 @@ def summarize_model_poisoning_evaluation(
     rl_records = [
         record for record in records.values() if record['attack_family'] == 'rl'
     ]
-    worst_rl = min(
-        rl_records, key=lambda item: item['final_delivered_clean_accuracy'],
+    worst_rl = (
+        min(rl_records, key=lambda item: item['final_delivered_clean_accuracy'])
+        if rl_records else None
     )
-    return {
-        'protocol': 'canonical-model-poisoning-final-summary-v1',
+    summary = {
+        'protocol': (
+            'canonical-model-poisoning-selected-summary-v1'
+            if allow_partial else 'canonical-model-poisoning-final-summary-v1'
+        ),
         'checkpoint': checkpoint,
         'evaluation_seed': int(seed),
         'horizon': int(horizon),
         'single_seed': True,
         'confidence_interval': None,
-        'pretraining_domain_evaluation': 'mixed',
+        'pretraining_domain_evaluation': (
+            'selected' if allow_partial else 'mixed'
+        ),
         'scenarios': scenarios,
-        'worst_rl_scenario': worst_rl['scenario'],
-        'worst_rl_final_delivered_clean_accuracy': worst_rl[
-            'final_delivered_clean_accuracy'
-        ],
     }
+    summary['worst_rl_scenario'] = (
+        None if worst_rl is None else worst_rl['scenario']
+    )
+    summary['worst_rl_final_delivered_clean_accuracy'] = (
+        None if worst_rl is None
+        else worst_rl['final_delivered_clean_accuracy']
+    )
+    return summary
 
 
 def model_poisoning_attack_factory(scenario, factory):

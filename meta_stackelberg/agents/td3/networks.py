@@ -21,7 +21,11 @@ class TD3Actor(torch.nn.Module):
         self.model = _mlp(obs_dim, action_dim, hidden_sizes)
 
     def forward(self, observation: torch.Tensor) -> torch.Tensor:
-        return torch.tanh(self.model(observation))
+        return torch.tanh(self.logits(observation))
+
+    def logits(self, observation: torch.Tensor) -> torch.Tensor:
+        """Return pre-tanh actions for saturation-aware optimization."""
+        return self.model(observation)
 
 
 class TD3Critic(torch.nn.Module):

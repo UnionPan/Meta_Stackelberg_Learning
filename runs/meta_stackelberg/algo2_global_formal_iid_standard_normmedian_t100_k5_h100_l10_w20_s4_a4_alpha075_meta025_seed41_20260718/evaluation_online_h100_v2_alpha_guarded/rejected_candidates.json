@@ -1,0 +1,31 @@
+{
+  "protocol": "post-hoc-rejected-online-candidate-audit-v1",
+  "evaluation_seed": 101,
+  "horizon": 100,
+  "selection_used_test_dataset": false,
+  "note": "Candidate test accuracy was measured only after reward-guard selection and did not influence selection.",
+  "scenarios": {
+    "ipm": {
+      "frozen_accuracy": 0.9036,
+      "candidate_accuracy": 0.8971,
+      "candidate_accuracy_delta": -0.0065,
+      "selected_accuracy": 0.9036,
+      "candidate_evaluation_mean_defender_reward": -1.1662258361816409,
+      "guard_base_score": -1.0982637310028074,
+      "guard_candidate_score": -1.1497559997558593,
+      "guard_score_gain": -0.051492268753051906,
+      "guard_selected": "frozen"
+    },
+    "rl-krum": {
+      "frozen_accuracy": 0.8996,
+      "candidate_accuracy": 0.8991,
+      "candidate_accuracy_delta": -0.0005,
+      "selected_accuracy": 0.8996,
+      "candidate_evaluation_mean_defender_reward": -1.0740497802734374,
+      "guard_base_score": -1.1627993602752684,
+      "guard_candidate_score": -1.176072966194153,
+      "guard_score_gain": -0.01327360591888449,
+      "guard_selected": "frozen"
+    }
+  }
+}

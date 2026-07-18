@@ -32,27 +32,40 @@ class PaperDefenderAction:
 @dataclass(frozen=True)
 class PaperDefenderActionCodec:
     alpha_min: float = 1e-6
+    alpha_floor_ratio: float = 0.0
     beta_max: float = 0.45
-    epsilon_min: float = 0.1
+    # Appendix D evaluates NeuroClip at epsilon=1, 6, and 10, while
+    # Appendix C uses the original epsilon=7 baseline.  The paper does not
+    # publish a normalized-action decoder, so keep the declared range inside
+    # the values for which the paper provides experimental evidence.
+    epsilon_min: float = 1.0
     epsilon_max: float = 10.0
+
+    def __post_init__(self) -> None:
+        ratio = _finite(self.alpha_floor_ratio, 'alpha_floor_ratio')
+        if ratio < 0.0 or ratio >= 1.0:
+            raise ValueError('alpha_floor_ratio must be within [0, 1)')
+        object.__setattr__(self, 'alpha_floor_ratio', ratio)
 
     def decode(self, raw_action: np.ndarray, *, observed_max_norm: float) -> PaperDefenderAction:
         raw = _raw3(raw_action)
         maximum = self._maximum(observed_max_norm)
+        minimum = self._minimum(maximum)
         return PaperDefenderAction(
-            _decode(raw[0], self.alpha_min, maximum),
+            _decode(raw[0], minimum, maximum),
             _decode(raw[1], 0.0, self.beta_max),
             _decode(raw[2], self.epsilon_min, self.epsilon_max),
         )
 
     def encode(self, action: PaperDefenderAction, *, observed_max_norm: float) -> np.ndarray:
         maximum = self._maximum(observed_max_norm)
-        if action.alpha > maximum or action.beta > self.beta_max or not (
+        minimum = self._minimum(maximum)
+        if not minimum <= action.alpha <= maximum or action.beta > self.beta_max or not (
             self.epsilon_min <= action.epsilon <= self.epsilon_max
         ):
             raise ValueError('paper Defender action is outside codec bounds')
         return np.array([
-            _encode(action.alpha, self.alpha_min, maximum),
+            _encode(action.alpha, minimum, maximum),
             _encode(action.beta, 0.0, self.beta_max),
             _encode(action.epsilon, self.epsilon_min, self.epsilon_max),
         ], dtype=np.float64)
@@ -62,6 +75,9 @@ class PaperDefenderActionCodec:
         if maximum <= self.alpha_min:
             raise ValueError('observed_max_norm must exceed alpha_min')
         return maximum
+
+    def _minimum(self, maximum: float) -> float:
+        return max(self.alpha_min, self.alpha_floor_ratio * maximum)
 
 
 def _raw3(value: np.ndarray) -> tuple[float, float, float]:

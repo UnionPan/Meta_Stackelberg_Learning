@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 import math
+import threading
 
 import torch
 from torch.utils.data import DataLoader, Dataset
@@ -24,23 +25,38 @@ class TorchLocalTrainer:
         client_datasets: Mapping[int, Dataset],
         codec: TorchParameterCodec,
         learning_rate: float,
-        local_epochs: int,
         batch_size: int,
+        local_epochs: int | None = None,
+        local_steps: int | None = None,
         device: str | torch.device = 'cpu',
+        reuse_workspace: bool = False,
     ) -> None:
         if not math.isfinite(float(learning_rate)) or learning_rate < 0.0:
             raise ValueError('learning_rate must be finite and non-negative')
-        if local_epochs <= 0:
+        if (local_epochs is None) == (local_steps is None):
+            raise ValueError(
+                'exactly one of local_epochs or local_steps must be provided'
+            )
+        if local_epochs is not None and local_epochs <= 0:
             raise ValueError('local_epochs must be positive')
+        if local_steps is not None and local_steps <= 0:
+            raise ValueError('local_steps must be positive')
         if batch_size <= 0:
             raise ValueError('batch_size must be positive')
         self.model_factory = model_factory
         self.client_datasets = dict(client_datasets)
         self.codec = codec
         self.learning_rate = float(learning_rate)
-        self.local_epochs = int(local_epochs)
+        self.local_epochs = (
+            None if local_epochs is None else int(local_epochs)
+        )
+        self.local_steps = None if local_steps is None else int(local_steps)
         self.batch_size = int(batch_size)
         self.device = torch.device(device)
+        if not isinstance(reuse_workspace, bool):
+            raise TypeError('reuse_workspace must be a bool')
+        self.reuse_workspace = reuse_workspace
+        self._workspace = threading.local()
         if self.device.type == 'cuda' and not torch.cuda.is_available():
             raise RuntimeError(f'CUDA device {self.device} is not available')
 
@@ -51,36 +67,83 @@ class TorchLocalTrainer:
         if len(dataset) <= 0:
             raise ValueError(f'client {client_id} dataset must not be empty')
 
-        model = self.model_factory().to(self.device)
+        workspace_model = getattr(self._workspace, 'model', None)
+        workspace_optimizer = getattr(self._workspace, 'optimizer', None)
+        if self.reuse_workspace and workspace_model is not None:
+            model = workspace_model
+            optimizer = workspace_optimizer
+            if optimizer is None:
+                raise RuntimeError('local optimizer workspace is missing')
+        else:
+            model = self.model_factory().to(self.device)
+            optimizer = torch.optim.SGD(
+                model.parameters(), lr=self.learning_rate,
+            )
+            if self.reuse_workspace:
+                self._workspace.model = model
+                self._workspace.optimizer = optimizer
         self.codec.load(model, state.global_model)
-        optimizer = torch.optim.SGD(model.parameters(), lr=self.learning_rate)
+        # SGD has no persistent state in this configuration.  Clearing any
+        # state makes the reset invariant explicit if PyTorch adds bookkeeping.
+        optimizer.state.clear()
         criterion = torch.nn.CrossEntropyLoss()
-        loader = DataLoader(
-            dataset,
-            batch_size=self.batch_size,
-            shuffle=True,
-            num_workers=0,
-            generator=rng.torch,
-        )
+        loaders = getattr(self._workspace, 'loaders', None)
+        if self.reuse_workspace and loaders is None:
+            loaders = {}
+            self._workspace.loaders = loaders
+        loader = loaders.get(client_id) if loaders is not None else None
+        if loader is None:
+            loader = DataLoader(
+                dataset,
+                batch_size=self.batch_size,
+                shuffle=True,
+                num_workers=0,
+                generator=rng.torch,
+            )
+            if loaders is not None:
+                loaders[client_id] = loader
+        else:
+            loader.generator = rng.torch
+            if hasattr(loader.sampler, 'generator'):
+                loader.sampler.generator = rng.torch
 
         total_loss = 0.0
         total_correct = 0
         total_seen = 0
         model.train()
-        for _ in range(self.local_epochs):
-            for inputs, labels in loader:
-                inputs = inputs.to(self.device, non_blocking=True)
-                labels = labels.to(self.device, non_blocking=True)
-                optimizer.zero_grad(set_to_none=True)
-                logits = model(inputs)
-                loss = criterion(logits, labels)
-                loss.backward()
-                optimizer.step()
+        optimizer_steps = 0
 
-                examples = int(labels.shape[0])
-                total_loss += float(loss.detach().item()) * examples
-                total_correct += int((logits.detach().argmax(dim=1) == labels).sum().item())
-                total_seen += examples
+        def train_batch(inputs, labels) -> None:
+            nonlocal total_loss, total_correct, total_seen, optimizer_steps
+            inputs = inputs.to(self.device, non_blocking=True)
+            labels = labels.to(self.device, non_blocking=True)
+            optimizer.zero_grad(set_to_none=True)
+            logits = model(inputs)
+            loss = criterion(logits, labels)
+            loss.backward()
+            optimizer.step()
+
+            examples = int(labels.shape[0])
+            total_loss += float(loss.detach().item()) * examples
+            total_correct += int(
+                (logits.detach().argmax(dim=1) == labels).sum().item()
+            )
+            total_seen += examples
+            optimizer_steps += 1
+
+        if self.local_steps is not None:
+            iterator = iter(loader)
+            for _ in range(self.local_steps):
+                try:
+                    batch = next(iterator)
+                except StopIteration:
+                    iterator = iter(loader)
+                    batch = next(iterator)
+                train_batch(*batch)
+        else:
+            for _ in range(self.local_epochs):
+                for batch in loader:
+                    train_batch(*batch)
 
         local_state = self.codec.capture(model)
         return ClientUpdate(
@@ -91,5 +154,11 @@ class TorchLocalTrainer:
             metadata={
                 'train_loss': total_loss / total_seen,
                 'train_accuracy': total_correct / total_seen,
+                'train_examples_seen': total_seen,
+                'local_optimizer_steps': optimizer_steps,
+                'local_training_mode': (
+                    'steps' if self.local_steps is not None else 'epochs'
+                ),
+                'local_workspace_reused': self.reuse_workspace,
             },
         )

@@ -1,6 +1,7 @@
 from meta_stackelberg.agents.td3.agent import TD3Agent
 from meta_stackelberg.experiments.attack_domain import (
     AttackTypeDomainSource,
+    BalancedAttackTypeSampler,
     UniformAttackTypeSampler,
     load_attack_type_domain,
     save_attack_type_domain,
@@ -54,3 +55,16 @@ def test_uniform_attack_sampler_keeps_domain_size_independent_from_k() -> None:
     assert set(first) <= {'krum', 'clipmed'}
     assert set(second) <= {'krum', 'clipmed'}
     assert first != second
+
+
+def test_balanced_attack_sampler_covers_domain_before_repeating() -> None:
+    labels = ('na', 'ipm', 'lmp', 'rl-krum', 'rl-clipmed')
+    sampler = BalancedAttackTypeSampler(labels, seed=7)
+
+    first = sampler(iteration=0, count=5)
+    repeated = sampler(iteration=1, count=7)
+
+    assert len(first) == 5
+    assert set(first) == set(labels)
+    assert set(repeated[:5]) == set(labels)
+    assert len(repeated) == 7

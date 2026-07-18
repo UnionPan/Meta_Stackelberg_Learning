@@ -96,6 +96,38 @@ def test_training_collector_can_discard_model_sized_round_traces() -> None:
     assert np.isfinite(trajectory.mean_attacker_reward)
 
 
+def test_training_collector_uses_uniform_action_before_learning_starts() -> None:
+    env = _make_env(seed=25)
+    defender_dim = len(flatten_observation(
+        env.defender_observation(), DEFENDER_OBSERVATION_KEYS,
+    ))
+    pending_probe = _make_env(seed=25).begin_round(
+        np.zeros(3, dtype=np.float32),
+    )
+    attacker_dim = len(flatten_observation(
+        pending_probe.attacker_observation, ATTACKER_OBSERVATION_KEYS,
+    ))
+    defender = _agent(defender_dim, 'defender', 41)
+    expected = _agent(defender_dim, 'defender', 41).sample_uniform_action()
+    trajectory = PaperTD3TrajectoryCollector().collect(
+        env=env,
+        defender=defender,
+        attacker=_agent(attacker_dim, 'attacker', 42),
+        defender_replay=TD3ReplayBuffer(
+            8, obs_dim=defender_dim, action_dim=3, role='defender', seed=43,
+        ),
+        attacker_replay=TD3ReplayBuffer(
+            8, obs_dim=attacker_dim, action_dim=3, role='attacker', seed=44,
+        ),
+        generation=0,
+        deterministic=False,
+        explore_role='defender',
+        random_exploration_steps=1,
+    )
+
+    np.testing.assert_array_equal(trajectory.steps[0].defender_raw_action, expected)
+
+
 def test_immutable_paper_scaled_configuration_matches_execution_traces() -> None:
     config = PaperMetaSGConfig().scaled(
         T=2, K=2, H=8, l=2, N_A=2, N_D=2,

@@ -86,6 +86,62 @@ def test_local_training_replays_from_same_random_snapshot() -> None:
     assert first.metadata == second.metadata
 
 
+def test_local_steps_execute_exact_minibatch_budget() -> None:
+    source = RandomSource(17)
+    state = _round_state(source)
+    trainer = TorchLocalTrainer(
+        model_factory=_model_factory,
+        client_datasets={0: _dataset()},
+        codec=TorchParameterCodec(),
+        learning_rate=0.1,
+        local_steps=1,
+        batch_size=2,
+    )
+
+    update = trainer.train(0, state, source)
+
+    assert update.metadata['local_training_mode'] == 'steps'
+    assert update.metadata['local_optimizer_steps'] == 1
+    assert update.metadata['train_examples_seen'] == 2
+
+
+def test_reused_workspace_is_exactly_reset_before_each_client_update() -> None:
+    source = RandomSource(23)
+    state = _round_state(source)
+    trainer = TorchLocalTrainer(
+        model_factory=_model_factory,
+        client_datasets={0: _dataset()},
+        codec=TorchParameterCodec(),
+        learning_rate=0.1,
+        local_steps=1,
+        batch_size=2,
+        reuse_workspace=True,
+    )
+    snapshot = source.capture()
+
+    first = trainer.train(0, state, source)
+    source.restore(snapshot)
+    second = trainer.train(0, state, source)
+
+    np.testing.assert_array_equal(first.delta.vector(), second.delta.vector())
+    assert first.metadata == second.metadata
+    assert first.metadata['local_workspace_reused'] is True
+
+
+def test_local_trainer_requires_exactly_one_budget_mode() -> None:
+    common = {
+        'model_factory': _model_factory,
+        'client_datasets': {0: _dataset()},
+        'codec': TorchParameterCodec(),
+        'learning_rate': 0.1,
+        'batch_size': 2,
+    }
+    with pytest.raises(ValueError, match='exactly one'):
+        TorchLocalTrainer(**common)
+    with pytest.raises(ValueError, match='exactly one'):
+        TorchLocalTrainer(**common, local_epochs=1, local_steps=1)
+
+
 def test_local_trainer_rejects_unknown_clients_and_invalid_config() -> None:
     source = RandomSource(3)
     state = _round_state(source)

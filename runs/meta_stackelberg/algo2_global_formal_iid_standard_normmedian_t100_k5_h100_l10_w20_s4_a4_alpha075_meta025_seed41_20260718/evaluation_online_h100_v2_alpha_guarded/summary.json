@@ -1,0 +1,491 @@
+{
+  "checkpoint": "/home/antik/rl/Meta_Stackelberg_Learning/runs/meta_stackelberg/algo2_global_formal_iid_standard_normmedian_t100_k5_h100_l10_w20_s4_a4_alpha075_meta025_seed41_20260718/training.pt",
+  "confidence_interval": null,
+  "data_provenance": {
+    "dataset": "MNIST",
+    "generator": "none",
+    "generator_epochs": 0,
+    "generator_training_samples": 0,
+    "protocol": "paper-dataset-provenance-v1",
+    "root_seed_samples": 0,
+    "simulated_train_samples": 59900,
+    "source_kind": "torchvision"
+  },
+  "evaluation_seed": 101,
+  "horizon": 100,
+  "method": "meta-rl",
+  "online_adaptation": {
+    "clean": {
+      "actor_logit_l2": 1.0,
+      "actor_logit_l2_mask": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "adaptation_step": 0.001,
+      "adapted_defender_fingerprint": "d077aab7613bfebc34d5e3e1f8e113d7527a917669c5af38d82c6b6abfbc2cea",
+      "attack_family": "clean",
+      "attacker_fingerprint": "fedbe1311eabd7c12852ebf8f7f5adb518c038410f69993f06ee335495f35ad6",
+      "checkpoint": "/home/antik/rl/Meta_Stackelberg_Learning/runs/meta_stackelberg/algo2_global_formal_iid_standard_normmedian_t100_k5_h100_l10_w20_s4_a4_alpha075_meta025_seed41_20260718/evaluation_online_h100_v2_alpha_guarded/online_adaptation/clean.pt",
+      "completed_iterations": 10,
+      "fixed_attack_scale": null,
+      "fl_round_count": 1000,
+      "fresh_trajectories_per_later_outer_iteration": 1,
+      "meta_defender_fingerprint": "0f7a48993ad3fad590600e3b7640c8e02a57a4739b67c77f9498e269a001b822",
+      "method": "meta-rl",
+      "online_H": 100,
+      "online_T": 10,
+      "online_l": 10,
+      "online_steps": 100,
+      "protocol": "paper-online-adaptation-scenario-v1",
+      "scenario": "clean",
+      "selected_defender_fingerprint": "d077aab7613bfebc34d5e3e1f8e113d7527a917669c5af38d82c6b6abfbc2cea",
+      "selection": {
+        "accepted": true,
+        "adapted_score": -0.8669182415008546,
+        "adapted_scores": [
+          -0.8677586193084719,
+          -0.8660778636932374
+        ],
+        "base_score": -0.929549792098999,
+        "base_scores": [
+          -0.9317837677001951,
+          -0.9273158164978028
+        ],
+        "margin": 0.0,
+        "metric": "mean_defender_reward",
+        "mode": "reward-guarded",
+        "score_gain": 0.0626315505981444,
+        "selected": "adapted",
+        "uses_test_dataset": false,
+        "validation_horizon": 100,
+        "validation_seeds": [
+          6000000,
+          6000001
+        ]
+      },
+      "support_seed_count": 10,
+      "support_seed_start": 3000000,
+      "support_seed_stop_exclusive": 3000010,
+      "training_checkpoint_sha256": "8daa81ede3ff1cf42163610a17c488a20b26a98279d6f15bff768c1b133526ac",
+      "trajectories_per_update": 1,
+      "trajectory_collection": "one-fresh-trajectory-per-outer-iteration;sb3-uniform-random-learning-starts-replacement-v3",
+      "trajectory_count": 10,
+      "warmup_trajectories": 1
+    },
+    "ipm": {
+      "actor_logit_l2": 1.0,
+      "actor_logit_l2_mask": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "adaptation_step": 0.001,
+      "adapted_defender_fingerprint": "4dc2a5292da6f348d30c08742d250c30190e462031056f5e4382a961b4ed5274",
+      "attack_family": "ipm",
+      "attacker_fingerprint": "fedbe1311eabd7c12852ebf8f7f5adb518c038410f69993f06ee335495f35ad6",
+      "checkpoint": "/home/antik/rl/Meta_Stackelberg_Learning/runs/meta_stackelberg/algo2_global_formal_iid_standard_normmedian_t100_k5_h100_l10_w20_s4_a4_alpha075_meta025_seed41_20260718/evaluation_online_h100_v2_alpha_guarded/online_adaptation/ipm.pt",
+      "completed_iterations": 10,
+      "fixed_attack_scale": 2.0,
+      "fl_round_count": 1000,
+      "fresh_trajectories_per_later_outer_iteration": 1,
+      "meta_defender_fingerprint": "0f7a48993ad3fad590600e3b7640c8e02a57a4739b67c77f9498e269a001b822",
+      "method": "meta-rl",
+      "online_H": 100,
+      "online_T": 10,
+      "online_l": 10,
+      "online_steps": 100,
+      "protocol": "paper-online-adaptation-scenario-v1",
+      "scenario": "ipm",
+      "selected_defender_fingerprint": "0f7a48993ad3fad590600e3b7640c8e02a57a4739b67c77f9498e269a001b822",
+      "selection": {
+        "accepted": false,
+        "adapted_score": -1.1497559997558593,
+        "adapted_scores": [
+          -1.1898434089660643,
+          -1.1096685905456545
+        ],
+        "base_score": -1.0982637310028074,
+        "base_scores": [
+          -1.0898841075897217,
+          -1.1066433544158933
+        ],
+        "margin": 0.0,
+        "metric": "mean_defender_reward",
+        "mode": "reward-guarded",
+        "score_gain": -0.051492268753051906,
+        "selected": "frozen",
+        "uses_test_dataset": false,
+        "validation_horizon": 100,
+        "validation_seeds": [
+          6010000,
+          6010001
+        ]
+      },
+      "support_seed_count": 10,
+      "support_seed_start": 3010000,
+      "support_seed_stop_exclusive": 3010010,
+      "training_checkpoint_sha256": "8daa81ede3ff1cf42163610a17c488a20b26a98279d6f15bff768c1b133526ac",
+      "trajectories_per_update": 1,
+      "trajectory_collection": "one-fresh-trajectory-per-outer-iteration;sb3-uniform-random-learning-starts-replacement-v3",
+      "trajectory_count": 10,
+      "warmup_trajectories": 1
+    },
+    "lmp": {
+      "actor_logit_l2": 1.0,
+      "actor_logit_l2_mask": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "adaptation_step": 0.001,
+      "adapted_defender_fingerprint": "07edb1959a07084b61dc49c2b62570663f7c4dbfdbf6972593d4829697ae29bb",
+      "attack_family": "lmp",
+      "attacker_fingerprint": "fedbe1311eabd7c12852ebf8f7f5adb518c038410f69993f06ee335495f35ad6",
+      "checkpoint": "/home/antik/rl/Meta_Stackelberg_Learning/runs/meta_stackelberg/algo2_global_formal_iid_standard_normmedian_t100_k5_h100_l10_w20_s4_a4_alpha075_meta025_seed41_20260718/evaluation_online_h100_v2_alpha_guarded/online_adaptation/lmp.pt",
+      "completed_iterations": 10,
+      "fixed_attack_scale": 2.0,
+      "fl_round_count": 1000,
+      "fresh_trajectories_per_later_outer_iteration": 1,
+      "meta_defender_fingerprint": "0f7a48993ad3fad590600e3b7640c8e02a57a4739b67c77f9498e269a001b822",
+      "method": "meta-rl",
+      "online_H": 100,
+      "online_T": 10,
+      "online_l": 10,
+      "online_steps": 100,
+      "protocol": "paper-online-adaptation-scenario-v1",
+      "scenario": "lmp",
+      "selected_defender_fingerprint": "07edb1959a07084b61dc49c2b62570663f7c4dbfdbf6972593d4829697ae29bb",
+      "selection": {
+        "accepted": true,
+        "adapted_score": -1.2474157638549808,
+        "adapted_scores": [
+          -1.0810949314117433,
+          -1.4137365962982182
+        ],
+        "base_score": -1.2558050682067872,
+        "base_scores": [
+          -1.0455641635894777,
+          -1.4660459728240967
+        ],
+        "margin": 0.0,
+        "metric": "mean_defender_reward",
+        "mode": "reward-guarded",
+        "score_gain": 0.008389304351806404,
+        "selected": "adapted",
+        "uses_test_dataset": false,
+        "validation_horizon": 100,
+        "validation_seeds": [
+          6020000,
+          6020001
+        ]
+      },
+      "support_seed_count": 10,
+      "support_seed_start": 3020000,
+      "support_seed_stop_exclusive": 3020010,
+      "training_checkpoint_sha256": "8daa81ede3ff1cf42163610a17c488a20b26a98279d6f15bff768c1b133526ac",
+      "trajectories_per_update": 1,
+      "trajectory_collection": "one-fresh-trajectory-per-outer-iteration;sb3-uniform-random-learning-starts-replacement-v3",
+      "trajectory_count": 10,
+      "warmup_trajectories": 1
+    },
+    "rl-clipmed": {
+      "actor_logit_l2": 1.0,
+      "actor_logit_l2_mask": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "adaptation_step": 0.001,
+      "adapted_defender_fingerprint": "f6e7a10febb148467dea84e918cf49bdf4cd8fa3efd1fb1c3f355898164d86d8",
+      "attack_family": "rl",
+      "attacker_fingerprint": "fedbe1311eabd7c12852ebf8f7f5adb518c038410f69993f06ee335495f35ad6",
+      "checkpoint": "/home/antik/rl/Meta_Stackelberg_Learning/runs/meta_stackelberg/algo2_global_formal_iid_standard_normmedian_t100_k5_h100_l10_w20_s4_a4_alpha075_meta025_seed41_20260718/evaluation_online_h100_v2_alpha_guarded/online_adaptation/rl-clipmed.pt",
+      "completed_iterations": 10,
+      "fixed_attack_scale": null,
+      "fl_round_count": 1000,
+      "fresh_trajectories_per_later_outer_iteration": 1,
+      "meta_defender_fingerprint": "0f7a48993ad3fad590600e3b7640c8e02a57a4739b67c77f9498e269a001b822",
+      "method": "meta-rl",
+      "online_H": 100,
+      "online_T": 10,
+      "online_l": 10,
+      "online_steps": 100,
+      "protocol": "paper-online-adaptation-scenario-v1",
+      "scenario": "rl-clipmed",
+      "selected_defender_fingerprint": "f6e7a10febb148467dea84e918cf49bdf4cd8fa3efd1fb1c3f355898164d86d8",
+      "selection": {
+        "accepted": true,
+        "adapted_score": -1.1932427360534668,
+        "adapted_scores": [
+          -1.1879102226257323,
+          -1.198575249481201
+        ],
+        "base_score": -1.1964239076614378,
+        "base_scores": [
+          -1.194903275680542,
+          -1.1979445396423338
+        ],
+        "margin": 0.0,
+        "metric": "mean_defender_reward",
+        "mode": "reward-guarded",
+        "score_gain": 0.003181171607971045,
+        "selected": "adapted",
+        "uses_test_dataset": false,
+        "validation_horizon": 100,
+        "validation_seeds": [
+          6030000,
+          6030001
+        ]
+      },
+      "support_seed_count": 10,
+      "support_seed_start": 3030000,
+      "support_seed_stop_exclusive": 3030010,
+      "training_checkpoint_sha256": "8daa81ede3ff1cf42163610a17c488a20b26a98279d6f15bff768c1b133526ac",
+      "trajectories_per_update": 1,
+      "trajectory_collection": "one-fresh-trajectory-per-outer-iteration;sb3-uniform-random-learning-starts-replacement-v3",
+      "trajectory_count": 10,
+      "warmup_trajectories": 1
+    },
+    "rl-krum": {
+      "actor_logit_l2": 1.0,
+      "actor_logit_l2_mask": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "adaptation_step": 0.001,
+      "adapted_defender_fingerprint": "0702ada90253b53e02b9263a5a22f998c14bc0a33096e126b39e300a3029e4c7",
+      "attack_family": "rl",
+      "attacker_fingerprint": "c9cb99523e071501ab3949c0cb5370e00a1b6835ec05cddd3ee9b30aacd78a3c",
+      "checkpoint": "/home/antik/rl/Meta_Stackelberg_Learning/runs/meta_stackelberg/algo2_global_formal_iid_standard_normmedian_t100_k5_h100_l10_w20_s4_a4_alpha075_meta025_seed41_20260718/evaluation_online_h100_v2_alpha_guarded/online_adaptation/rl-krum.pt",
+      "completed_iterations": 10,
+      "fixed_attack_scale": null,
+      "fl_round_count": 1000,
+      "fresh_trajectories_per_later_outer_iteration": 1,
+      "meta_defender_fingerprint": "0f7a48993ad3fad590600e3b7640c8e02a57a4739b67c77f9498e269a001b822",
+      "method": "meta-rl",
+      "online_H": 100,
+      "online_T": 10,
+      "online_l": 10,
+      "online_steps": 100,
+      "protocol": "paper-online-adaptation-scenario-v1",
+      "scenario": "rl-krum",
+      "selected_defender_fingerprint": "0f7a48993ad3fad590600e3b7640c8e02a57a4739b67c77f9498e269a001b822",
+      "selection": {
+        "accepted": false,
+        "adapted_score": -1.176072966194153,
+        "adapted_scores": [
+          -1.1492915977478029,
+          -1.202854334640503
+        ],
+        "base_score": -1.1627993602752684,
+        "base_scores": [
+          -1.1532848850250244,
+          -1.1723138355255127
+        ],
+        "margin": 0.0,
+        "metric": "mean_defender_reward",
+        "mode": "reward-guarded",
+        "score_gain": -0.01327360591888449,
+        "selected": "frozen",
+        "uses_test_dataset": false,
+        "validation_horizon": 100,
+        "validation_seeds": [
+          6040000,
+          6040001
+        ]
+      },
+      "support_seed_count": 10,
+      "support_seed_start": 3040000,
+      "support_seed_stop_exclusive": 3040010,
+      "training_checkpoint_sha256": "8daa81ede3ff1cf42163610a17c488a20b26a98279d6f15bff768c1b133526ac",
+      "trajectories_per_update": 1,
+      "trajectory_collection": "one-fresh-trajectory-per-outer-iteration;sb3-uniform-random-learning-starts-replacement-v3",
+      "trajectory_count": 10,
+      "warmup_trajectories": 1
+    }
+  },
+  "policy_stage": "post-online-adaptation",
+  "pretraining_domain_evaluation": "mixed",
+  "protocol": "canonical-model-poisoning-final-summary-v1",
+  "scenarios": {
+    "clean": {
+      "attack_family": "clean",
+      "final_delivered_clean_accuracy": 0.921,
+      "final_delivered_clean_loss": 0.2759075370311737,
+      "final_raw_clean_accuracy": 0.921,
+      "final_raw_clean_loss": 0.2759075370311737,
+      "maximum_clean_accuracy": 0.921,
+      "maximum_clean_loss": 2.288804309463501,
+      "mean_attacker_reward": -0.01962856788635254,
+      "mean_clean_accuracy": 0.784533,
+      "mean_defender_reward": -0.8696203826904301,
+      "minimum_clean_accuracy": 0.1178,
+      "rounds": 100
+    },
+    "ipm": {
+      "attack_family": "ipm",
+      "final_delivered_clean_accuracy": 0.9036,
+      "final_delivered_clean_loss": 0.34716387481689454,
+      "final_raw_clean_accuracy": 0.9036,
+      "final_raw_clean_loss": 0.34716387481689454,
+      "maximum_clean_accuracy": 0.9058,
+      "maximum_clean_loss": 2.2959158252716065,
+      "mean_attacker_reward": -0.018371691894531247,
+      "mean_clean_accuracy": 0.7477050000000002,
+      "mean_defender_reward": -1.0357412017822265,
+      "minimum_clean_accuracy": 0.1184,
+      "rounds": 100
+    },
+    "lmp": {
+      "attack_family": "lmp",
+      "final_delivered_clean_accuracy": 0.9111,
+      "final_delivered_clean_loss": 0.3148807163000107,
+      "final_raw_clean_accuracy": 0.9111,
+      "final_raw_clean_loss": 0.3148807163000107,
+      "maximum_clean_accuracy": 0.9134,
+      "maximum_clean_loss": 2.2955466049194335,
+      "mean_attacker_reward": -0.018999984741210937,
+      "mean_clean_accuracy": 0.772233,
+      "mean_defender_reward": -0.9415431579589844,
+      "minimum_clean_accuracy": 0.1184,
+      "rounds": 100
+    },
+    "rl-clipmed": {
+      "attack_family": "rl",
+      "final_delivered_clean_accuracy": 0.8916,
+      "final_delivered_clean_loss": 0.35507409229278564,
+      "final_raw_clean_accuracy": 0.8916,
+      "final_raw_clean_loss": 0.35507409229278564,
+      "maximum_clean_accuracy": 0.9126,
+      "maximum_clean_loss": 2.2962801750183104,
+      "mean_attacker_reward": -0.01855574569702148,
+      "mean_clean_accuracy": 0.7564409999999999,
+      "mean_defender_reward": -0.9829251934051513,
+      "minimum_clean_accuracy": 0.1162,
+      "rounds": 100
+    },
+    "rl-krum": {
+      "attack_family": "rl",
+      "final_delivered_clean_accuracy": 0.8996,
+      "final_delivered_clean_loss": 0.3560591938495636,
+      "final_raw_clean_accuracy": 0.8996,
+      "final_raw_clean_loss": 0.3560591938495636,
+      "maximum_clean_accuracy": 0.9027,
+      "maximum_clean_loss": 2.2961291301727296,
+      "mean_attacker_reward": -0.01835579261779785,
+      "mean_clean_accuracy": 0.741806,
+      "mean_defender_reward": -1.0507221797943116,
+      "minimum_clean_accuracy": 0.1167,
+      "rounds": 100
+    }
+  },
+  "single_seed": true,
+  "training_checkpoint_sha256": "8daa81ede3ff1cf42163610a17c488a20b26a98279d6f15bff768c1b133526ac",
+  "training_configuration": {
+    "H": 100,
+    "K": 5,
+    "N_A": 10,
+    "N_D": 10,
+    "T": 100,
+    "adaptation_step": 0.01,
+    "algorithm2_parallel_tasks": 5,
+    "attacker_obs_dim": 1295,
+    "defender_obs_dim": 1291,
+    "gamma": 0.99,
+    "hidden_sizes": [
+      256,
+      256
+    ],
+    "initial_attackers": [
+      [
+        "'ipm'",
+        "77db85cb77036948ed344f4110030c54fa1a5ea404b5a62d105a3c034b2d13bc"
+      ],
+      [
+        "'lmp'",
+        "f717d92eb96fb1281858271bd10fc32bc1cc26ac07638e637775d9c1964e243f"
+      ],
+      [
+        "'na'",
+        "57975ed8b096283c9c2e252ce18f3b1339a5c9beb22454590817e6ab38667eb2"
+      ],
+      [
+        "'rl-clipmed'",
+        "fedbe1311eabd7c12852ebf8f7f5adb518c038410f69993f06ee335495f35ad6"
+      ],
+      [
+        "'rl-krum'",
+        "c9cb99523e071501ab3949c0cb5370e00a1b6835ec05cddd3ee9b30aacd78a3c"
+      ]
+    ],
+    "initial_defender": "dc191334708ad2abd0edc52e1dbc06643060952585c715a997a1a50e7a6a69d8",
+    "initial_support_seed": 9900000,
+    "kappa": 0.001,
+    "kappa_attacker": 0.001,
+    "kappa_defender": 0.001,
+    "l": 10,
+    "learning_starts": 100,
+    "meta_update_step": 0.25,
+    "noise_clip": 0.5,
+    "policy_delay": 2,
+    "policy_learning_rate": 0.001,
+    "protocol_signature": {
+      "algorithm": "Algorithm 2",
+      "attack_client_sampling": "uniform-conditioned-on-at-least-one-benign-reference",
+      "backdoor_attackers": 5,
+      "backdoor_poison_fraction": 1.0,
+      "cpu_threads": 1,
+      "dataset": "MNIST",
+      "dba_subtrigger_rule": "per-sampled-attacker-uniform-random",
+      "defender_alpha_floor_ratio": 0.75,
+      "defender_norm_reference": "median",
+      "deterministic_torch": true,
+      "device": "cuda:0",
+      "fixed_attack_domain": [
+        "na",
+        "ipm",
+        "lmp",
+        "rl-krum",
+        "rl-clipmed"
+      ],
+      "ipm_scale": 2.0,
+      "lmp_scale": 2.0,
+      "local_model_workspace": "reused-and-reset-per-client-update",
+      "local_search_gradient_norm_cap": 1.0,
+      "local_training_budget": "one-minibatch-step-per-local-iteration",
+      "meta_update_step": 0.25,
+      "meta_update_step_source": "declared-stabilization-override",
+      "method": "meta-rl",
+      "mnist_input_pipeline": "materialized-tensor-dataset",
+      "mnist_normalization": "standard",
+      "mnist_partition": "iid",
+      "model_seed": 99,
+      "non_iid_q": null,
+      "parallel_clients": 1,
+      "parallel_tasks": 5,
+      "partition_seed": 17,
+      "post_defense_mode": "identity",
+      "rl_attack_origins": {
+        "rl-clipmed": "pretrained-against-clipmed",
+        "rl-krum": "pretrained-against-krum"
+      },
+      "root_loss_evaluation": "raw-model-cached-sequential-before-after",
+      "scope": "global-model-poisoning-tasks",
+      "table4_interpretation": "Table 4 five-task domain; Appendix C text differs",
+      "task_sampler": "balanced"
+    },
+    "replay_capacity": 1000000,
+    "sample_size": 4,
+    "target_policy_noise": 0.2,
+    "tau": 0.005,
+    "td3_batch_size": 256,
+    "training_method": "meta-rl",
+    "trajectory_collection": "algorithm1-fresh-trajectory-per-update;algorithm2-fresh-trajectory-per-inner-step;sb3-uniform-random-learning-starts-replacement-v4",
+    "untargeted_attackers": 4,
+    "workers": 20
+  },
+  "worst_rl_final_delivered_clean_accuracy": 0.8916,
+  "worst_rl_scenario": "rl-clipmed"
+}

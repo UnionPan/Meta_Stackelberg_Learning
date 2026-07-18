@@ -72,6 +72,35 @@ def test_lmp_replays_from_explicit_rngs() -> None:
     assert not np.array_equal(first[0].delta.vector(), first[1].delta.vector())
 
 
+def test_lmp_vectorizes_coordinate_statistics_and_random_draws(monkeypatch) -> None:
+    from meta_stackelberg.security.attacks.lmp import LMPAttack
+
+    median_calls = 0
+    original_median = np.median
+
+    def counted_median(*args, **kwargs):
+        nonlocal median_calls
+        median_calls += 1
+        return original_median(*args, **kwargs)
+
+    monkeypatch.setattr(np, 'median', counted_median)
+    rngs = (RandomSource(21), RandomSource(22))
+    for rng in rngs:
+        monkeypatch.setattr(
+            rng.python, 'uniform',
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError('LMP must not draw one Python random value per coordinate')
+            ),
+        )
+
+    updates = LMPAttack(
+        scale=3.0, num_examples_by_client={1: 7, 3: 9},
+    ).craft_round(_context(), rngs)
+
+    assert len(updates) == 2
+    assert median_calls == len(_context().global_model.tensors)
+
+
 def test_lmp_reconstructs_multiple_layers_without_coordinate_aliasing() -> None:
     from meta_stackelberg.security.attacks.lmp import LMPAttack
 
