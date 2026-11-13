@@ -1,0 +1,55 @@
+{
+  "scope": "Current temporal TD3 Meta-SG branch; not historical factored-grid critic or PG-transfer Tanh branch",
+  "style_version": "meta-sg-muted-v1",
+  "networks": {
+    "8": {
+      "actor": "Sequential(\n  (0): Linear(in_features=8, out_features=64, bias=True)\n  (1): ReLU()\n  (2): Linear(in_features=64, out_features=64, bias=True)\n  (3): ReLU()\n  (4): Linear(in_features=64, out_features=3, bias=True)\n  (5): Tanh()\n)",
+      "q1": "Sequential(\n  (0): Linear(in_features=11, out_features=64, bias=True)\n  (1): ReLU()\n  (2): Linear(in_features=64, out_features=64, bias=True)\n  (3): ReLU()\n  (4): Linear(in_features=64, out_features=1, bias=True)\n)",
+      "actor_parameters": 4931,
+      "q_parameters": [
+        4993,
+        4993
+      ],
+      "observation_width": 8,
+      "action_width": 3,
+      "critic_input_width": 11,
+      "actor_critic_weights_shared": false,
+      "q1_q2_weights_shared": false,
+      "critic_observation_transform": "elementwise asinh",
+      "actor_observation_transform": "identity after frozen standardization"
+    },
+    "40": {
+      "actor": "Sequential(\n  (0): Linear(in_features=40, out_features=64, bias=True)\n  (1): ReLU()\n  (2): Linear(in_features=64, out_features=64, bias=True)\n  (3): ReLU()\n  (4): Linear(in_features=64, out_features=3, bias=True)\n  (5): Tanh()\n)",
+      "q1": "Sequential(\n  (0): Linear(in_features=43, out_features=64, bias=True)\n  (1): ReLU()\n  (2): Linear(in_features=64, out_features=64, bias=True)\n  (3): ReLU()\n  (4): Linear(in_features=64, out_features=1, bias=True)\n)",
+      "actor_parameters": 6979,
+      "q_parameters": [
+        7041,
+        7041
+      ],
+      "observation_width": 40,
+      "action_width": 3,
+      "critic_input_width": 43,
+      "actor_critic_weights_shared": false,
+      "q1_q2_weights_shared": false,
+      "critic_observation_transform": "elementwise asinh",
+      "actor_observation_transform": "identity after frozen standardization"
+    }
+  },
+  "source_sha256": {
+    "src/meta_sg/rl/reptile_td3.py": "d30165bffca99345a3852eb75486640a4e8d56ef6ef08e00275765f4d13204a6",
+    "src/meta_sg/rl/critic_conditioning.py": "9d47c1e7999566b36ae60717f7099f5e1edaed8a9456177e2d3cc2f11a41b0e7",
+    "src/meta_sg/experiments/distribution_observation.py": "166b14ca13e494f75c16c2ffa40e9f1a1aa7f358dddb598a99a1722dfce9340d",
+    "scripts/run_shared_representation_adaptation.py": "fe0c8a066f81651f37406fb5114207d91b67c1a5d4a29c46b95215e826dd5f9a",
+    "scripts/meta_sg_plot_style.py": "2e2c5ee529b9f490d8b7eb0bc1585546a090092846c5f6e790605d1a8a4098bc",
+    "scripts/draw_actor_critic_architecture.py": "643eeb7d2a92f548079cd9c718ef203c41ec25324a28107feea4fed9471460ae"
+  },
+  "target_networks": "Same architecture as online networks; excluded from reported online parameter totals",
+  "outputs": {
+    "meta_sg_critic_architecture_v1.svg": "d95a7e76f2f0c98d4a3e3ff4cf914b47d9d402fa5112eca8b6d44ea154bad706",
+    "meta_sg_actor_architecture_v1.png": "188d79488ddeee050338d5f4dc94ef1a309093b20cece179608363c1702aad14",
+    "meta_sg_actor_architecture_v1.pdf": "028dea155abc288454fd5f61839221cbfec03e04a7ede7f0c0ef6d2b67614ad2",
+    "meta_sg_actor_architecture_v1.svg": "db3217004fb398ba36847c22eeab2747a9ab188f6b6f093121ca42ce1fe016a3",
+    "meta_sg_critic_architecture_v1.pdf": "e86a1ad1716cbfc8bc1674a3fa25a03b4df38208e321022a55ed20c759575298",
+    "meta_sg_critic_architecture_v1.png": "7c1fb7fafd81a7cdbf4c1d22823d49f7ac4ba718bed5c59a1b93e3a0bc90df86"
+  }
+}

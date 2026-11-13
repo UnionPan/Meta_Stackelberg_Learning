@@ -1,0 +1,29 @@
+{
+  "dataset": {
+    "train": {
+      "shape": [
+        60000,
+        28,
+        28
+      ],
+      "dtype": "uint8",
+      "images_sha256": "741c988805d008ac6e4c904b69001ba184c24b2c540a4ef403f4c71b676cf757",
+      "labels_sha256": "e474323ac02fc156161b0bbb1f8c9cfeb327a74bcd9f9680a8385269a24f566c"
+    },
+    "test": {
+      "shape": [
+        10000,
+        28,
+        28
+      ],
+      "dtype": "uint8",
+      "images_sha256": "6d87418db22cc8025d05968bec9bd5c3932904b23485740db143a061a2c9d161",
+      "labels_sha256": "2fd8de6bdb8d11780b4b96dc57847bcfe6953f7c32aa48bfcd8237c3b7847243"
+    }
+  },
+  "partitions_sha256": "cfc5c639ef93b52a0da2f30be2e75b2da076e7972233bf8902fcb4e555dd30ad",
+  "python": "3.11.15",
+  "torch": "2.13.0+cu130",
+  "torchvision": "0.28.0+cu130",
+  "numpy": "2.4.6"
+}

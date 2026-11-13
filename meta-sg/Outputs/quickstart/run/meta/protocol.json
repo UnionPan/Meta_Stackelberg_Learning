@@ -1,0 +1,109 @@
+{
+  "algorithm": "first_order_meta_sg_td3_finite_response",
+  "sequence": [
+    "task-local defender adaptation",
+    "persistent follower response with defender fixed",
+    "fresh post-response replay and critic-only fitting",
+    "actor gradient at adapted parameters",
+    "outer actor descent, averaged critics, synchronized targets"
+  ],
+  "follower_feedback": "attacker-owned training clean accuracy; backdoor target accuracy minus clean accuracy",
+  "defender_feedback": {
+    "name": "root_loss_delta",
+    "parameters": {}
+  },
+  "tasks": [
+    {
+      "name": "rl",
+      "kind": "model_poisoning",
+      "malicious_clients": [
+        0
+      ],
+      "start_round": 2
+    },
+    {
+      "name": "brl",
+      "kind": "backdoor",
+      "malicious_clients": [
+        0
+      ],
+      "start_round": 2,
+      "parameters": {
+        "source_label": null,
+        "target_label": 2
+      }
+    }
+  ],
+  "follower_clock": "one transition per physical round; controls execute only when an attacker is active",
+  "test_metrics_used_for_learning": false,
+  "exact_best_response": false,
+  "exact_paper_reproduction": false,
+  "defender_agent": {
+    "learning_rate": 0.001,
+    "buffer_size": 64,
+    "learning_starts": 0,
+    "batch_size": 4,
+    "gamma": 0.99,
+    "tau": 0.005,
+    "policy_delay": 2,
+    "exploration_noise": 0.15,
+    "target_policy_noise": 0.2,
+    "target_noise_clip": 0.5,
+    "hidden_units": [
+      16,
+      16
+    ],
+    "gradient_steps": 1
+  },
+  "follower_agent": {
+    "learning_rate": 0.001,
+    "buffer_size": 64,
+    "learning_starts": 0,
+    "batch_size": 4,
+    "gamma": 0.99,
+    "tau": 0.005,
+    "policy_delay": 2,
+    "exploration_noise": 0.15,
+    "target_policy_noise": 0.2,
+    "target_noise_clip": 0.5,
+    "hidden_units": [
+      16,
+      16
+    ],
+    "gradient_steps": 1
+  },
+  "defender_observation_dimensions": 40,
+  "defender_action_names": [
+    "risk",
+    "mix",
+    "strength"
+  ],
+  "follower_observation_dimensions": 8,
+  "follower_action_dimensions": 3,
+  "dataset": {
+    "train": {
+      "shape": [
+        60000,
+        28,
+        28
+      ],
+      "dtype": "uint8",
+      "images_sha256": "741c988805d008ac6e4c904b69001ba184c24b2c540a4ef403f4c71b676cf757",
+      "labels_sha256": "e474323ac02fc156161b0bbb1f8c9cfeb327a74bcd9f9680a8385269a24f566c"
+    },
+    "test": {
+      "shape": [
+        10000,
+        28,
+        28
+      ],
+      "dtype": "uint8",
+      "images_sha256": "6d87418db22cc8025d05968bec9bd5c3932904b23485740db143a061a2c9d161",
+      "labels_sha256": "2fd8de6bdb8d11780b4b96dc57847bcfe6953f7c32aa48bfcd8237c3b7847243"
+    }
+  },
+  "python": "3.11.15",
+  "torch": "2.13.0+cu130",
+  "torchvision": "0.28.0+cu130",
+  "numpy": "2.4.6"
+}

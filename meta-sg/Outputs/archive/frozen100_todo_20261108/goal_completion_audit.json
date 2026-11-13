@@ -1,0 +1,21 @@
+{
+  "passed": true,
+  "requirements": {
+    "four_existing_h40_models_frozen": true,
+    "all_required_smoke_tests_passed": true,
+    "four_start3_h40_500_rounds": true,
+    "eight_start1_queries_500_rounds": true,
+    "same_other_config_between_onsets": true,
+    "160_finite_formal_checkpoints_saved": true,
+    "per_round_metrics_sampling_and_retry_logs_saved": true,
+    "all_lmp_extra_retry_counts_zero": true,
+    "tables_and_four_figures_exported_and_visually_checked": true,
+    "todo_completed_and_historical_data_preserved": true
+  },
+  "matched_current_compact8_start3_controls": 4,
+  "formal_trajectories": 16,
+  "formal_fl_rounds": 8000,
+  "checked_resource_gates": 16,
+  "historical_numeric_rows_retained": 106,
+  "note_sha256": "fc044b4fd540f1663b7ed412b028589e98be33b404db6ce748e31831e4023272"
+}

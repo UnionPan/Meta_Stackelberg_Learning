@@ -1,0 +1,26 @@
+{
+  "passed": true,
+  "new_query_trajectories": 4,
+  "query_rounds_each": 500,
+  "smoke_rounds_each": 5,
+  "continuous_rounds": true,
+  "terminal_means_recomputed": true,
+  "all_initial_actor_sources_equal": true,
+  "all_support_and_transform_sources_equal": true,
+  "new_meta_training": 0,
+  "additional_support_fl_rounds": 0,
+  "seeds": [
+    43
+  ],
+  "source_sha256": {
+    "/Users/antik/Desktop/meta-sg/outputs/ipm_lmp_adaptation_repair_20261108/readback/pretrained/training/histogram40/meta/meta_checkpoints/010/td3.zip": "1d206ddc3305eb7cfb1d4696b04e842fbb237d9f0d5b54f9412628d037895703",
+    "/Users/antik/Desktop/meta-sg/outputs/ipm_lmp_adaptation_repair_20261108/readback/diagnostics/no_extra_actor/formal/ipm_5/policy/round_metrics.csv": "6ccc60ef12f63bac9553d016ad3f64aeef438db2c1bb0a7b8340a38d053c44de",
+    "/Users/antik/Desktop/meta-sg/outputs/ipm_lmp_adaptation_repair_20261108/readback/diagnostics/no_extra_actor/policy/td3.zip": "9b1633091e0db17e110d44500e4a454167a09dc66e7265b4c8865aefa9fb2c5c",
+    "/Users/antik/Desktop/meta-sg/outputs/ipm_lmp_adaptation_repair_20261108/readback/diagnostics/reset_critic/formal/ipm_5/policy/round_metrics.csv": "3b064747a01c1dbeca85e91148acda1ec3bec27c2f7a6aaa35656b0fccc44e7f",
+    "/Users/antik/Desktop/meta-sg/outputs/ipm_lmp_adaptation_repair_20261108/readback/diagnostics/reset_critic/policy/td3.zip": "64322e23c10c78dfdb3696a21c30a9666f2ce04b3ac2b10c54809a4c7f13d171",
+    "/Users/antik/Desktop/meta-sg/outputs/ipm_lmp_adaptation_repair_20261108/readback/diagnostics/reset_critic_warm100/formal/ipm_5/policy/round_metrics.csv": "22bb9d9b3a6dd3061db67639bd61708c80ca52e908e501f12a7ccf0cce92b445",
+    "/Users/antik/Desktop/meta-sg/outputs/ipm_lmp_adaptation_repair_20261108/readback/diagnostics/reset_critic_warm100/policy/td3.zip": "3de3dd202cbe44439349ecb197e8d3389a8d718613aebac05ad2b3a51b6cd094",
+    "/Users/antik/Desktop/meta-sg/outputs/ipm_lmp_adaptation_repair_20261108/readback/diagnostics/actor_delay10/formal/ipm_5/policy/round_metrics.csv": "7f95cda28a00dabe991433a5a3bb391da4741df3c99a61658bd0607e9d567276",
+    "/Users/antik/Desktop/meta-sg/outputs/ipm_lmp_adaptation_repair_20261108/readback/diagnostics/actor_delay10/policy/td3.zip": "847e4daa90b06b39422b64583716b9b665c820a1f11b5a7646b3f4eb5f90c1cf"
+  }
+}

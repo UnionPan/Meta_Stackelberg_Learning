@@ -1,0 +1,85 @@
+{
+  "passed": true,
+  "source_protocols": {
+    "/Users/antik/Desktop/meta-sg/outputs/histogram_meta_shared_20261025/readback_20261031/formal/training/compact8/meta/protocol.json": "8684eee9a48ff193a7c7f698db1b16b45fa4e71f845ef9baf2ed583be2129e0f",
+    "/Users/antik/Desktop/meta-sg/outputs/histogram_meta_shared_20261025/readback_20261031/formal/training/compact8/joint/protocol.json": "ae0ffc4d4f3871ae3a69fb7384e1a995135adee7043c0773d1be51d3569eebf1",
+    "/Users/antik/Desktop/meta-sg/outputs/histogram_meta_shared_20261025/readback_20261031/formal/training/histogram40/meta/protocol.json": "67a3c06eef5240e0fcd064bbc84521a8861822f4d5aea33dfcd862118f4cc24b",
+    "/Users/antik/Desktop/meta-sg/outputs/histogram_meta_shared_20261025/readback_20261031/formal/training/histogram40/joint/protocol.json": "317d97a4e313e13e31ed6fd7be5a16d3b6f132f7c64cbc81e0a1592efbfa1ced"
+  },
+  "implementation_files": {
+    "/Users/antik/Desktop/meta-sg/scripts/run_paper_stackelberg_td3.py": "392fb3e6c3065e9dd53ee8046719c48d62083620a2e3ca3def6ce0c09b1339ae",
+    "/Users/antik/Desktop/meta-sg/src/meta_sg/rl/reptile_td3.py": "d30165bffca99345a3852eb75486640a4e8d56ef6ef08e00275765f4d13204a6",
+    "/Users/antik/Desktop/meta-sg/scripts/run_shared_representation_adaptation.py": "fe0c8a066f81651f37406fb5114207d91b67c1a5d4a29c46b95215e826dd5f9a",
+    "/Users/antik/Desktop/meta-sg/scripts/run_existing_meta_budget_midcompute.py": "17244eb6498710b2e199b4680a6f931512054f9aa025dc4f44fc490d15087c92",
+    "/Users/antik/Desktop/meta-sg/scripts/run_mixed_attack_training.py": "989d1d5ebce00d75265773c3fc2f1ee146bd921ee522c99ed5e5ab2c90e5a179",
+    "/Users/antik/Desktop/meta-sg/scripts/run_distribution_observation_ablation.py": "3f37148131ad5499f0d88ee7e9426fba9264f758c532d1c52334fb6fe207db2a",
+    "/Users/antik/Desktop/meta-sg/src/meta_sg/experiments/attack_combinations.py": "3097da7d6022bd375ee0824090a6d1721a5fb7f5a1cf40bd79874dafbf5917f3"
+  },
+  "meta_outer_iterations": 10,
+  "tasks": [
+    "rl",
+    "brl"
+  ],
+  "tasks_per_iteration": 2,
+  "episodes_per_task": 5,
+  "episodes_per_outer": 10,
+  "maximum_fl_rounds_per_outer": 5000,
+  "defender_inner_critic_per_outer": 4,
+  "defender_post_critic_per_outer": 40,
+  "defender_local_actor_per_outer": 2,
+  "defender_outer_actor_per_outer": 1,
+  "follower_critic_per_outer": 4,
+  "follower_actor_per_outer": 2,
+  "adaptation_budgets": [
+    [
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      5,
+      50,
+      25,
+      25
+    ],
+    [
+      20,
+      10,
+      5,
+      5
+    ],
+    [
+      20,
+      50,
+      25,
+      25
+    ],
+    [
+      20,
+      100,
+      50,
+      50
+    ]
+  ],
+  "deleted_duplicate_section": "12 (already retained under 8.4)",
+  "fixed_rule_columns_removed": 1,
+  "archived_weak_bfl": true,
+  "new_training": 0,
+  "new_evaluation": 0,
+  "before_sha256": "ee55407e30cd2746c6f9dd4a8317b331e52c4a492fe8b3bcb1809b7828b87626",
+  "after_sha256": "040ccd408d887cdc4cec20234009ee38f3d68f832f6d90f86495bbf300c93841",
+  "retained_meta_result_rows": 34,
+  "retained_meta_deployment_results": 132,
+  "checked_local_links": 40,
+  "missing_local_links": [],
+  "unique_numbered_headings": 53,
+  "preserved_pending_checkboxes": 7,
+  "single_attack_figures_refreshed_without_fixed": 3,
+  "documentation_review_date": "2026-11-08",
+  "unchanged_historical_numeric_rows": {
+    "## 7.": 12,
+    "## 8.": 39,
+    "## 9.": 16
+  }
+}

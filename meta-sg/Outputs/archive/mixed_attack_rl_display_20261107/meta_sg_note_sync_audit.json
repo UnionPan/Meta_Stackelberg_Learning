@@ -1,0 +1,12 @@
+{
+  "passed": true,
+  "source": "/Users/antik/Documents/Obsidian Vault/整理.md",
+  "target": "/Users/antik/Documents/Obsidian Vault/Meta-SG.md",
+  "section": "8.4",
+  "source_section_sha256": "cbb9c77bec8d17c49c5a60ff614133cf98f9a2d952c48fc600b87b6faf155da8",
+  "target_sha256": "aa8263dff01f2b6854c33b4a48f02cf49a67614191c3d79cbd813f4b9a7f4ad3",
+  "existing_target_content_preserved": true,
+  "links_checked": 14,
+  "fixed_excluded": true,
+  "new_training": 0
+}

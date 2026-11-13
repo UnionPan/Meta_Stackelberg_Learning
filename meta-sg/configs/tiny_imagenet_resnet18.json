@@ -1,0 +1,18 @@
+{
+  "dataset": {
+    "name": "tiny_imagenet", "data_root": "../data",
+    "options": {"train_per_class": 500, "val_per_class": 50, "seed": 42, "normalization": "tiny", "augment": true}
+  },
+  "model": {"name": "resnet18"},
+  "partition": {"method": "iid", "alpha": 0.5, "root_samples_per_class": 2},
+  "federation": {"num_clients": 100, "clients_per_round": 10},
+  "training": {
+    "rounds": 5, "local_steps": 1, "root_steps": 5, "batch_size": 128,
+    "local_epochs": null, "learning_rate": 0.05, "learning_rate_decay": 1.0,
+    "momentum": 0.0, "weight_decay": 0.0, "seed": 43, "device": "cuda", "num_workers": 0
+  },
+  "defense": {"name": "fedavg", "parameters": {}},
+  "attack": {"name": "none", "malicious_clients": [], "start_round": 3, "parameters": {}},
+  "evaluation": {"batch_size": 256},
+  "output": {"directory": "outputs/tiny_imagenet_resnet18", "checkpoint_interval": 50}
+}

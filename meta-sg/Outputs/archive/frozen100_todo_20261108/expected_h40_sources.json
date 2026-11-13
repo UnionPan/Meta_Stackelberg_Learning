@@ -1,0 +1,22 @@
+{
+  "ipm_5": {
+    "policy_sha256": "317af862bd16d00b317dc65cc79a32d3041031449862c5c3ea6eb7514cd0c6bc",
+    "manifest_sha256": "5319fe383fb188503c71ea44b1841e7ef2cbc638f652755973af590a94c26c3b",
+    "transform_sha256": "d2999a2092e744e476a218c28b2898aed01d5e83155576573f7a4b71e7435851"
+  },
+  "lmp_krum": {
+    "policy_sha256": "e7328254bdf18abec5537081a4cfc00cb29fb02a2cdb93e9d0a4da2d77dea78f",
+    "manifest_sha256": "86d414494b5e2c842cad69fc6ac549aca690140ac5d7bfd9b95a7eabaf02d38e",
+    "transform_sha256": "24c9b4d3da85791dd54d5ad9349d4ec4ca7d50d8df8de9ecb099fdd22316cad2"
+  },
+  "dba_simultaneous": {
+    "policy_sha256": "ab9606a20f31f85cb0c16b6570ae1a70c2ca64eefd5f796270fe60d3aa2f97ba",
+    "manifest_sha256": "56bcb41d2df835842d21de8b0854ed087e7f1205c1e6218ffb95b2e6f74632e1",
+    "transform_sha256": "fc273df283c4447d6f5e08e9f272fc3c307d69e5de2b4a8031cfffb4466c5891"
+  },
+  "bfl": {
+    "policy_sha256": "d1176bfce37103111fb9051039697d611452fb8493c4dc907ac1c3206710455e",
+    "manifest_sha256": "2c3b68cf5ce97d75c2b229c8faa69137ffee4d307c432c5340d9ebe11180f78b",
+    "transform_sha256": "a936923b1143de9d0c667417046a9dbc4f1bc8de08e841c1f2b414e71b19cf6a"
+  }
+}

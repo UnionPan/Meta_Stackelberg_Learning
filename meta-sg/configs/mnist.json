@@ -1,0 +1,15 @@
+{
+  "dataset": {"name": "mnist", "data_root": "../data", "options": {"download": false}},
+  "model": {"name": "cnn"},
+  "partition": {"method": "iid", "alpha": 0.5, "root_samples_per_class": 20},
+  "federation": {"num_clients": 100, "clients_per_round": 10},
+  "training": {
+    "rounds": 5, "local_steps": 1, "root_steps": 5, "batch_size": 128,
+    "local_epochs": null, "learning_rate": 0.05, "learning_rate_decay": 1.0,
+    "momentum": 0.0, "weight_decay": 0.0, "seed": 42, "device": "cuda", "num_workers": 0
+  },
+  "defense": {"name": "fedavg", "parameters": {}},
+  "attack": {"name": "none", "malicious_clients": [], "start_round": 3, "parameters": {}},
+  "evaluation": {"batch_size": 256},
+  "output": {"directory": "outputs/mnist", "checkpoint_interval": 50}
+}

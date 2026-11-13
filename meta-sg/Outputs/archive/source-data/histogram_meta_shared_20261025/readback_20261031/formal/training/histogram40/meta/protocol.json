@@ -1,0 +1,96 @@
+{
+  "name": "paper_first_order_MetaSG_TD3_project_interface",
+  "budgets": {
+    "source": "/media/antik/T7/meta-sg-postfit-20260920/histogram_meta_shared_20261025/formal/assets/histogram40",
+    "output": "/media/antik/T7/meta-sg-postfit-20260920/histogram_meta_shared_20261025/formal/training/histogram40/meta",
+    "resume_from": null,
+    "meta_only": true,
+    "iterations": 10,
+    "horizon": 500,
+    "tasks_per_iteration": 2,
+    "inner_steps": 2,
+    "response_steps": 2,
+    "post_critic_steps": 20,
+    "adapt_blocks": 1,
+    "adapt_horizon": 4,
+    "adapt_steps": 2,
+    "query_horizon": 4,
+    "evaluation_tasks": [
+      "ipm_5",
+      "lmp_krum",
+      "dba_simultaneous",
+      "bfl",
+      "clean"
+    ]
+  },
+  "td3": {
+    "learning_rate": 0.001,
+    "batch_size": 256,
+    "gamma": 0.99,
+    "tau": 0.005,
+    "policy_delay": 2,
+    "exploration_noise": 0.15,
+    "target_policy_noise": 0.2,
+    "target_noise_clip": 0.5,
+    "buffer_size": 100000,
+    "seed": 42
+  },
+  "sequence": [
+    "fresh defender adaptation",
+    "persistent attacker TD3 response with defender frozen",
+    "fresh post-response replay and critic fitting with actor frozen",
+    "actor gradient at adapted parameters",
+    "average loss gradients; outer SGD rate 1"
+  ],
+  "actor": "40-64-64-3 ReLU/tanh; defender project risk/mix/strength; NeuroClip off",
+  "attacker": "RL and BRL action decoders ported from public upstream commit 97292dc97197bedd9535d84c91600baba7f9fb57",
+  "attacker_data": "owned training partitions excluding root; source-to-target BRL trigger; no test data",
+  "attacker_feedback": "RL negative owned clean accuracy; BRL owned triggered target accuracy minus owned clean accuracy",
+  "defender_feedback": "Original relative root/risk reward",
+  "differences": [
+    "own observation, action and actor as requested",
+    "own root/risk feedback, not paper inversion/generated-data reward",
+    "actual training-data FL simulator, not paper GAN approximate world model",
+    "TD3 post-response critic-only fitting operational choice; fresh replay for outer gradient",
+    "average task critics for meta critic initialization; sync targets; task optimizers reset",
+    "attacker uses previous compact8 observation and project 64/64 actor",
+    "BRL clients share the sampled malicious update; own source-label trigger setup",
+    "Explicit numerical terminals and registered feedback ablation; not original reward protocol"
+  ],
+  "training_tasks": [
+    "rl",
+    "brl"
+  ],
+  "evaluation_tasks": [
+    "ipm_5",
+    "lmp_krum",
+    "dba_simultaneous",
+    "bfl",
+    "clean"
+  ],
+  "task_sampling": "without replacement when K=2; otherwise uniform with replacement",
+  "seed": 42,
+  "query_stream": 303,
+  "query_window": [
+    1,
+    4
+  ],
+  "online_schedule": "fresh episode per block, then TD3 steps; separate frozen query; no checkpoint selection by test",
+  "paper_full_budget": false,
+  "outcome": {
+    "reward": "relative",
+    "gamma": 0.99,
+    "absorbing_reward": -1.0
+  },
+  "critic_transform": "asinh",
+  "critic_transform_scope": "Critics only; actors receive the configured observation; follower stays raw Compact8",
+  "numerical_terminal": "Measured finite prefix; discounted remaining absorbing utility folded into last learning reward",
+  "sample_budget": "Maximum H physical rounds per rollout. No refill. Report completed rounds and failure attempts separately.",
+  "attacker_failure_utility": "Zero future utility; measured reward unchanged; no asserted backdoor success",
+  "numerical_terminal_extension": {
+    "stage": "raw_cnbz_features_nonfinite",
+    "semantics": "Same measured-prefix absorbing cost; finite features unchanged",
+    "source": "scripts/outcome_feature_terminal.py",
+    "compatibility": "Successful robust encoder already requires finite raw features"
+  }
+}

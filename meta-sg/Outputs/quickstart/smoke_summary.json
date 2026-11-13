@@ -1,0 +1,44 @@
+{
+  "purpose": "single-seed integration demo, not a performance benchmark",
+  "smoke": true,
+  "seed": 42,
+  "device": "cuda",
+  "python": "3.11.15",
+  "torch": "2.13.0+cu130",
+  "gpu": "NVIDIA GeForce RTX 3090",
+  "wall_seconds": 3.991455681854859,
+  "calibration_fl_rounds": 2,
+  "meta": {
+    "iteration": 1,
+    "episodes": 6,
+    "fl_rounds": 12,
+    "actor_delta_norm": 0.028162548318505287
+  },
+  "evaluation_fl_rounds": 2,
+  "evaluation_attack": {
+    "name": "ipm",
+    "malicious_clients": [
+      0
+    ],
+    "start_round": 2,
+    "parameters": {
+      "scaling_factor": 5.0
+    }
+  },
+  "initial_test_accuracy_percent": 7.39,
+  "final_test_accuracy_percent": 15.55,
+  "final_test_loss": 2.280726171875,
+  "observation_dimensions": 40,
+  "follower_observation_dimensions": 8,
+  "histogram_standardized": false,
+  "defender_hidden_units": [
+    16,
+    16
+  ],
+  "checks": {
+    "all_stages_complete": true,
+    "checkpoints_present": true,
+    "outer_actor_changed": true,
+    "finite_evaluation_metrics": true
+  }
+}

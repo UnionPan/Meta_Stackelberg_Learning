@@ -1,0 +1,8 @@
+{
+  "phase": "complete",
+  "iteration": 1,
+  "episodes": 10,
+  "fl_rounds": 30,
+  "target_iterations": 1,
+  "actor_delta_norm": 0.03794225677847862
+}

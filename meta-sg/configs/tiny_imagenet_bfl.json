@@ -1,0 +1,25 @@
+{
+  "dataset": {
+    "name": "tiny_imagenet", "data_root": "../data",
+    "options": {"train_per_class": 500, "val_per_class": 50, "seed": 42, "normalization": "tiny", "augment": true}
+  },
+  "model": {"name": "resnet18"},
+  "partition": {"method": "iid", "alpha": 0.5, "root_samples_per_class": 2},
+  "federation": {"num_clients": 100, "clients_per_round": 10},
+  "training": {
+    "rounds": 200, "local_steps": null, "local_epochs": 5, "root_steps": 5, "batch_size": 100,
+    "learning_rate": 0.1, "learning_rate_decay": 0.998, "momentum": 0.0, "weight_decay": 0.001,
+    "seed": 43, "device": "cuda", "num_workers": 0
+  },
+  "defense": {"name": "fedavg", "parameters": {}},
+  "attack": {
+    "name": "bfl", "malicious_clients": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
+    "start_round": 101,
+    "parameters": {
+      "source_label": null, "target_label": 9, "poison_fraction": 0.3125, "poison_selection": "first",
+      "model_replacement_scale": 10.0, "scale_by_malicious_count": true
+    }
+  },
+  "evaluation": {"batch_size": 256},
+  "output": {"directory": "outputs/tiny_imagenet_bfl", "checkpoint_interval": 50}
+}

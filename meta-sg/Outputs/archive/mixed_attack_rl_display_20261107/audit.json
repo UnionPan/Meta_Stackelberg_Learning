@@ -1,0 +1,173 @@
+{
+  "passed": true,
+  "source_rows": 35,
+  "displayed_rows": 30,
+  "displayed_complete_500": 28,
+  "displayed_methods": [
+    "fltrust",
+    "median",
+    "trimmed_mean",
+    "krum",
+    "pooled_single",
+    "concurrent_mixed"
+  ],
+  "excluded_from_display": [
+    "positive"
+  ],
+  "source_hashes": {
+    "/Users/antik/Desktop/meta-sg/outputs/mixed_attack_training_20261018/traditional_panel_20261024/metrics/ipm_lmp/pooled_single.csv": "a33b77bf532582eb2c478c976821e50628a4d91ced77c0e789d201b150fa4c7a",
+    "/Users/antik/Desktop/meta-sg/outputs/mixed_attack_training_20261018/traditional_panel_20261024/metrics/ipm_lmp/concurrent_mixed.csv": "1fcd862b168b856a7c11ca59ac9fe9f3e52ca07c243562441cff61328472606d",
+    "/Users/antik/Desktop/meta-sg/outputs/mixed_attack_training_20261018/traditional_panel_20261024/metrics/ipm_dba/pooled_single.csv": "41db050f15deff0b487f5208d851198e4be4732e93a4f49f5a63a2b7e6a823c3",
+    "/Users/antik/Desktop/meta-sg/outputs/mixed_attack_training_20261018/traditional_panel_20261024/metrics/ipm_dba/concurrent_mixed.csv": "4483e9cae40af7816869b4e63b1a79019f3133cecc9fee62a3820f555a9bd298",
+    "/Users/antik/Desktop/meta-sg/outputs/mixed_attack_training_20261018/traditional_panel_20261024/metrics/lmp_dba/pooled_single.csv": "d5f38c9eb26c29d376a0a00233e341d2a89d7a1c558753a8fa0eda697dbe756f",
+    "/Users/antik/Desktop/meta-sg/outputs/mixed_attack_training_20261018/traditional_panel_20261024/metrics/lmp_dba/concurrent_mixed.csv": "15635d9481159941e98ed4d2dbcb69710139efc9717661b478f9b4b97dcadf32",
+    "/Users/antik/Desktop/meta-sg/outputs/mixed_attack_training_20261018/traditional_panel_20261024/metrics/dba_bfl/pooled_single.csv": "de6e86e5b328ab7da3293564ed1313c7c18eb2f7b2569e89acc12e4948ef9af4",
+    "/Users/antik/Desktop/meta-sg/outputs/mixed_attack_training_20261018/traditional_panel_20261024/metrics/dba_bfl/concurrent_mixed.csv": "236249034d01477ee04e921719baa8ed8ec0488bf345cea431cafd198cdbfd09",
+    "/Users/antik/Desktop/meta-sg/outputs/mixed_attack_training_20261018/traditional_panel_20261024/metrics/clean/pooled_single.csv": "f1577c74e6811bf45cd6c30bc8b603cf3f6387309d1f8d768f95a9a9d2cac29b",
+    "/Users/antik/Desktop/meta-sg/outputs/mixed_attack_training_20261018/traditional_panel_20261024/metrics/clean/concurrent_mixed.csv": "46606142a0b1db29f51acb14c1652fb3070bb50b44e9dd77bdcad4d61ba5379b",
+    "/Users/antik/Desktop/meta-sg/outputs/mixed_attack_training_20261018/traditional_panel_20261024/metrics/ipm_lmp/fltrust.csv": "7483897c7189527fb485ba4936f2440c0ff363eb3830d7f7a59460643d413063",
+    "/Users/antik/Desktop/meta-sg/outputs/mixed_attack_training_20261018/traditional_panel_20261024/metrics/ipm_lmp/median.csv": "9ba43ea64e57636ee3c39afbcf574c79ed2f3efb041d38ed18ee800529c2ec5b",
+    "/Users/antik/Desktop/meta-sg/outputs/mixed_attack_training_20261018/traditional_panel_20261024/metrics/ipm_lmp/trimmed_mean.csv": "79ee5dc0f3ff95b68c8517bfe9eb6e6e76c2997e112ac508432d5edda0a1614a",
+    "/Users/antik/Desktop/meta-sg/outputs/mixed_attack_training_20261018/traditional_panel_20261024/metrics/ipm_lmp/krum.csv": "df14ab4842474f1f8c9752320824bbd8e1b1f5c2e46c005b58fecc8baf87846a",
+    "/Users/antik/Desktop/meta-sg/outputs/mixed_attack_training_20261018/traditional_panel_20261024/metrics/lmp_dba/median.csv": "027632cd86ec5042f876c249c9ad7497fca760e5e492a78e878c9e389e60dd07",
+    "/Users/antik/Desktop/meta-sg/outputs/mixed_attack_training_20261018/traditional_panel_20261024/metrics/lmp_dba/fltrust.csv": "3c23196c176e5a46bdc8ba27962564d9b37b3404e0662f2a6761815ff4faa19f",
+    "/Users/antik/Desktop/meta-sg/outputs/mixed_attack_training_20261018/traditional_panel_20261024/metrics/lmp_dba/krum.csv": "a7842a56ccb6b43f0c7556c35359b9d84458607f5713d602a509d546ee8f7a2d",
+    "/Users/antik/Desktop/meta-sg/outputs/mixed_attack_training_20261018/traditional_panel_20261024/metrics/lmp_dba/trimmed_mean.csv": "08eb6e421a8f924f630717bbb9ef9877fdecdc77587a8f60b49d6b7decb67fa5",
+    "/Users/antik/Desktop/meta-sg/outputs/mixed_attack_training_20261018/traditional_panel_20261024/metrics/dba_bfl/fltrust.csv": "633d68be611e8e03c67a5534beecd6f98e27b75bfa6ff5d47e647f34be4b3ea2",
+    "/Users/antik/Desktop/meta-sg/outputs/mixed_attack_training_20261018/traditional_panel_20261024/metrics/dba_bfl/median.csv": "f87a2a7dc1c80e1696a8cc91bea53945a88f71e292a5acf8a86b8ac56a2f0ca7",
+    "/Users/antik/Desktop/meta-sg/outputs/mixed_attack_training_20261018/traditional_panel_20261024/metrics/dba_bfl/trimmed_mean.csv": "29bafa57c3d410b87b2b446ce951b6aef078b2cf3808b773d6d879e10cfdf8f5",
+    "/Users/antik/Desktop/meta-sg/outputs/mixed_attack_training_20261018/traditional_panel_20261024/metrics/dba_bfl/krum.csv": "a35a237f9f875e30d027047ece2486a987220cd1f4916e6a95d713021c02780f",
+    "/Users/antik/Desktop/meta-sg/outputs/mixed_attack_training_20261018/traditional_panel_20261024/metrics/ipm_dba/median.csv": "d6686f9acbecbf502c8c44adfe41288ea1d4cce897667f2123ea5ce5108951c8",
+    "/Users/antik/Desktop/meta-sg/outputs/mixed_attack_training_20261018/traditional_panel_20261024/metrics/ipm_dba/fltrust.csv": "02f423e2c77f1dbe12d68fc0f685edd2c4e4fccd45dd7d564d2ed16de2d1f116",
+    "/Users/antik/Desktop/meta-sg/outputs/mixed_attack_training_20261018/traditional_panel_20261024/metrics/ipm_dba/trimmed_mean.csv": "06814eb0d9605f8665c8f5e7be4362f11d7c0f9c247e232e090fd3dbfb688862",
+    "/Users/antik/Desktop/meta-sg/outputs/mixed_attack_training_20261018/traditional_panel_20261024/metrics/ipm_dba/krum.csv": "3dbe699c837dfe713a4e3cc30f427ebbff9ac5e440744c38d4f3323f558ec581",
+    "/Users/antik/Desktop/meta-sg/outputs/mixed_attack_training_20261018/traditional_panel_20261024/metrics/clean/median.csv": "6cc2b472b1e8029e191b63ad471378adde9e719d15966bbc61ad250eb34ddc65",
+    "/Users/antik/Desktop/meta-sg/outputs/mixed_attack_training_20261018/traditional_panel_20261024/metrics/clean/fltrust.csv": "31d1849e6f033fa5772769f4c21fd1d6d11c1e7f9a6350907105c86c58d971ba",
+    "/Users/antik/Desktop/meta-sg/outputs/mixed_attack_training_20261018/traditional_panel_20261024/metrics/clean/trimmed_mean.csv": "b5da9c6af1be8c76a949249f21e485b4d7155784759685d65f89e8120f311f1c",
+    "/Users/antik/Desktop/meta-sg/outputs/mixed_attack_training_20261018/traditional_panel_20261024/metrics/clean/krum.csv": "26e1f8fc9f06285e11cd8fa7a2593edf6e29d8be264795193a6b2bb48df802b8"
+  },
+  "input_table_sha256": "8342b35778927c8ca0c8c5245cf50a8957cec48733cb0ae07ffff94d65b04872",
+  "window": [
+    491,
+    500
+  ],
+  "theme": "comparison_rl_only_v5",
+  "style_version": "meta-sg-muted-v1",
+  "font_family": "DejaVu Sans",
+  "metric_cells": 66,
+  "drawn_bars": 62,
+  "curve_rankings": {
+    "ipm_dba": {
+      "acc": [
+        [
+          "RL-A",
+          69.98700000000001
+        ],
+        [
+          "RL-B",
+          69.31800000000001
+        ],
+        [
+          "FLTrust",
+          69.099
+        ]
+      ],
+      "asr": [
+        [
+          "RL-B",
+          2.95
+        ],
+        [
+          "RL-A",
+          3.2699999999999996
+        ],
+        [
+          "Krum",
+          3.5800000000000005
+        ]
+      ]
+    },
+    "lmp_dba": {
+      "acc": [
+        [
+          "RL-A",
+          69.425
+        ],
+        [
+          "FLTrust",
+          69.173
+        ],
+        [
+          "TrimMean",
+          68.95800000000001
+        ]
+      ],
+      "asr": [
+        [
+          "RL-A",
+          3.12
+        ],
+        [
+          "RL-B",
+          3.1700000000000004
+        ],
+        [
+          "Median",
+          84.64
+        ]
+      ]
+    },
+    "dba_bfl": {
+      "acc": [
+        [
+          "Median",
+          71.438
+        ],
+        [
+          "TrimMean",
+          71.28299999999999
+        ],
+        [
+          "RL-A",
+          69.545
+        ]
+      ],
+      "asr": [
+        [
+          "RL-B",
+          3.0100000000000002
+        ],
+        [
+          "RL-A",
+          3.3600000000000003
+        ],
+        [
+          "Krum",
+          4.37
+        ]
+      ]
+    }
+  },
+  "png_visual_review_passed": true,
+  "new_training": 0,
+  "new_evaluation": 0,
+  "note_sha256": "e605ce0a2ec77414b97b3acb795b79d04ef9343cf3b8c540775fa15ec58403aa",
+  "original_prefix_preserved": true,
+  "figure_sha256": {
+    "mixed_joint_asr_bars_v1.pdf": "37c543dfe31c7c397e3564288454ce2737ec7cb8d653dc8259e70fef7dc86004",
+    "mixed_joint_acc_bars_v1.svg": "e4bbd3dec4ff095fc9fd0ad8a049cf3c1650a10600b7d5a345eec560b515d72b",
+    "mixed_joint_asr_bars_v1.png": "9b0d22d4a92767a0c86695ecd8f8cba467aba701d916bf70e88fcc287372e2a7",
+    "mixed_joint_acc_bars_v1.pdf": "45ba295cb2359c6f55380e25c69f7751ee8b3894292e603f7dd4bb1cc75f34c0",
+    "mixed_joint_asr_bars_v1.svg": "629162ca4e5d7aa0dcbd9fa73914fd9982787715a54f36bc1ce39eec2c3849ad",
+    "mixed_joint_acc_bars_v1.png": "be5dcdf19031f70bc8386a661f4f9f87fda0e0faff0732dc3739889af92df82b",
+    "mixed_joint_value_bars_v1.pdf": "b27ac2da85102fdf72d2704b6ff6da133ead8b71b0c4aa19d05fa9e689048163",
+    "mixed_joint_value_bars_v1.png": "a7c8f1ad4e1223858b709df0f447998d8febf3c33cc289745a51a28d5dc30d2d",
+    "mixed_joint_fl_curves_v2.svg": "e7e9fadd54b5f55866b3acfb097a3a22f1eba8ca83840ee91b8e3bd230c37f21",
+    "mixed_joint_fl_curves_v2.png": "39432a5e9842675d4778e8786e2d909dc12cf4ade4cd275268736c7ef62a9a9d",
+    "mixed_joint_fl_curves_v2.pdf": "f54176f632917237baf2e2ba24bb0023c4c71b4875318d7356db97660a82aa1f",
+    "mixed_joint_value_bars_v1.svg": "7a10b9f40b292777074de9184a4755e93fbfbd494e2297434c1918bf6b556e18"
+  },
+  "all_new_links_verified": 14,
+  "source_prefix_unchanged": true,
+  "script_sha256": "e430bcde2e379fadcd13559ed3cce45c71cf7c6dc9362063ad90b4cb33b4b08d"
+}

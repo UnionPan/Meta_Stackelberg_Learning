@@ -1,0 +1,60 @@
+{
+  "branch": "independent_online_joint_TD3",
+  "budgets": {
+    "source": "/media/antik/T7/meta-sg-postfit-20260920/histogram_meta_shared_20261025/formal/assets/histogram40",
+    "output": "/media/antik/T7/meta-sg-postfit-20260920/histogram_meta_shared_20261025/formal/training/histogram40/joint",
+    "resume_from": null,
+    "iterations": 10,
+    "horizon": 500,
+    "inner_steps": 2,
+    "response_steps": 2,
+    "post_critic_steps": 20
+  },
+  "td3": {
+    "learning_rate": 0.001,
+    "batch_size": 256,
+    "gamma": 0.99,
+    "tau": 0.005,
+    "policy_delay": 2,
+    "exploration_noise": 0.15,
+    "target_policy_noise": 0.2,
+    "target_noise_clip": 0.5,
+    "buffer_size": 100000,
+    "seed": 42
+  },
+  "training_tasks": [
+    "rl",
+    "brl"
+  ],
+  "tasks_per_iteration": 2,
+  "actor": "40-64-64-3 ReLU/tanh; risk/mix/strength; NeuroClip off",
+  "defender_feedback": "Original relative root/risk reward",
+  "sequence": [
+    "persistent defender inner TD3",
+    "persistent follower response with defender frozen",
+    "fresh post-response trajectory added to persistent defender replay; critic-only fitting"
+  ],
+  "control": "Independent online joint TD3 with persistent optimizer/replay; no meta outer updates",
+  "budget": "Same maximum H and episode count; no refill. Actual attempts/samples reported separately.",
+  "replay": "persistent mixture across own task rollouts; bounded replay as in TD3",
+  "feedback": "same deployment-visible defender feedback; attacker uses owned training data only",
+  "limitation": "Endogenous followers and states may differ because the defender learns differently",
+  "test_labels_used_for_learning": false,
+  "deployment_started": false,
+  "seed": 42,
+  "outcome": {
+    "reward": "relative",
+    "gamma": 0.99,
+    "absorbing_reward": -1.0
+  },
+  "critic_transform": "asinh",
+  "critic_transform_scope": "Critics/targets only; actors receive the configured observation; follower stays raw Compact8",
+  "numerical_terminal": "Measured finite prefix with the declared discounted absorbing tail",
+  "original_reward_unchanged": false,
+  "numerical_terminal_extension": {
+    "stage": "raw_cnbz_features_nonfinite",
+    "semantics": "Same measured-prefix absorbing cost; finite features unchanged",
+    "source": "scripts/outcome_feature_terminal.py",
+    "compatibility": "Successful robust encoder already requires finite raw features"
+  }
+}

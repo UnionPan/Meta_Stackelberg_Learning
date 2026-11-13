@@ -1,0 +1,62 @@
+{
+  "passed": true,
+  "complete_trajectories": 16,
+  "required_h40_start3": 4,
+  "required_start1_both_representations": 8,
+  "extra_matched_compact8_start3": 4,
+  "actual_formal_fl_rounds": 8000,
+  "window": [
+    498,
+    500
+  ],
+  "single_seed": 43,
+  "continuous_rounds": true,
+  "metrics_finite": true,
+  "raw_means_recomputed": true,
+  "initialization_matches_across_all_16": true,
+  "source_files_sha256_verified": 244,
+  "within_variant_start1_vs_start3_only_attack_start_changed": true,
+  "observation_widths": [
+    8,
+    40
+  ],
+  "frozen_actor_parameters": true,
+  "checkpoint_rounds": [
+    50,
+    100,
+    150,
+    200,
+    250,
+    300,
+    350,
+    400,
+    450,
+    500
+  ],
+  "action_range_verified": true,
+  "neuroclip_disabled": true,
+  "h40_frozen_normalization_inverted": true,
+  "h40_each_channel_histogram_sums_to_one": true,
+  "h40_bin_frequencies_are_multiples_of_one_tenth": true,
+  "new_policy_training_steps": 0,
+  "adaptation_steps": 0,
+  "total_extra_attempts": 0,
+  "metrics_sha256": {
+    "section11_1/formal/histogram40/ipm_5/rl__ipm_5/round_metrics.csv": "b56b696b815bc5f2044d86d341bad310191008534a0f570793443fc42168acc0",
+    "section11_1/formal/histogram40/lmp_krum/rl__lmp_krum/round_metrics.csv": "a80ea90b40cc8c353390cfaa7195dc34b665b384a291b66fd54c6b7b402c1a62",
+    "section11_1/formal/histogram40/dba_simultaneous/rl__dba_simultaneous/round_metrics.csv": "d0c666a3466f6ba3ef587e6cb21afcd59f78bd73dcd2b556e8ecebabf5a184d6",
+    "section11_1/formal/histogram40/bfl/rl__bfl/round_metrics.csv": "d4c591449743a50034b92e9648c4421f393fccad81763d052ce51759940b2dde",
+    "section11_1/formal/compact8/ipm_5/rl__ipm_5/round_metrics.csv": "2d8fb86de85c761e52bb73a95ac5e504e807423f5986c7066e6c4e3f75629cae",
+    "section11_1/formal/compact8/lmp_krum/rl__lmp_krum/round_metrics.csv": "d5f27639ca0660a4ddb43c5ec6471192f2ee35bb0c30e41d883fe8a36a82e7be",
+    "section11_1/formal/compact8/dba_simultaneous/rl__dba_simultaneous/round_metrics.csv": "c0fbc8d5e49031c13bb537a374a7ee7052f1e1d927556e57d51979021acaa3be",
+    "section11_1/formal/compact8/bfl/rl__bfl/round_metrics.csv": "19636438a6c7c0958721fc0c7f2607a6182eb4f702658ff191990a0709d024b3",
+    "section11_2/formal/compact8/ipm_5/rl__ipm_5/round_metrics.csv": "d758925517032938f1699fb610e168d1b689edecafce4d3c136054da0e7fc165",
+    "section11_2/formal/compact8/lmp_krum/rl__lmp_krum/round_metrics.csv": "dd97a9d2ea61033e759cdbc254101eed908cccc0214351ff7a5997e9f69d6111",
+    "section11_2/formal/compact8/dba_simultaneous/rl__dba_simultaneous/round_metrics.csv": "b57eeb9ec845456516a9c4f8e4203646af6971393c6eb6ebcfa4ebfbc1a9b38a",
+    "section11_2/formal/compact8/bfl/rl__bfl/round_metrics.csv": "7599d3dd271380aa81538af75ec7cb4745e0a2c7c024f3c20f7c31fc79f5def9",
+    "section11_2/formal/histogram40/ipm_5/rl__ipm_5/round_metrics.csv": "5e686beadd3022313a2ed7584ee073dc5f4d03127e05aaf56074683ba90ce2e2",
+    "section11_2/formal/histogram40/lmp_krum/rl__lmp_krum/round_metrics.csv": "4dc4e623be5a9d62495b0aaacf1bb940026abc2f11df440f8243fc6e1e4c07e9",
+    "section11_2/formal/histogram40/dba_simultaneous/rl__dba_simultaneous/round_metrics.csv": "a364635bc2c53f80f54220a5191167387b12390224c86ead2aadb63259f93da5",
+    "section11_2/formal/histogram40/bfl/rl__bfl/round_metrics.csv": "6d492030ae26be3c3b9234411ff42c6b9884333b9cdedd1c1f5507df6988e7c4"
+  }
+}

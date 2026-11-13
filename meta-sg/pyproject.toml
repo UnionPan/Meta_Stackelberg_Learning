@@ -1,0 +1,29 @@
+[build-system]
+requires = ['setuptools>=68']
+build-backend = 'setuptools.build_meta'
+
+[project]
+name = 'meta-sg'
+version = '0.1.0'
+description = 'Federated learning and Meta-Stackelberg simulation'
+readme = 'README.md'
+requires-python = '>=3.11,<3.12'
+dependencies = ['numpy', 'torch', 'torchvision']
+
+[project.scripts]
+meta-sg = 'meta_sg.experiments.run:main'
+meta-sg-meta = 'meta_sg.experiments.meta:main'
+
+[project.optional-dependencies]
+rl = ['stable-baselines3>=2.6,<3']
+plots = ['matplotlib>=3.8']
+
+[dependency-groups]
+dev = ['pytest']
+
+[tool.setuptools.packages.find]
+where = ['src']
+
+[tool.pytest.ini_options]
+testpaths = ['tests']
+pythonpath = ['src']

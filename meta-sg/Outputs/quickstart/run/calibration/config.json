@@ -1,0 +1,130 @@
+{
+  "dataset": {
+    "name": "mnist",
+    "data_root": "/home/antik/meta-sg/data",
+    "options": {
+      "download": true
+    }
+  },
+  "model": {
+    "name": "cnn"
+  },
+  "partition": {
+    "method": "iid",
+    "alpha": 0.5,
+    "root_samples_per_class": 10
+  },
+  "federation": {
+    "num_clients": 4,
+    "clients_per_round": 4
+  },
+  "training": {
+    "rounds": 3,
+    "local_steps": 1,
+    "root_steps": 1,
+    "batch_size": 32,
+    "local_epochs": null,
+    "learning_rate": 0.05,
+    "learning_rate_decay": 1.0,
+    "momentum": 0.0,
+    "weight_decay": 0.0,
+    "seed": 42,
+    "device": "cuda",
+    "num_workers": 0
+  },
+  "defense": {
+    "name": "rl",
+    "parameters": {}
+  },
+  "attack": {
+    "name": "none",
+    "malicious_clients": [],
+    "start_round": 3,
+    "parameters": {}
+  },
+  "evaluation": {
+    "batch_size": 256
+  },
+  "output": {
+    "directory": "/home/antik/meta-sg-core-demo-20261112/Outputs/runs/quickstart/calibration",
+    "checkpoint_interval": 3
+  },
+  "rl": {
+    "mode": "fixed",
+    "checkpoint": null,
+    "fixed_action": [
+      1.0,
+      0.0,
+      1.0
+    ],
+    "observation": {
+      "name": "compact8",
+      "parameters": {}
+    },
+    "action": {
+      "name": "mixed_norm",
+      "parameters": {},
+      "controls": [
+        "risk",
+        "mix",
+        "strength"
+      ],
+      "fixed": {}
+    },
+    "reward": {
+      "name": "root_loss_delta",
+      "parameters": {}
+    },
+    "agent": {
+      "learning_rate": 0.001,
+      "buffer_size": 64,
+      "learning_starts": 32,
+      "batch_size": 4,
+      "gamma": 0.99,
+      "tau": 0.005,
+      "policy_delay": 2,
+      "exploration_noise": 0.15,
+      "target_policy_noise": 0.2,
+      "target_noise_clip": 0.5,
+      "hidden_units": [
+        16,
+        16
+      ],
+      "gradient_steps": 1
+    }
+  },
+  "meta": {
+    "tasks": [
+      {
+        "name": "rl",
+        "kind": "model_poisoning",
+        "malicious_clients": [
+          0
+        ],
+        "start_round": 2
+      },
+      {
+        "name": "brl",
+        "kind": "backdoor",
+        "malicious_clients": [
+          0
+        ],
+        "start_round": 2,
+        "parameters": {
+          "source_label": null,
+          "target_label": 2
+        }
+      }
+    ],
+    "iterations": 1,
+    "tasks_per_iteration": 2,
+    "horizon": 3,
+    "inner_steps": 2,
+    "response_steps": 2,
+    "post_critic_steps": 2,
+    "outer_learning_rate": 1.0,
+    "follower_agent": {},
+    "feedback_samples": 32,
+    "checkpoint_interval": 1
+  }
+}

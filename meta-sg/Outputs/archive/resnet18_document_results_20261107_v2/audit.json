@@ -1,0 +1,235 @@
+{
+  "target": "/Users/antik/Documents/Obsidian Vault/Meta-SG.md",
+  "additional_completed_results": 14,
+  "main_unique_attack_method_results": 34,
+  "clean_reference_results": 5,
+  "legacy_bfl_results": 6,
+  "raw_sources": [
+    {
+      "condition": "dba",
+      "acc_pct": 9.473333333333333,
+      "asr_pct": 11.865996649916248,
+      "window": "198–200",
+      "source": "/Users/antik/Desktop/meta-sg/TinyImageNet/baseline_supplement_200/evidence/completed_20261002/outputs_v3/dba/formal/clipmed/result.json",
+      "sha256": "04a8b7db33b31b1378f561003597120c452badda85e78922da77b62bc8ae3b06"
+    },
+    {
+      "condition": "dba",
+      "acc_pct": 31.64,
+      "asr_pct": 90.39865996649917,
+      "window": "198–200",
+      "source": "/Users/antik/Desktop/meta-sg/TinyImageNet/baseline_supplement_200/evidence/completed_20261002/outputs_v3/dba/formal/fedavg/result.json",
+      "sha256": "f1766239c6bd0cc6c2871c63a83b9a8ebc5c06746d3e05c7a2c38a02e2eb9504"
+    },
+    {
+      "condition": "dba",
+      "acc_pct": 27.59666666666667,
+      "asr_pct": 90.40871021775544,
+      "window": "198–200",
+      "source": "/Users/antik/Desktop/meta-sg/TinyImageNet/baseline_supplement_200/evidence/completed_20261002/outputs_v3/dba/formal/fltrust/result.json",
+      "sha256": "02c331495ea38b52e1884ce94969b28ca0ebb8df7c65c29a1984707fc08863df"
+    },
+    {
+      "condition": "dba",
+      "acc_pct": 27.59666666666667,
+      "asr_pct": 90.40871021775544,
+      "window": "198–200",
+      "source": "/Users/antik/Desktop/meta-sg/TinyImageNet/baseline_supplement_200/evidence/completed_20261002/outputs_v3/dba/formal/fltrust_nc/result.json",
+      "sha256": "52100993d8a40fb09e50dae47dfc5a4d59abe7fd87b17cc3e013d6d870b8cbc4"
+    },
+    {
+      "condition": "dba",
+      "acc_pct": 31.373333333333335,
+      "asr_pct": 79.76214405360133,
+      "window": "198–200",
+      "source": "/Users/antik/Desktop/meta-sg/TinyImageNet/baseline_supplement_200/evidence/completed_20261002/outputs_v3/dba/formal/median/result.json",
+      "sha256": "1c79d0856369f69dc226dd946ab861104311c75e26c0eb452c62976182a5d42a"
+    },
+    {
+      "condition": "dba",
+      "acc_pct": 31.21333333333334,
+      "asr_pct": 83.44723618090451,
+      "window": "198–200",
+      "source": "/Users/antik/Desktop/meta-sg/TinyImageNet/baseline_supplement_200/evidence/completed_20261002/outputs_v3/dba/formal/trimmed_mean/result.json",
+      "sha256": "55073e3d71ab1b132830fb993dbedb085916514d01af83c441bd051a6e0b6ce6"
+    },
+    {
+      "condition": "bfl_1",
+      "acc_pct": 32.10333333333333,
+      "asr_pct": 92.99162479061977,
+      "window": "198–200",
+      "source": "/Users/antik/Desktop/meta-sg/TinyImageNet/baseline_supplement_200/evidence/completed_20261002/outputs_v4/bfl_v2/formal/median/result.json",
+      "sha256": "727cd076f3d7971dca8a8805c2d22333fc49b1ab8e3037801e18b9ec99feffc9"
+    },
+    {
+      "condition": "ipm_5",
+      "acc_pct": 4.456666666666667,
+      "asr_pct": null,
+      "window": "198–200",
+      "source": "/Users/antik/Desktop/meta-sg/TinyImageNet/baseline_supplement_200/evidence/completed_20261002/outputs_v4/ipm_5/formal/clipmed/result.json",
+      "sha256": "ce88ff1a9e6a884f07c1a1df9ec6d316a01310a87ac1cdb20cc173809acf88be"
+    },
+    {
+      "condition": "ipm_5",
+      "acc_pct": 0.48333333333333334,
+      "asr_pct": null,
+      "window": "198–200",
+      "source": "/Users/antik/Desktop/meta-sg/TinyImageNet/baseline_supplement_200/evidence/completed_20261002/outputs_v4/ipm_5/formal/fedavg/result.json",
+      "sha256": "66f783ab80cbdbfcf0a94dedb2305b6bf8ea4dbe5bcbba0d4d2ce4823f91f87d"
+    },
+    {
+      "condition": "ipm_5",
+      "acc_pct": 27.169999999999998,
+      "asr_pct": null,
+      "window": "198–200",
+      "source": "/Users/antik/Desktop/meta-sg/TinyImageNet/baseline_supplement_200/evidence/completed_20261002/outputs_v4/ipm_5/formal/fltrust/result.json",
+      "sha256": "e954761a63f328bed59e56df098f0a5f80541e59b9b6e11395f6670cc45b0cc2"
+    },
+    {
+      "condition": "ipm_5",
+      "acc_pct": 27.169999999999998,
+      "asr_pct": null,
+      "window": "198–200",
+      "source": "/Users/antik/Desktop/meta-sg/TinyImageNet/baseline_supplement_200/evidence/completed_20261002/outputs_v4/ipm_5/formal/fltrust_nc/result.json",
+      "sha256": "050fd1039baec5113e20f8a7f17f2f944f445fe497d3475004d1e1800ead14ec"
+    },
+    {
+      "condition": "ipm_5",
+      "acc_pct": 25.46333333333333,
+      "asr_pct": null,
+      "window": "198–200",
+      "source": "/Users/antik/Desktop/meta-sg/TinyImageNet/baseline_supplement_200/evidence/completed_20261002/outputs_v4/ipm_5/formal/median/result.json",
+      "sha256": "7e7eb15fb283fb8c03c8bb367f3b5dec8fd3e7b143117a507eb7c7204aafb6f8"
+    },
+    {
+      "condition": "ipm_5",
+      "acc_pct": 16.259999999999998,
+      "asr_pct": null,
+      "window": "198–200",
+      "source": "/Users/antik/Desktop/meta-sg/TinyImageNet/baseline_supplement_200/evidence/completed_20261002/outputs_v4/ipm_5/formal/trimmed_mean/result.json",
+      "sha256": "713bc9baedf15a8e26f8ec8f107a90b682aaab61c86a6dfed9453259d2b4cd71"
+    },
+    {
+      "condition": "lmp",
+      "acc_pct": 25.39,
+      "asr_pct": null,
+      "window": "198–200",
+      "source": "/Users/antik/Desktop/meta-sg/TinyImageNet/baseline_supplement_200/evidence/completed_20261002/outputs_v4/lmp/formal/median/result.json",
+      "sha256": "7c36e8dda18554a1b867c29e2c3772f149da0a6f1bf9996af93753d446a959bc"
+    }
+  ],
+  "additional_references": [
+    {
+      "condition": "FedAvg，无 root",
+      "acc_pct": 32.38666666666667,
+      "asr_pct": null,
+      "window": "998–1000",
+      "source": "/Users/antik/Desktop/meta-sg/TinyImageNet/fedavg_resnet18_iid100_p10/evidence/outputs/formal/result.json",
+      "sha256": "5a32448b59f4cb1bc958064629058f85f4e8eb0e60f0f5e046c0ee70d1da8147",
+      "root_samples": 0
+    },
+    {
+      "condition": "FedAvg，LMP 配对无攻击",
+      "acc_pct": 32.029999999999994,
+      "asr_pct": null,
+      "window": "198–200",
+      "source": "/Users/antik/Desktop/meta-sg/TinyImageNet/lmp_resnet18_iid100_p10/evidence/outputs/formal/clean_fedavg/result.json",
+      "sha256": "9e16dbc86c8d4f9ad27b4a923a581f08559a87a5646d9f1e2cbb7a42e22256cb",
+      "root_samples": 400
+    },
+    {
+      "condition": "DBA RL，无攻击",
+      "acc_pct": 29.636666666666667,
+      "asr_pct": 0.09715242881072027,
+      "window": "198–200",
+      "source": "/Users/antik/Desktop/meta-sg/TinyImageNet/strong_backdoor_rl_10k50k/evidence/outputs/formal/dba/evaluation_10000/clean/result.json",
+      "sha256": "12903539be8e94fb350f338b9c6480a687982ec609bf5830b2042698dcb37db8",
+      "root_samples": 400
+    },
+    {
+      "condition": "BFL 第101轮策略，无攻击",
+      "acc_pct": 29.860000000000003,
+      "asr_pct": 0.22110552763819094,
+      "window": "198–200",
+      "source": "/Users/antik/Desktop/meta-sg/TinyImageNet/strong_backdoor_rl_10k50k/evidence/outputs/formal/bfl_v2/evaluation_10000/clean/result.json",
+      "sha256": "1421f18a088b3f98b861a0bb35deb63e920b2d3a7918a1d76045ec72d0956e90",
+      "root_samples": 400
+    },
+    {
+      "condition": "BFL 第1轮策略，无攻击",
+      "acc_pct": 30.486666666666668,
+      "asr_pct": 0.17755443886097153,
+      "window": "198–200",
+      "source": "/Users/antik/Desktop/meta-sg/TinyImageNet/bfl_v2_round1_retrained_rl10k/evidence/outputs/formal/bfl_v2/evaluation_10000/clean/result.json",
+      "sha256": "b6a365bab4c7cb5a6ddc470fc89336a33b7c070449b57d091b459e1741ee7ea6",
+      "root_samples": 400
+    },
+    {
+      "condition": "legacy_bfl_source0_black_trigger",
+      "acc_pct": 32.093333333333334,
+      "asr_pct": 1.3333333333333335,
+      "window": "198–200",
+      "source": "/Users/antik/Desktop/meta-sg/TinyImageNet/bfl_resnet18_iid100_p10/evidence/outputs/formal/fedavg/result.json",
+      "sha256": "08a7fdfe184ddaaae60e6e13a7084a3d54c067944904762156c9e833ea69c70b",
+      "method": "fedavg"
+    },
+    {
+      "condition": "legacy_bfl_source0_black_trigger",
+      "acc_pct": 31.94,
+      "asr_pct": 0.0,
+      "window": "198–200",
+      "source": "/Users/antik/Desktop/meta-sg/TinyImageNet/bfl_resnet18_iid100_p10/evidence/outputs/formal/trimmed_mean/result.json",
+      "sha256": "e41cd535f80b038b2f464c4686aa4866400942b7c3c4c3de6175b4929d25113c",
+      "method": "trimmed_mean"
+    },
+    {
+      "condition": "legacy_bfl_source0_black_trigger",
+      "acc_pct": 28.860000000000003,
+      "asr_pct": 0.6666666666666667,
+      "window": "198–200",
+      "source": "/Users/antik/Desktop/meta-sg/TinyImageNet/bfl_resnet18_iid100_p10/evidence/outputs/formal/fltrust/result.json",
+      "sha256": "0ac5ecdbe6be8ceed1ddf0a9a311bd9f1a73a541834266a54ab4422db9c01295",
+      "method": "fltrust"
+    },
+    {
+      "condition": "legacy_bfl_source0_black_trigger",
+      "acc_pct": 28.860000000000003,
+      "asr_pct": 0.6666666666666667,
+      "window": "198–200",
+      "source": "/Users/antik/Desktop/meta-sg/TinyImageNet/bfl_resnet18_iid100_p10/evidence/outputs/formal/fltrust_nc/result.json",
+      "sha256": "3d370a38da22a7ba6720dd8a6c0d1e54dcc695e31faea08346195995be72e7bd",
+      "method": "fltrust_nc"
+    },
+    {
+      "condition": "legacy_bfl_source0_black_trigger",
+      "acc_pct": 9.933333333333334,
+      "asr_pct": 0.0,
+      "window": "198–200",
+      "source": "/Users/antik/Desktop/meta-sg/TinyImageNet/bfl_resnet18_iid100_p10/evidence/outputs/formal/clipmed/result.json",
+      "sha256": "70995d28d275234f343bb02b1857c71e96edf3f1cd88ffd3dcf88051be664440",
+      "method": "clipmed"
+    },
+    {
+      "condition": "legacy_bfl_source0_black_trigger",
+      "acc_pct": 30.220000000000002,
+      "asr_pct": 0.0,
+      "window": "198–200",
+      "source": "/Users/antik/Desktop/meta-sg/TinyImageNet/rl_bfl_resnet18_iid100_p10/evidence/outputs/formal/evaluation/result.json",
+      "sha256": "4a324c77b15e8e8f9d654823e5d1b2865d4be80c3f3f8f441f684c64ef41238e",
+      "method": "rl"
+    }
+  ],
+  "supplementary_completion_audit_sha256": "5ef2a8a4b3c45bc7ad8d137a0b999e9ea8cd3cee2ba15e6f5f20f6dd557748e8",
+  "replaced_historical_cells": [
+    {
+      "attack": "dba",
+      "method": "fedavg",
+      "old_acc_pct": 31.5,
+      "new_acc_pct": 31.64
+    }
+  ],
+  "ipm_rl_status": "No completed 200-round result in audited archive",
+  "new_experiments": 0,
+  "before_sha256": "348f2f0c53a9bc190d11930ee8235a8e504ab40a108d543b3a7002b9b51af89d",
+  "after_sha256": "bc9349422d180430efeba4b47fbf9326b207a7fc44aded43f598d1ce15304d2e"
+}

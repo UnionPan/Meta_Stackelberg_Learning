@@ -1,0 +1,34 @@
+{
+  "dataset": {"name": "mnist", "data_root": "../data", "options": {"download": false}},
+  "model": {"name": "cnn"},
+  "partition": {"method": "iid", "root_samples_per_class": 20},
+  "federation": {"num_clients": 20, "clients_per_round": 10},
+  "training": {
+    "local_steps": 1, "local_epochs": null, "root_steps": 5, "batch_size": 128,
+    "learning_rate": 0.05, "seed": 42, "device": "cuda"
+  },
+  "defense": {"name": "rl", "parameters": {}},
+  "attack": {"name": "none"},
+  "rl": {
+    "mode": "train",
+    "observation": {
+      "name": "histogram40",
+      "parameters": {"transform_path": "outputs/transforms/histogram40.json", "signed_log_norm": false}
+    },
+    "action": {"name": "mixed_norm", "parameters": {}},
+    "reward": {"name": "root_loss_delta", "parameters": {}},
+    "agent": {"learning_rate": 0.001, "batch_size": 32, "buffer_size": 10000, "hidden_units": [64, 64]}
+  },
+  "meta": {
+    "iterations": 10, "tasks_per_iteration": 2, "horizon": 20,
+    "inner_steps": 2, "response_steps": 2, "post_critic_steps": 20,
+    "outer_learning_rate": 1.0, "feedback_samples": 256,
+    "checkpoint_interval": 1, "follower_agent": {},
+    "tasks": [
+      {"name": "rl", "kind": "model_poisoning", "malicious_clients": [0, 1, 2, 3], "start_round": 3},
+      {"name": "brl", "kind": "backdoor", "malicious_clients": [0, 1, 2, 3], "start_round": 3,
+       "parameters": {"source_label": 0, "target_label": 2, "poison_fraction": 1.0}}
+    ]
+  },
+  "output": {"directory": "outputs/mnist_meta", "checkpoint_interval": 50}
+}

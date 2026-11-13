@@ -1,0 +1,24 @@
+{
+  "style_version": "meta-sg-muted-v1",
+  "method": "frozen Meta-SG defender",
+  "seed": 42,
+  "metric_units": {
+    "accuracy": "percent",
+    "loss": "mean cross-entropy"
+  },
+  "measured_rounds": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "smoothing": false,
+  "extrapolation": false,
+  "source": "Outputs/quickstart/run/evaluation/metrics.jsonl",
+  "source_sha256": "bf6a5840e27d5cc4b263519ea533c6d5e4b6e649d66ecf3349f54a3226dca0f6",
+  "outputs_sha256": {
+    "png": "4b4134205b29cfe2e236a6afc88888670e0920f6862cf54de69328a2b77c0c70",
+    "pdf": "03bf43a0893a789aa91ca6640be770f38ada187f75e454e446b0bff973434d59",
+    "svg": "e9569b080ce08f4cf425819ac4ff82f5a34204f0b7a69628fb4db425312fd8d2"
+  }
+}

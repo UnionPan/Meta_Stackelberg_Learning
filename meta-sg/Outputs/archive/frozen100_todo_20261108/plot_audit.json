@@ -1,0 +1,69 @@
+{
+  "statistic_window": [
+    498,
+    500
+  ],
+  "baseline_scope": "Archived conventional-defense references only in start=3 figure",
+  "all_new_rl_results": "Deterministic 16-query batch; seed43",
+  "hidden_defense_methods": [
+    "fixed",
+    "custom_fixed"
+  ],
+  "legacy_input_sha256": "2fa2c988fcbef61738e6c202831d7dc1476b1b30ba22e9e6daa48a3d11b7aa86",
+  "new_input_sha256": "72bc75ab0a0c64a446d914d0edb3f4e10dd068b4d9ce99fce70d35290cbe29aa",
+  "shared_style_sha256": "4134b70c53da494f0f416c958684f6576415dacdc5e22b9c7058ea7fc7032040",
+  "theme": "comparison_rl_only_v5",
+  "start3_methods": [
+    "fedavg",
+    "median",
+    "trimmed_mean",
+    "krum",
+    "multi_krum",
+    "rfa",
+    "fltrust",
+    "clipmed",
+    "compact8",
+    "histogram40"
+  ],
+  "start1_methods": [
+    "compact8",
+    "histogram40"
+  ],
+  "method_colors": {
+    "fedavg": "#B8C4D1",
+    "median": "#B8C4D1",
+    "trimmed_mean": "#B8C4D1",
+    "krum": "#B8C4D1",
+    "multi_krum": "#B8C4D1",
+    "rfa": "#B8C4D1",
+    "fltrust": "#B8C4D1",
+    "clipmed": "#B8C4D1",
+    "compact8": "#D45A43",
+    "histogram40": "#D45A43"
+  },
+  "actor_state": "Frozen specialists; no adaptation",
+  "smoothing": false,
+  "error_bars": false,
+  "png_visual_review": "Opened all four PNGs; checked fonts, real bold labels, legends, marker/hatch distinction, limits, zoom titles, rankings and clipping",
+  "outputs": {
+    "start3_frozen100_all_defenses_v1.png": "ef89e0b6d1692baf7cf561e635008822c79ccde026b0f670f4f184774ef2a6a9",
+    "start3_frozen100_all_defenses_v1.pdf": "4500ce377a1b8bdea539bdb3c3f20994d1df435def33289adbe41488a06cc162",
+    "start3_frozen100_all_defenses_v1.svg": "f594f59988b37cd7239634ffa305076f3014e22eac38b1675591d255cd06fcac",
+    "start1_frozen100_compact8_histogram40_v1.pdf": "29cf749d0ef029d78fc6238aede01b9d36c2d7e9f375842814c9e69f35e3e9b2",
+    "start1_frozen100_compact8_histogram40_v1.png": "eaedf9c9bc3a06ad6d2c86ed400320fbb4a6eadaa9e7e4801feb103d5cb7df1d",
+    "start1_frozen100_compact8_histogram40_v1.svg": "c18628d69738839c1ff5caa6113b6b5f5b7692108e04f4cd15bca781e5296606",
+    "frozen100_start3_fl_curves_v1.pdf": "79b07925288bad4cd17ada75a33fdf278f40cb3f0148dd1e6b0568f9bb761ff3",
+    "frozen100_start3_fl_curves_v1.png": "348d895b1bf6e47f2c633360f62d792e1399a9be332ddd6ec883c8b66dc9cca0",
+    "frozen100_start3_fl_curves_v1.svg": "20aeb0677f14a7cb6745a4d5502b54770ba51dca3fb2ddf542bbd8823224dadd",
+    "frozen100_start1_fl_curves_v1.png": "ebeec6af7d931ebd2812709690dd2038e810a4a249b851356df872ab504042da",
+    "frozen100_start1_fl_curves_v1.pdf": "67e28afba68a1a734b0efa678c329c61816b168bc5fc254a8ad1261d4d8243f7",
+    "frozen100_start1_fl_curves_v1.svg": "6dc6a43bac26dcea8f6594fe0de2f06fcf39dba2e421bf1e53b0c71def43fcf0"
+  },
+  "reviewed_pngs": [
+    "start3_frozen100_all_defenses_v1.png",
+    "start1_frozen100_compact8_histogram40_v1.png",
+    "frozen100_start3_fl_curves_v1.png",
+    "frozen100_start1_fl_curves_v1.png"
+  ],
+  "plot_script_sha256": "78b6088c2235a69ce6e20a9c63d4ef63b08c2b5942d8b7ced9c19957e291c848"
+}

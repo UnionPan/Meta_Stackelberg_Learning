@@ -1,0 +1,26 @@
+{
+  "dataset": {"name": "mnist", "data_root": "data", "options": {"download": true}},
+  "partition": {"method": "iid", "root_samples_per_class": 10},
+  "federation": {"num_clients": 4, "clients_per_round": 4},
+  "training": {
+    "rounds": 3, "local_steps": 1, "root_steps": 1, "batch_size": 32,
+    "learning_rate": 0.05, "seed": 42, "device": "cpu"
+  },
+  "defense": {"name": "rl"},
+  "attack": {"name": "none"},
+  "rl": {
+    "mode": "train",
+    "observation": {"name": "compact8"},
+    "agent": {"batch_size": 4, "buffer_size": 64, "hidden_units": [16, 16], "policy_delay": 2}
+  },
+  "meta": {
+    "iterations": 1, "horizon": 3, "inner_steps": 2, "response_steps": 2,
+    "post_critic_steps": 2, "feedback_samples": 32,
+    "tasks": [
+      {"name": "rl", "kind": "model_poisoning", "malicious_clients": [0], "start_round": 2},
+      {"name": "brl", "kind": "backdoor", "malicious_clients": [0], "start_round": 2,
+       "parameters": {"source_label": null, "target_label": 2}}
+    ]
+  },
+  "output": {"directory": "Outputs/runs/quickstart", "checkpoint_interval": 3}
+}

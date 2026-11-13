@@ -1,0 +1,101 @@
+{
+  "new_experiments": 0,
+  "source_type": "Previously verified CSV/JSON vault snapshots; original raw runs not reloaded",
+  "source_sha256": {
+    "output/results_by_dataset_20261107/mnist_all_107.csv": "19ebde098cdc0473b3b77e2d6efa05a515a888e4553c24eaf6631ff937254f7d",
+    "output/specialist_observation_comparison_20261107/comparison_long.csv": "75ded070e2fc141ea2b70f8ef2186f11a1f51d0e0ecae269b8b3a6e83a9b23d5",
+    "output/dataset_coverage_audit_20261107/cifar10_all_146.csv": "39e2af857b44f26146bf3faaa335e55d3adf23fb585b1f019f2bb5ba7ad00f82",
+    "output/results_by_dataset_20261107/tiny_lmp_dba_last3.json": "f04d4efb2417fdc2a0211adcbc0bd43e3b68bcebc400baa6a531a4a83bc7e9c7",
+    "output/results_by_dataset_20261107/bfl_v2_fixed_vs_rl10k.json": "ea394b6aa9484675db36e0fdcc3354cad9adc74fd256f7edd6b6f7d078cf6f29",
+    "output/results_by_dataset_20261107/bfl_v2_round1_retrained_rl10k.json": "dee5b422cdbdbaab3deade89c8a9b5c0e022bb88bebb43e96a2288e7118fbc09"
+  },
+  "groups": {
+    "mnist_iid": {
+      "rows": 48,
+      "complete": 45,
+      "omitted": 3,
+      "marker_count": 93
+    },
+    "mnist_noniid": {
+      "rows": 48,
+      "complete": 45,
+      "omitted": 3,
+      "marker_count": 93
+    },
+    "cifar20": {
+      "rows": 36,
+      "complete": 34,
+      "omitted": 2,
+      "marker_count": 70
+    },
+    "cifar100_005": {
+      "rows": 40,
+      "complete": 38,
+      "omitted": 2,
+      "marker_count": 78
+    },
+    "cifar100_001": {
+      "rows": 36,
+      "complete": 35,
+      "omitted": 1,
+      "marker_count": 71
+    },
+    "tiny_iid": {
+      "rows": 21,
+      "complete": 21,
+      "omitted": 0,
+      "marker_count": 51
+    }
+  },
+  "total_rows": 229,
+  "exact_utility_recomputed": true,
+  "duplicate_cells": false,
+  "missing_or_failed_windows_imputed": false,
+  "y_error_bars": false,
+  "figures": {
+    "format": [
+      "png",
+      "pdf",
+      "svg"
+    ],
+    "hollow_markers": true,
+    "x": "attack/scenario",
+    "panels": [
+      "untargeted ACC",
+      "backdoor ACC",
+      "backdoor ASR",
+      "backdoor ACC-ASR"
+    ]
+  },
+  "original_note_sha256": "41dfebea093ff7621ed5490ef66d9b3cac81fac36d7fd55066ca783829eba815",
+  "draft_sha256": "2b85d55baf45af9a5183ee3c610a815b57988c473aa9e735c248f2f62be621ba",
+  "exclusions": [
+    "MNIST supplement/transfer rows are archived",
+    "Short-run representation results are archived",
+    "Historical CIFAR20 last3 matrix is archived rather than merged with current last10 matrix",
+    "Clean-only results, joint and meta results remain in full archive"
+  ],
+  "note_written": true,
+  "visual_review": {
+    "all_six_figures_reviewed": true,
+    "footer_spacing_adjusted": true,
+    "formats_verified": 18
+  },
+  "links_verified": true,
+  "table_columns_verified": true,
+  "original_archive_preserved": true,
+  "note_sha256": "2b85d55baf45af9a5183ee3c610a815b57988c473aa9e735c248f2f62be621ba",
+  "passed": true,
+  "method_context_restored": {
+    "original_algorithms": true,
+    "feature_definitions": true,
+    "compact_and_histogram": true,
+    "standardization": true,
+    "architecture_figures": 2,
+    "parameter_tables": true,
+    "design_considerations_added": true,
+    "prior_result_table_lines_preserved": 164,
+    "prior_result_figures_preserved": 6,
+    "user_deleted_section_not_restored": true
+  }
+}

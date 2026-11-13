@@ -1,0 +1,31 @@
+{
+  "tests": {
+    "command": "uv run --locked --extra rl pytest -q",
+    "passed": 194
+  },
+  "demo": {
+    "execution": "development machine via authorized jump-host route",
+    "smoke_passed_before_demo": true,
+    "configuration": "configs/quickstart.json",
+    "summary": "Outputs/quickstart/run/summary.json",
+    "frozen_test_accuracy_percent": 22.79,
+    "purpose": "integration only; no robustness or generalization claim"
+  },
+  "archive": {
+    "asset_count": 592,
+    "asset_bytes": 79114363,
+    "all_asset_hashes_verified": true,
+    "original_document_byte_identical": true,
+    "missing_local_markdown_targets": 0
+  },
+  "plot": {
+    "png_visually_reviewed": true,
+    "title_legend_and_footnotes_clear": true,
+    "style_skill": "meta-sg-plotting",
+    "new_training_for_plot": false
+  },
+  "repository": {
+    "visibility_requested": "private",
+    "name": "fengyxz/meta-sg-core"
+  }
+}

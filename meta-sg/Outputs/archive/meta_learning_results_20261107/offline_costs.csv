@@ -1,0 +1,5 @@
+variant,method,actual_fl_rounds,numerical_failures
+compact8,meta,45421,14
+compact8,joint,44116,18
+histogram40,meta,40372,28
+histogram40,joint,37923,40

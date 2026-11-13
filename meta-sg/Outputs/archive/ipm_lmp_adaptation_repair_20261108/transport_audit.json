@@ -1,0 +1,6 @@
+{
+  "passed": true,
+  "remote_uncompressed_tar_sha256": "2b0bb1f8ad65ed27284b4938072284f99875c2a90dfc234582f7632e2e1b6aa4",
+  "local_archive_sha256": "2e9de1470606a8177ea8d49d621e7cd1bd754a9a342f321615441597a3656493",
+  "archive_members": 143
+}

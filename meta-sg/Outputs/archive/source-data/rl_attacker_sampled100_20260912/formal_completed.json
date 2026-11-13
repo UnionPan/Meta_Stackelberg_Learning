@@ -1,0 +1,252 @@
+{
+  "protocol_audited": true,
+  "results": [
+    {
+      "method": "custom_fixed",
+      "condition": "attack",
+      "status": "complete",
+      "measured_through_round": 500,
+      "final_accuracy": 0.9242,
+      "last50_accuracy": 0.9247320000000001,
+      "mean_attack_accuracy": 0.7141662650602411,
+      "wall_seconds": 157.44422679900163,
+      "attack_rounds": 451,
+      "failure": null
+    },
+    {
+      "method": "custom_fixed",
+      "condition": "clean",
+      "status": "complete",
+      "measured_through_round": 500,
+      "final_accuracy": 0.9422,
+      "last50_accuracy": 0.938352,
+      "mean_attack_accuracy": 0.8736389558232932,
+      "wall_seconds": 132.24614068499795,
+      "attack_rounds": 0,
+      "failure": null
+    },
+    {
+      "method": "fltrust",
+      "condition": "attack",
+      "status": "complete",
+      "measured_through_round": 500,
+      "final_accuracy": 0.9511,
+      "last50_accuracy": 0.950884,
+      "mean_attack_accuracy": 0.9057293172690764,
+      "wall_seconds": 121.39976030500111,
+      "attack_rounds": 451,
+      "failure": null
+    },
+    {
+      "method": "fltrust",
+      "condition": "clean",
+      "status": "complete",
+      "measured_through_round": 500,
+      "final_accuracy": 0.952,
+      "last50_accuracy": 0.9513759999999999,
+      "mean_attack_accuracy": 0.9059755020080321,
+      "wall_seconds": 91.7168736379972,
+      "attack_rounds": 0,
+      "failure": null
+    },
+    {
+      "method": "rl__rl_attacker",
+      "condition": "attack",
+      "status": "complete",
+      "measured_through_round": 500,
+      "final_accuracy": 0.9507,
+      "last50_accuracy": 0.9463820000000002,
+      "mean_attack_accuracy": 0.8825789156626506,
+      "wall_seconds": 212.727757724002,
+      "attack_rounds": 451,
+      "failure": null
+    },
+    {
+      "method": "rl__rl_attacker",
+      "condition": "clean",
+      "status": "complete",
+      "measured_through_round": 500,
+      "final_accuracy": 0.9506,
+      "last50_accuracy": 0.94789,
+      "mean_attack_accuracy": 0.8883118473895583,
+      "wall_seconds": 183.7631324699978,
+      "attack_rounds": 0,
+      "failure": null
+    },
+    {
+      "method": "fedavg",
+      "condition": "attack",
+      "status": "diverged",
+      "measured_through_round": 14,
+      "final_accuracy": null,
+      "last50_accuracy": null,
+      "mean_attack_accuracy": null,
+      "wall_seconds": 3.016023393996875,
+      "attack_rounds": 12,
+      "failure": {
+        "round": 15,
+        "reason": "nonfinite attacker local loss"
+      }
+    },
+    {
+      "method": "fedavg",
+      "condition": "clean",
+      "status": "complete",
+      "measured_through_round": 500,
+      "final_accuracy": 0.9282,
+      "last50_accuracy": 0.925978,
+      "mean_attack_accuracy": 0.8486238955823293,
+      "wall_seconds": 80.81901767900126,
+      "attack_rounds": 0,
+      "failure": null
+    },
+    {
+      "method": "median",
+      "condition": "attack",
+      "status": "complete",
+      "measured_through_round": 500,
+      "final_accuracy": 0.114,
+      "last50_accuracy": 0.20317,
+      "mean_attack_accuracy": 0.14826485943775103,
+      "wall_seconds": 105.25710125699698,
+      "attack_rounds": 451,
+      "failure": null
+    },
+    {
+      "method": "median",
+      "condition": "clean",
+      "status": "complete",
+      "measured_through_round": 500,
+      "final_accuracy": 0.9253,
+      "last50_accuracy": 0.923904,
+      "mean_attack_accuracy": 0.847502610441767,
+      "wall_seconds": 62.856330861999595,
+      "attack_rounds": 0,
+      "failure": null
+    },
+    {
+      "method": "trimmed_mean",
+      "condition": "attack",
+      "status": "diverged",
+      "measured_through_round": 35,
+      "final_accuracy": null,
+      "last50_accuracy": null,
+      "mean_attack_accuracy": null,
+      "wall_seconds": 13.424630030000117,
+      "attack_rounds": 31,
+      "failure": {
+        "round": 36,
+        "reason": "nonfinite attacker local loss"
+      }
+    },
+    {
+      "method": "trimmed_mean",
+      "condition": "clean",
+      "status": "complete",
+      "measured_through_round": 500,
+      "final_accuracy": 0.9261,
+      "last50_accuracy": 0.9244080000000001,
+      "mean_attack_accuracy": 0.8477863453815261,
+      "wall_seconds": 78.25217632300337,
+      "attack_rounds": 0,
+      "failure": null
+    },
+    {
+      "method": "krum",
+      "condition": "attack",
+      "status": "complete",
+      "measured_through_round": 500,
+      "final_accuracy": 0.3185,
+      "last50_accuracy": 0.594506,
+      "mean_attack_accuracy": 0.4198196787148594,
+      "wall_seconds": 108.20682231699902,
+      "attack_rounds": 451,
+      "failure": null
+    },
+    {
+      "method": "krum",
+      "condition": "clean",
+      "status": "complete",
+      "measured_through_round": 500,
+      "final_accuracy": 0.9241,
+      "last50_accuracy": 0.918896,
+      "mean_attack_accuracy": 0.844727108433735,
+      "wall_seconds": 59.21811057499872,
+      "attack_rounds": 0,
+      "failure": null
+    },
+    {
+      "method": "multi_krum",
+      "condition": "attack",
+      "status": "diverged",
+      "measured_through_round": 216,
+      "final_accuracy": null,
+      "last50_accuracy": null,
+      "mean_attack_accuracy": null,
+      "wall_seconds": 35.4598803810004,
+      "attack_rounds": 199,
+      "failure": {
+        "round": 217,
+        "reason": "nonfinite attacker local loss"
+      }
+    },
+    {
+      "method": "multi_krum",
+      "condition": "clean",
+      "status": "complete",
+      "measured_through_round": 500,
+      "final_accuracy": 0.9275,
+      "last50_accuracy": 0.924202,
+      "mean_attack_accuracy": 0.8473552208835342,
+      "wall_seconds": 57.76861549100431,
+      "attack_rounds": 0,
+      "failure": null
+    },
+    {
+      "method": "rfa",
+      "condition": "attack",
+      "status": "complete",
+      "measured_through_round": 500,
+      "final_accuracy": 0.188,
+      "last50_accuracy": 0.20825200000000002,
+      "mean_attack_accuracy": 0.12322530120481928,
+      "wall_seconds": 83.05408962999354,
+      "attack_rounds": 451,
+      "failure": null
+    },
+    {
+      "method": "rfa",
+      "condition": "clean",
+      "status": "complete",
+      "measured_through_round": 500,
+      "final_accuracy": 0.9276,
+      "last50_accuracy": 0.9252219999999999,
+      "mean_attack_accuracy": 0.8483991967871486,
+      "wall_seconds": 46.06586395599879,
+      "attack_rounds": 0,
+      "failure": null
+    }
+  ],
+  "hashes": {
+    "outputs/formal/custom_fixed/attack/custom_fixed/round_metrics.csv": "28bd58d884da82f32d3cff3cdad9bdfe8edfabec0dbbac170dbe501f314afebe",
+    "outputs/formal/custom_fixed/clean/custom_fixed/round_metrics.csv": "d8aa89f6c08a354a45f1fde5322346d79bc66eaace98c9616c16d74e19335db1",
+    "outputs/formal/fltrust/attack/fltrust/round_metrics.csv": "d39ff1acbf385c8c56c468ba56ce58fa97336dae57c36433061f98a4539ead70",
+    "outputs/formal/fltrust/clean/fltrust/round_metrics.csv": "20fdf3ec4846c88658eac3272ae58473538b19b5dd38f0ac4103ce77ce88bfbe",
+    "outputs/formal/rl__rl_attacker/attack/rl__rl_attacker/round_metrics.csv": "1051cc3d9bbcdd7153db100cf40383c1e09383642f9e71ac5731bd4028790dcb",
+    "outputs/formal/rl__rl_attacker/clean/rl__rl_attacker/round_metrics.csv": "c9f07ecfedbac0db8639b572b3d35ab62458f2ddc266a919032193e453c3de4b",
+    "outputs/formal/fedavg/attack/fedavg/round_metrics.csv": "293185d9aa8fdbcdbd214bce5c0dcf7f8a09ba41fffa9bd9e46df58e18aedbb5",
+    "outputs/formal/fedavg/clean/fedavg/round_metrics.csv": "0c77c9bc171a74a180f47b68635d3efb54908573dcbbe7d05c3129118860d8dc",
+    "outputs/formal/median/attack/median/round_metrics.csv": "bb62fa310ae4fe94f6d2348a5c6126ae2de4dc33827b9386bbf0c10a0801d09d",
+    "outputs/formal/median/clean/median/round_metrics.csv": "64929e11ef59b18542170f676857f26b915b976c908173c0ded6ba4bee8af4f1",
+    "outputs/formal/trimmed_mean/attack/trimmed_mean/round_metrics.csv": "3e71b7cc56b9cba836ea628132df07b523de73c11c522371a5860a99da9d8155",
+    "outputs/formal/trimmed_mean/clean/trimmed_mean/round_metrics.csv": "61d8076823506c7a6c716552acdb51ef33354af950ea0f6ece865ed5b5f5070e",
+    "outputs/formal/krum/attack/krum/round_metrics.csv": "ec0cf056440ba5db98b8de4cd74ef2fa7028ab78e9641562455e9701db111493",
+    "outputs/formal/krum/clean/krum/round_metrics.csv": "a11ae0ef6f4cf77452b36d89ed53f5ae1a5b5cf9457a98079eb4af9b9cd5964d",
+    "outputs/formal/multi_krum/attack/multi_krum/round_metrics.csv": "e1d816528f7d8455222f3bc49d1f0684bb9294c650926625dd185042517150c4",
+    "outputs/formal/multi_krum/clean/multi_krum/round_metrics.csv": "d8cb31e65860323ee852ba6acde2b349f8521d947ecd15ede5f06d0905de3caf",
+    "outputs/formal/rfa/attack/rfa/round_metrics.csv": "e869b8c1bd0f18281f3d7a5895c400027b104539d61e468efb542e9e659f117b",
+    "outputs/formal/rfa/clean/rfa/round_metrics.csv": "f4a9fcc525468e4b21bfe9d67a97a4eec2ab15f48651098aa0e5462aadaafcad"
+  },
+  "new_training_steps": 0,
+  "rounds": 500
+}
